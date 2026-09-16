@@ -1,0 +1,12 @@
+Este es un proyecto interno de Exafan (gestor de presupuestos y facturas de obra).
+
+Contexto obligatorio antes de tocar código: docs/contexto_proyecto_obra.md, docs/stack_tecnologico.md y docs/readme.md. Este último tiene el modelo de datos, la API y los tickets vigentes — sigue esa numeración y esos nombres de entidad tal cual (TAREA es jerárquica vía tarea_padre_id, no una tabla plana).
+
+Reglas no negociables:
+- Nunca incluyas datos personales, importes reales, NIF o nombres reales en código, tests, migraciones o comentarios. Usa siempre las fixtures anonimizadas de fixtures/ o genera datos de ejemplo evidentemente ficticios.
+- Toda validación de entrada se repite en el backend con Pydantic, aunque ya exista en el frontend.
+- Cualquier documento de obra (presupuesto, contrato, factura) que pase por OCR o LLM debe quedar marcado como pendiente de revisión humana hasta que una persona lo confirme — no lo des nunca como "guardado" directamente.
+- Si un valor viene de una anotación manuscrita sobre un valor impreso, márcalo explícitamente (tiene_anotacion_manual = true) y fuerza revisión, no lo resuelvas tú solo.
+- No inventes cifras, campos ni reglas de negocio que no estén en docs/readme.md. Si algo no está definido, dilo y pregunta o déjalo marcado como [VERIFICAR] en un comentario.
+- Stack fijado, no lo cambies sin que te lo pidan: FastAPI + SQLAlchemy + Alembic, PostgreSQL con pgvector y pg_trgm, frontend HTML + Alpine.js + Chart.js servido desde el propio FastAPI (sin build).
+- Tono del código y de los mensajes de commit: español, directo, sin relleno.

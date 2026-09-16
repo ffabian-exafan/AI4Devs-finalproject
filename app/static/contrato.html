@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Subir contrato — Gestor de obra</title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  </head>
+  <body>
+    <div class="shell" x-data="contratoApp()" x-init="init()">
+      <header class="topbar">
+        <h1>Subir contrato de subcontrata</h1>
+        <nav>
+          <a href="/">Inicio</a>
+          <a href="/presupuesto.html">Presupuesto</a>
+          <a href="/contrato.html" class="activo">Contrato</a>
+          <a href="/revision.html">Revisión</a>
+          <a href="/facturas.html">Facturas</a>
+          <a href="/control.html">Control</a>
+        </nav>
+      </header>
+
+      <p class="aviso">
+        El contrato puede aportar desglose más fino que el presupuesto.
+        Tras importar, confirma en revisión humana antes de darlo por válido.
+      </p>
+
+      <section class="panel">
+        <h2>Datos del contrato</h2>
+        <form class="form-subida" @submit.prevent="enviar()">
+          <label>
+            Proyecto
+            <select x-model="proyectoId" @change="cargarNaves()" required>
+              <option value="">— Selecciona —</option>
+              <template x-for="p in proyectos" :key="p.id">
+                <option :value="String(p.id)" x-text="p.id + ' — ' + p.nombre"></option>
+              </template>
+            </select>
+          </label>
+
+          <label>
+            Nave (opcional)
+            <select x-model="naveId" :disabled="!proyectoId || cargandoNaves">
+              <option value="">— Todas / sin asignar —</option>
+              <template x-for="n in naves" :key="n.id">
+                <option :value="String(n.id)" x-text="n.codigo + ' — ' + n.descripcion"></option>
+              </template>
+            </select>
+            <span class="ayuda">Si el contrato ampara una nave concreta, elígela aquí.</span>
+          </label>
+
+          <label>
+            Fichero
+            <input type="file" accept=".pdf,.md,application/pdf,text/markdown" @change="onFile($event)" required />
+          </label>
+
+          <div class="acciones">
+            <button
+              type="submit"
+              class="primario"
+              :disabled="!fichero || !proyectoId || enviando"
+            >
+              <span x-text="enviando ? 'Importando…' : 'Importar contrato'"></span>
+            </button>
+          </div>
+        </form>
+
+        <template x-if="error">
+          <p class="estado-msg err" x-text="error" style="margin-top: 1rem"></p>
+        </template>
+
+        <template x-if="resultado">
+          <div class="resultado-ok">
+            <p>
+              Contrato <strong x-text="'#' + resultado.contrato_id"></strong> registrado.
+              Contratista (NIF): <code x-text="resultado.contratista_nif"></code>.
+              Precio total: <strong x-text="euro(resultado.precio_total)"></strong>.
+            </p>
+            <p>
+              Partidas de detalle detectadas:
+              <span x-text="resultado.partidas_detalle_detectadas"></span>.
+            </p>
+            <p x-show="resultado.requiere_revision">
+              Pendiente de revisión humana.
+              <a href="/revision.html">Ir a revisión</a>
+            </p>
+          </div>
+        </template>
+      </section>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/contrato.js"></script>
+  </body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Proyecto — Gestor de obra</title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  </head>
+  <body>
+    <div class="shell" x-data="proyectoApp()" x-init="init()">
+      <header class="topbar">
+        <h1 x-text="proyecto ? proyecto.nombre : 'Proyecto'"></h1>
+        <nav>
+          <a href="/">Inicio</a>
+          <a href="/presupuesto.html">Presupuesto</a>
+          <a href="/contrato.html">Contrato</a>
+          <a href="/revision.html">Revisión</a>
+          <a href="/facturas.html">Facturas</a>
+          <a href="/control.html">Control</a>
+        </nav>
+      </header>
+
+      <template x-if="cargando">
+        <p class="vacio">Cargando proyecto…</p>
+      </template>
+
+      <template x-if="!cargando && error">
+        <p class="estado-msg err" x-text="error"></p>
+      </template>
+
+      <template x-if="!cargando && proyecto">
+        <div>
+          <p class="aviso">
+            Lista de apartados del presupuesto. Los contratos se suben aquí y el sistema
+            sugiere el apartado; no se enlazan hasta que confirmes.
+            <span x-show="proyecto.estado === 'pendiente_revision'">
+              El proyecto sigue pendiente de revisión humana.
+            </span>
+          </p>
+
+          <section class="panel">
+            <h2>Resumen</h2>
+            <p>
+              #<span x-text="proyecto.id"></span>
+              · <span x-text="proyecto.tipo"></span>
+              · <span x-text="proyecto.estado"></span>
+            </p>
+            <div class="acciones-mini" style="margin-top: 0.5rem">
+              <a :href="'/revision.html'">Revisión</a>
+              <a :href="'/control.html?proyecto_id=' + proyecto.id">Control económico</a>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Apartados</h2>
+            <p class="muted">
+              Seguimiento por cada contrato confirmado y enlazado al apartado.
+              Solo suma facturas confirmadas.
+            </p>
+            <template x-if="proyecto.apartados.length === 0">
+              <p class="vacio">Aún no hay apartados de presupuesto en este proyecto.</p>
+            </template>
+            <div class="tabla-wrap" x-show="proyecto.apartados.length">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th>Nave</th>
+                  <th>Presupuestado</th>
+                  <th>Revisión</th>
+                  <th>Contrato y facturación</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="ap in proyecto.apartados" :key="ap.id">
+                  <tr>
+                    <td x-text="ap.codigo"></td>
+                    <td x-text="ap.descripcion"></td>
+                    <td x-text="ap.nave_codigo"></td>
+                    <td x-text="euro(ap.importe_presupuestado)"></td>
+                    <td x-text="ap.estado_revision"></td>
+                    <td>
+                      <template x-if="!ap.contratos.length">
+                        <span class="badge badge-sin-contrato">Sin contrato</span>
+                      </template>
+                      <div class="seguimientos" x-show="ap.contratos.length">
+                        <template x-for="c in ap.contratos" :key="c.id">
+                          <div class="seguimiento-contrato">
+                            <div>
+                              <strong x-text="'Contrato #' + c.id"></strong>
+                              · <span x-text="c.contratista_nombre"></span>
+                            </div>
+                            <div class="seguimiento-importes">
+                              <span>Contratado <strong x-text="euro(c.contratado)"></strong></span>
+                              <span>Facturado <strong x-text="euro(c.facturado)"></strong></span>
+                            </div>
+                            <div class="progreso" :title="porcentaje(c.porcentaje_facturado) + ' facturado'">
+                              <span :class="{ excedido: Number(c.porcentaje_facturado) > 100 }"
+                                :style="'width:' + anchoProgreso(c.porcentaje_facturado) + '%'"></span>
+                            </div>
+                            <small
+                              :class="Number(c.pendiente) < 0 ? 'desvio-negativo' : 'muted'"
+                              x-text="textoPendiente(c.pendiente)"
+                            ></small>
+                          </div>
+                        </template>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Contratos</h2>
+            <template x-if="proyecto.contratos.length === 0">
+              <p class="vacio">Todavía no hay contratos. Súbelos abajo.</p>
+            </template>
+            <template x-for="c in proyecto.contratos" :key="c.id">
+              <div class="bloque-contrato">
+                <div class="bloque-contrato-cab">
+                  <strong x-text="c.contratista_nombre"></strong>
+                  <span x-text="'(' + c.contratista_nif + ')'"></span>
+                  · <span x-text="euro(c.precio_total)"></span>
+                  · <small x-text="c.estado_extraccion"></small>
+                </div>
+
+                <template x-if="c.tarea_apartado_id">
+                  <p class="enlace-ok">
+                    Enlazado a apartado
+                    <strong x-text="c.apartado_codigo"></strong>
+                    — <span x-text="c.apartado_descripcion"></span>
+                  </p>
+                </template>
+
+                <template x-if="!c.tarea_apartado_id && c.sugerencias.length">
+                  <div class="sugerencias">
+                    <p>Sugerencias de apartado (confirma una):</p>
+                    <ul>
+                      <template x-for="s in c.sugerencias" :key="s.tarea_id">
+                        <li>
+                          <span>
+                            <strong x-text="s.codigo"></strong>
+                            — <span x-text="s.descripcion"></span>
+                            <small>
+                              (<span x-text="Math.round(Number(s.confianza) * 100) + '%'"></span>
+                              · <span x-text="s.motivo"></span>)
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            class="secundario"
+                            :disabled="enlazando"
+                            @click="enlazar(c.id, s.tarea_id)"
+                          >
+                            Confirmar enlace
+                          </button>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
+                </template>
+
+                <template x-if="!c.tarea_apartado_id && !c.sugerencias.length">
+                  <div class="sugerencias">
+                    <p>Sin sugerencia automática. Elige un apartado:</p>
+                    <label>
+                      Apartado
+                      <select x-model="manualApartado[c.id]">
+                        <option value="">—</option>
+                        <template x-for="ap in proyecto.apartados" :key="'m-' + ap.id">
+                          <option :value="ap.id" x-text="ap.codigo + ' — ' + ap.descripcion"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      class="secundario"
+                      :disabled="enlazando || !manualApartado[c.id]"
+                      @click="enlazar(c.id, Number(manualApartado[c.id]))"
+                    >
+                      Enlazar
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <template x-if="msgEnlace">
+              <p class="estado-msg ok" x-text="msgEnlace"></p>
+            </template>
+            <template x-if="errEnlace">
+              <p class="estado-msg err" x-text="errEnlace"></p>
+            </template>
+          </section>
+
+          <section class="panel">
+            <h2>Subir contrato</h2>
+            <form class="form-subida" @submit.prevent="subirContrato()">
+              <label>
+                Nave (opcional)
+                <select x-model="naveId">
+                  <option value="">Automática</option>
+                  <template x-for="n in proyecto.naves" :key="n.id">
+                    <option :value="n.id" x-text="n.codigo + ' — ' + n.descripcion"></option>
+                  </template>
+                </select>
+              </label>
+              <label>
+                Fichero
+                <input
+                  type="file"
+                  accept=".pdf,.md,application/pdf,text/markdown"
+                  @change="onFile($event)"
+                  required
+                />
+              </label>
+              <div class="acciones">
+                <button type="submit" class="primario" :disabled="!fichero || subiendo">
+                  <span x-text="subiendo ? 'Importando…' : 'Importar contrato'"></span>
+                </button>
+              </div>
+            </form>
+            <template x-if="errSubida">
+              <p class="estado-msg err" x-text="errSubida"></p>
+            </template>
+            <template x-if="okSubida">
+              <p class="estado-msg ok" x-text="okSubida"></p>
+            </template>
+          </section>
+        </div>
+      </template>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/proyecto.js"></script>
+  </body>
+</html>

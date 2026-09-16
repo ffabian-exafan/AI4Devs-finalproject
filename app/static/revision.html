@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Revisión humana — Gestor de obra</title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <!--
+      La validación de esta pantalla (botón Confirmar deshabilitado, checks de
+      manuscrito, campos obligatorios) es comodidad de UX.
+      El backend vuelve a validar TODO con Pydantic (ConfirmarRevisionIn) y
+      reglas de negocio en app/services/revision.py — no fiarse solo del front.
+    -->
+    <div class="shell" x-data="revisionApp()" x-init="init()">
+      <header class="topbar">
+        <h1>Revisión humana</h1>
+        <nav>
+          <a href="/">Inicio</a>
+          <a href="/presupuesto.html">Presupuesto</a>
+          <a href="/contrato.html">Contrato</a>
+          <a href="/revision.html" class="activo">Revisión</a>
+          <a href="/facturas.html">Facturas</a>
+          <a href="/control.html">Control</a>
+        </nav>
+      </header>
+
+      <p class="aviso">
+        Ningún documento se da por guardado hasta confirmar aquí.
+        Las filas con anotación manuscrita o pendientes de revisión están resaltadas a propósito.
+      </p>
+
+      <section class="panel">
+        <h2>Documentos pendientes</h2>
+        <template x-if="cargandoLista">
+          <p class="vacio">Cargando…</p>
+        </template>
+        <template x-if="!cargandoLista && pendientes.length === 0">
+          <p class="vacio">No hay presupuestos ni contratos pendientes de revisión.</p>
+        </template>
+        <ul class="lista-pendientes" x-show="pendientes.length">
+          <template x-for="item in pendientes" :key="item.tipo + '-' + item.documento_id">
+            <li>
+              <button
+                type="button"
+                :class="{ activo: doc && doc.documento_id === item.documento_id && doc.tipo === item.tipo }"
+                @click="abrir(item)"
+              >
+                <strong x-text="item.proyecto_nombre"></strong>
+                —
+                <span x-text="item.tipo"></span>
+                <span x-text="'#' + item.documento_id"></span>
+                <br />
+                <small x-text="item.fichero_origen"></small>
+                ·
+                <span class="badge badge-pendiente" x-text="item.pendientes + ' pendientes'"></span>
+                <template x-if="item.anotaciones_manuales > 0">
+                  <span
+                    class="badge badge-manual"
+                    x-text="item.anotaciones_manuales + ' manuscritas'"
+                  ></span>
+                </template>
+              </button>
+            </li>
+          </template>
+        </ul>
+      </section>
+
+      <template x-if="doc">
+        <section class="panel">
+          <h2>
+            Árbol extraído
+            <span x-text="'(' + doc.tipo + ' #' + doc.documento_id + ')'"></span>
+          </h2>
+          <div class="meta">
+            <span>Proyecto: <strong x-text="doc.proyecto_nombre"></strong></span>
+            <span>Fichero: <code x-text="doc.fichero_origen"></code></span>
+            <template x-if="doc.contratista_nif">
+              <span>
+                Contratista (NIF propuesto):
+                <strong x-text="doc.contratista_nif"></strong>
+              </span>
+            </template>
+            <span>
+              Pendientes:
+              <strong x-text="contarPendientes()"></strong>
+            </span>
+          </div>
+
+          <div class="chart-box">
+            <canvas id="chartImportes" height="160"></canvas>
+          </div>
+
+          <div class="tabla-wrap">
+            <table class="arbol">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nivel</th>
+                  <th>Descripción</th>
+                  <th>Unidad</th>
+                  <th>Cant.</th>
+                  <th>P.U.</th>
+                  <th>Importe</th>
+                  <th>Estado</th>
+                  <th>Marcas</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="fila in filasPlanas" :key="fila.id">
+                  <tr
+                    :class="{
+                      'fila-pendiente': fila.estado_revision === 'pendiente',
+                      'fila-manual': fila.tiene_anotacion_manual
+                    }"
+                  >
+                    <td class="codigo" :class="'indent-' + Math.min(fila._depth, 3)">
+                      <input type="text" x-model="fila.codigo" />
+                    </td>
+                    <td class="nivel" x-text="fila.nivel"></td>
+                    <td>
+                      <input type="text" x-model="fila.descripcion" />
+                    </td>
+                    <td>
+                      <input type="text" x-model="fila.unidad" placeholder="—" />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        :value="fila.cantidad ?? ''"
+                        @input="fila.cantidad = $event.target.value === '' ? null : Number($event.target.value)"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        :value="fila.precio_unitario ?? ''"
+                        @input="fila.precio_unitario = $event.target.value === '' ? null : Number($event.target.value)"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        x-model.number="fila.importe_presupuestado"
+                      />
+                    </td>
+                    <td>
+                      <select x-model="fila.estado_revision" @change="onEstadoChange(fila)">
+                        <option value="pendiente">pendiente</option>
+                        <option value="revisada">revisada</option>
+                        <option value="confirmada">confirmada</option>
+                      </select>
+                    </td>
+                    <td>
+                      <template x-if="fila.tiene_anotacion_manual">
+                        <label>
+                          <span class="badge badge-manual">Manuscrito</span>
+                          <br />
+                          <input type="checkbox" x-model="fila.anotacion_confirmada" />
+                          Confirmo valor manuscrito
+                        </label>
+                      </template>
+                      <template x-if="!fila.tiene_anotacion_manual && fila.estado_revision === 'pendiente'">
+                        <span class="badge badge-pendiente">Pendiente</span>
+                      </template>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="acciones">
+            <button
+              type="button"
+              class="secundario"
+              @click="marcarTodasRevisadas()"
+            >
+              Marcar no manuscritas como revisadas
+            </button>
+            <button
+              type="button"
+              class="primario"
+              :disabled="!puedeConfirmar() || enviando"
+              @click="confirmar()"
+              :title="puedeConfirmar() ? 'Confirmar y persistir' : 'Quedan filas pendientes o manuscritos sin confirmar'"
+            >
+              Confirmar
+            </button>
+            <span
+              class="estado-msg"
+              :class="mensajeOk ? 'ok' : 'err'"
+              x-text="mensaje"
+              x-show="mensaje"
+            ></span>
+          </div>
+        </section>
+      </template>
+    </div>
+
+    <script src="/js/revision.js"></script>
+  </body>
+</html>

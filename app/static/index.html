@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gestor de obra</title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  </head>
+  <body>
+    <div class="shell" x-data="hubApp()" x-init="init()">
+      <header class="topbar">
+        <h1>Gestor de presupuestos y facturas de obra</h1>
+        <nav>
+          <a href="/" class="activo">Inicio</a>
+          <a href="/presupuesto.html">Presupuesto</a>
+          <a href="/contrato.html">Contrato</a>
+          <a href="/revision.html">Revisión</a>
+          <a href="/facturas.html">Facturas</a>
+          <a href="/control.html">Control</a>
+        </nav>
+      </header>
+
+      <section class="panel">
+        <h2>Flujo del proceso</h2>
+        <ol class="pasos">
+          <li><a href="/presupuesto.html">Subir presupuesto</a> (crea el proyecto)</li>
+          <li><a href="/revision.html">Revisión humana</a></li>
+          <li>Lista de apartados del proyecto</li>
+          <li>Subir contratos y confirmar sugerencia de apartado</li>
+          <li><a href="/facturas.html">Subir y revisar facturas</a></li>
+          <li><a href="/control.html">Control económico</a></li>
+        </ol>
+        <p class="vacio">
+          Ningún documento OCR/LLM se da por guardado hasta confirmar en revisión humana.
+        </p>
+      </section>
+
+      <div class="grid-dos">
+        <section class="panel">
+          <h2>Todos los proyectos</h2>
+          <template x-if="cargando">
+            <p class="vacio">Cargando…</p>
+          </template>
+          <template x-if="!cargando && error">
+            <p class="estado-msg err" x-text="error"></p>
+          </template>
+          <template x-if="!cargando && !error && proyectos.length === 0">
+            <p class="vacio">
+              Aún no hay proyectos.
+              <a href="/presupuesto.html">Sube el primer presupuesto</a>.
+            </p>
+          </template>
+          <ul class="lista-proyectos" x-show="proyectos.length">
+            <template x-for="p in proyectos" :key="p.id">
+              <li>
+                <div>
+                  <a
+                    class="proyecto-link"
+                    :href="'/proyecto.html?id=' + p.id"
+                    x-text="p.nombre"
+                  ></a>
+                  <br />
+                  <small>
+                    #<span x-text="p.id"></span>
+                    · <span x-text="p.tipo"></span>
+                    · <span x-text="p.estado"></span>
+                  </small>
+                </div>
+                <div class="acciones-mini">
+                  <a :href="'/facturas.html?proyecto_id=' + p.id">Facturas</a>
+                  <a :href="'/control.html?proyecto_id=' + p.id">Control</a>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>Revisión pendiente</h2>
+          <template x-if="cargandoPend">
+            <p class="vacio">Cargando…</p>
+          </template>
+          <template x-if="!cargandoPend && pendientes.length === 0">
+            <p class="vacio">No hay documentos pendientes de revisión.</p>
+          </template>
+          <template x-if="!cargandoPend && pendientes.length > 0">
+            <p>
+              Hay
+              <strong x-text="pendientes.length"></strong>
+              documento(s) por confirmar.
+            </p>
+            <p>
+              <a class="primario" href="/revision.html" style="display: inline-block; text-decoration: none">
+                Ir a revisión humana
+              </a>
+            </p>
+            <ul class="lista-pendientes" style="margin-top: 0.75rem">
+              <template x-for="item in pendientes.slice(0, 5)" :key="item.tipo + '-' + item.documento_id">
+                <li>
+                  <a
+                    :href="'/revision.html'"
+                    style="display: block; padding: 0.55rem 0.7rem; border: 1px solid var(--line); background: #fff; text-decoration: none; color: inherit"
+                  >
+                    <strong x-text="item.proyecto_nombre"></strong>
+                    — <span x-text="item.tipo"></span>
+                    <span x-text="'#' + item.documento_id"></span>
+                    <br />
+                    <small x-text="item.fichero_origen"></small>
+                  </a>
+                </li>
+              </template>
+            </ul>
+          </template>
+        </section>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      function hubApp() {
+        return {
+          proyectos: [],
+          pendientes: [],
+          cargando: true,
+          cargandoPend: true,
+          error: "",
+
+          async init() {
+            await Promise.all([this.cargarProyectos(), this.cargarPendientes()]);
+          },
+
+          async cargarProyectos() {
+            this.cargando = true;
+            this.error = "";
+            try {
+              this.proyectos = await GestorApi.getJson("/proyectos");
+            } catch (err) {
+              this.error = "No se pudieron cargar los proyectos: " + err.message;
+            } finally {
+              this.cargando = false;
+            }
+          },
+
+          async cargarPendientes() {
+            this.cargandoPend = true;
+            try {
+              this.pendientes = await GestorApi.getJson("/revisiones/pendientes");
+            } catch {
+              this.pendientes = [];
+            } finally {
+              this.cargandoPend = false;
+            }
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

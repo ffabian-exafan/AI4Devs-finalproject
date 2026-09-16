@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Subir presupuesto — Gestor de obra</title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  </head>
+  <body>
+    <div class="shell" x-data="presupuestoApp()">
+      <header class="topbar">
+        <h1>Subir presupuesto</h1>
+        <nav>
+          <a href="/">Inicio</a>
+          <a href="/presupuesto.html" class="activo">Presupuesto</a>
+          <a href="/contrato.html">Contrato</a>
+          <a href="/revision.html">Revisión</a>
+          <a href="/facturas.html">Facturas</a>
+          <a href="/control.html">Control</a>
+        </nav>
+      </header>
+
+      <p class="aviso">
+        Acepta PDF nativo, PDF escaneado o imagen (JPG/PNG/TIFF). Los escaneados pasan por OCR
+        y quedan marcados. Ninguno se da por guardado hasta confirmar en revisión humana.
+      </p>
+
+      <section class="panel">
+        <h2>Fichero de presupuesto</h2>
+        <form class="form-subida" @submit.prevent="enviar()">
+          <label>
+            Fichero
+            <input
+              type="file"
+              accept=".pdf,.md,.jpg,.jpeg,.png,.tif,.tiff,.webp,application/pdf,image/*,text/markdown"
+              @change="onFile($event)"
+              required
+            />
+            <span class="ayuda">
+              PDF (nativo o escaneado), imagen, o fixture .md anonimizada en pruebas.
+            </span>
+          </label>
+          <div class="acciones">
+            <button type="submit" class="primario" :disabled="!fichero || enviando">
+              <span x-text="enviando ? 'Importando…' : 'Importar presupuesto'"></span>
+            </button>
+          </div>
+        </form>
+
+        <template x-if="error">
+          <p class="estado-msg err" x-text="error" style="margin-top: 1rem"></p>
+        </template>
+
+        <template x-if="resultado">
+          <div class="resultado-ok">
+            <p>
+              Proyecto <strong x-text="'#' + resultado.proyecto_id"></strong> creado con
+              <span x-text="resultado.naves_detectadas"></span> nave(s) y
+              <span x-text="resultado.partidas_detectadas"></span> partida(s).
+            </p>
+            <p>
+              <a :href="'/proyecto.html?id=' + resultado.proyecto_id">Ver lista de apartados</a>
+              ·
+              <a href="/revision.html">Ir a revisión</a>
+            </p>
+            <p x-show="resultado.anotaciones_manuscritas_detectadas > 0">
+              Anotaciones manuscritas detectadas:
+              <strong x-text="resultado.anotaciones_manuscritas_detectadas"></strong>
+              — hay que confirmarlas en revisión.
+            </p>
+            <p x-show="resultado.es_escaneado">
+              Origen escaneado/imagen: pasó por OCR (baja fiabilidad).
+            </p>
+            <p x-show="resultado.requiere_revision">
+              Estado: pendiente de revisión humana (no se da por guardado hasta confirmar).
+            </p>
+          </div>
+        </template>
+      </section>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/presupuesto.js"></script>
+  </body>
+</html>

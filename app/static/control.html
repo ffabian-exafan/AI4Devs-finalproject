@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Control económico — Gestor de obra</title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <div class="shell" x-data="controlApp()" x-init="init()">
+      <header class="topbar">
+        <h1>Control económico</h1>
+        <nav>
+          <a href="/">Inicio</a>
+          <a href="/presupuesto.html">Presupuesto</a>
+          <a href="/contrato.html">Contrato</a>
+          <a href="/revision.html">Revisión</a>
+          <a href="/facturas.html">Facturas</a>
+          <a href="/control.html" class="activo">Control</a>
+        </nav>
+      </header>
+
+      <p class="aviso">
+        Presupuestado vs. contratado vs. facturado confirmado.
+        El desvío por nave se marca como estimación cuando no hay certificación medida.
+      </p>
+
+      <section class="panel">
+        <h2>Proyecto</h2>
+        <form class="form-subida" @submit.prevent="cargar()">
+          <label>
+            Selecciona proyecto
+            <select x-model="proyectoId" required>
+              <option value="">— Selecciona —</option>
+              <template x-for="p in proyectos" :key="p.id">
+                <option :value="String(p.id)" x-text="p.id + ' — ' + p.nombre"></option>
+              </template>
+            </select>
+          </label>
+          <div class="acciones">
+            <button type="submit" class="primario" :disabled="!proyectoId || cargando">
+              <span x-text="cargando ? 'Cargando…' : 'Ver control'"></span>
+            </button>
+          </div>
+        </form>
+        <template x-if="error">
+          <p class="estado-msg err" x-text="error" style="margin-top: 1rem"></p>
+        </template>
+      </section>
+
+      <template x-if="datos">
+        <section class="panel">
+          <h2>Resumen</h2>
+          <div class="charts-row">
+            <div class="chart-box">
+              <canvas id="chartContratista" height="180"></canvas>
+            </div>
+            <div class="chart-box">
+              <canvas id="chartContrato" height="180"></canvas>
+            </div>
+            <div class="chart-box">
+              <canvas id="chartNave" height="180"></canvas>
+            </div>
+          </div>
+
+          <h2>Por contratista</h2>
+          <div class="tabla-wrap">
+            <table class="tabla-simple">
+              <thead>
+                <tr>
+                  <th>NIF</th>
+                  <th>Presupuestado</th>
+                  <th>Facturado</th>
+                  <th>Desvío</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-if="datos.por_contratista.length === 0">
+                  <tr><td colspan="4" class="vacio">Sin datos</td></tr>
+                </template>
+                <template x-for="row in datos.por_contratista" :key="row.nif">
+                  <tr>
+                    <td><code x-text="row.nif"></code></td>
+                    <td class="num" x-text="euro(row.presupuestado)"></td>
+                    <td class="num" x-text="euro(row.facturado)"></td>
+                    <td class="num" x-text="euro(row.desvio)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 style="margin-top: 1.25rem">Por contrato</h2>
+          <div class="tabla-wrap">
+            <table class="tabla-simple">
+              <thead>
+                <tr>
+                  <th>Contrato</th>
+                  <th>NIF</th>
+                  <th>Contratado</th>
+                  <th>Facturado</th>
+                  <th>Desvío</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-if="datos.por_contrato.length === 0">
+                  <tr><td colspan="5" class="vacio">Sin contratos</td></tr>
+                </template>
+                <template x-for="row in datos.por_contrato" :key="row.contrato_id">
+                  <tr>
+                    <td x-text="'#' + row.contrato_id"></td>
+                    <td><code x-text="row.contratista_nif"></code></td>
+                    <td class="num" x-text="euro(row.contratado)"></td>
+                    <td class="num" x-text="euro(row.facturado)"></td>
+                    <td class="num" x-text="euro(row.desvio)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 style="margin-top: 1.25rem">Por nave</h2>
+          <div class="tabla-wrap">
+            <table class="tabla-simple">
+              <thead>
+                <tr>
+                  <th>Nave</th>
+                  <th>Presupuestado</th>
+                  <th>Gasto</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-if="datos.por_nave.length === 0">
+                  <tr><td colspan="4" class="vacio">Sin naves</td></tr>
+                </template>
+                <template x-for="row in datos.por_nave" :key="row.nave">
+                  <tr>
+                    <td x-text="row.nave"></td>
+                    <td class="num" x-text="euro(row.presupuestado)"></td>
+                    <td class="num" x-text="euro(row.gasto_estimado)"></td>
+                    <td>
+                      <template x-if="row.es_estimacion">
+                        <span class="badge-estimacion">Estimación</span>
+                      </template>
+                      <template x-if="!row.es_estimacion">
+                        <span>Medido</span>
+                      </template>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </template>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/control.js"></script>
+  </body>
+</html>

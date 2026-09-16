@@ -1,0 +1,1 @@
+"""Endpoints por dominio."""

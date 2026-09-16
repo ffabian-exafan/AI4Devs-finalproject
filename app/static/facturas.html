@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Facturas — Gestor de obra</title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  </head>
+  <body>
+    <div class="shell" x-data="facturasApp()" x-init="init()">
+      <header class="topbar">
+        <h1>Facturas</h1>
+        <nav>
+          <a href="/">Inicio</a>
+          <a href="/presupuesto.html">Presupuesto</a>
+          <a href="/contrato.html">Contrato</a>
+          <a href="/revision.html">Revisión</a>
+          <a href="/facturas.html" class="activo">Facturas</a>
+          <a href="/control.html">Control</a>
+        </nav>
+      </header>
+
+      <p class="aviso">
+        Toda factura queda pendiente de revisión. No afecta al seguimiento económico
+        hasta que confirmes sus datos y el contrato asociado.
+      </p>
+
+      <section class="panel">
+        <h2>Proyecto y nueva factura</h2>
+        <form class="form-subida" @submit.prevent="subir()">
+          <label>
+            Proyecto
+            <select x-model="proyectoId" @change="cargarLista()" required>
+              <option value="">— Selecciona —</option>
+              <template x-for="p in proyectos" :key="p.id">
+                <option :value="String(p.id)" x-text="p.id + ' — ' + p.nombre"></option>
+              </template>
+            </select>
+          </label>
+          <label>
+            Factura
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.md,application/pdf,image/*,text/markdown"
+              @change="fichero = $event.target.files[0] || null"
+              required
+            />
+            <span class="ayuda">PDF, imagen o fixture Markdown anonimizada.</span>
+          </label>
+          <div class="acciones">
+            <button class="primario" type="submit" :disabled="subiendo || !proyectoId || !fichero">
+              <span x-text="subiendo ? 'Leyendo…' : 'Subir y revisar'"></span>
+            </button>
+          </div>
+        </form>
+        <p class="estado-msg err" x-show="error" x-text="error"></p>
+        <p class="estado-msg ok" x-show="mensaje" x-text="mensaje"></p>
+      </section>
+
+      <div class="grid-facturas" x-show="proyectoId">
+        <section class="panel">
+          <h2>Facturas del proyecto</h2>
+          <p class="vacio" x-show="cargandoLista">Cargando…</p>
+          <p class="vacio" x-show="!cargandoLista && facturas.length === 0">Sin facturas.</p>
+          <ul class="lista-pendientes" x-show="facturas.length">
+            <template x-for="f in facturas" :key="f.id">
+              <li>
+                <button
+                  type="button"
+                  :class="{ activo: seleccionada && seleccionada.id === f.id }"
+                  @click="abrir(f.id)"
+                >
+                  <strong x-text="f.numero"></strong>
+                  · <span x-text="euro(f.total)"></span>
+                  <br />
+                  <small>
+                    <span x-text="f.contratista_nombre"></span>
+                    · contrato <span x-text="f.contrato_id ? '#' + f.contrato_id : 'sin confirmar'"></span>
+                    · <span :class="f.estado_revision === 'confirmada' ? 'estado-ok' : 'estado-pendiente'"
+                      x-text="f.estado_revision"></span>
+                  </small>
+                </button>
+              </li>
+            </template>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>Revisión humana</h2>
+          <p class="vacio" x-show="!seleccionada">Selecciona o sube una factura.</p>
+          <form class="form-revision-factura" x-show="seleccionada" @submit.prevent="confirmar()">
+            <div class="meta">
+              <span>Contratista: <strong x-text="seleccionada?.contratista_nombre"></strong></span>
+              <span>NIF: <code x-text="seleccionada?.contratista_nif"></code></span>
+              <span x-show="seleccionada?.es_escaneada" class="badge badge-pendiente">OCR</span>
+            </div>
+            <div class="campos-factura">
+              <label>Número <input type="text" x-model="edicion.numero" required /></label>
+              <label>Fecha <input type="date" x-model="edicion.fecha_emision" /></label>
+              <label>Tipo
+                <select x-model="edicion.tipo" required>
+                  <option value="ordinaria">Ordinaria</option>
+                  <option value="anticipo">Anticipo</option>
+                  <option value="certificacion">Certificación</option>
+                </select>
+              </label>
+              <label>Base imponible <input type="number" step="0.01" x-model="edicion.base_imponible" required /></label>
+              <label>IVA <input type="number" step="0.01" x-model="edicion.iva" required /></label>
+              <label>IRPF <input type="number" step="0.01" x-model="edicion.irpf" required /></label>
+              <label>Retención garantía <input type="number" step="0.01" x-model="edicion.retencion_garantia" required /></label>
+              <label>Total <input type="number" step="0.01" x-model="edicion.total" required /></label>
+              <label>Contrato
+                <select x-model="edicion.contrato_id">
+                  <option value="">Sin contrato</option>
+                  <template x-for="c in seleccionada?.contratos_candidatos || []" :key="c.id">
+                    <option :value="String(c.id)"
+                      x-text="'#' + c.id + ' · ' + c.contratista_nombre + ' · ' + euro(c.precio_total)"></option>
+                  </template>
+                </select>
+              </label>
+            </div>
+
+            <h3>Líneas</h3>
+            <template x-for="(linea, indice) in edicion.lineas" :key="indice">
+              <div class="linea-factura">
+                <input type="text" x-model="linea.descripcion" placeholder="Descripción" required />
+                <input type="number" step="0.01" x-model="linea.importe" placeholder="Importe" required />
+                <button type="button" class="secundario" @click="edicion.lineas.splice(indice, 1)">Quitar</button>
+              </div>
+            </template>
+            <button type="button" class="secundario" @click="edicion.lineas.push({ descripcion: '', importe: 0 })">
+              Añadir línea
+            </button>
+
+            <div class="acciones">
+              <button class="primario" type="submit" :disabled="confirmando">
+                <span x-text="confirmando ? 'Confirmando…' : 'Confirmar factura'"></span>
+              </button>
+              <a :href="'/proyecto.html?id=' + proyectoId">Volver al proyecto</a>
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
+    <script src="/js/api.js"></script>
+    <script src="/js/facturas.js"></script>
+  </body>
+</html>
