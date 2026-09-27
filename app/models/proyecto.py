@@ -26,6 +26,14 @@ class Proyecto(Base):
     tipo: Mapped[str] = mapped_column(String(50), nullable=False)
     fecha_inicio: Mapped[date | None] = mapped_column(Date, nullable=True)
     estado: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Cabecera de la lista de obras (handoff). Null en proyectos anteriores.
+    codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cliente: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ubicacion: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # porcino | avicola | bovino
+    especie: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Presupuesto | Contratos | Ejecución | Cierre
+    fase: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

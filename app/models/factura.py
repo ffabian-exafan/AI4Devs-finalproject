@@ -61,6 +61,13 @@ class Factura(Base):
     es_escaneada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # pendiente | revisada | confirmada
     estado_revision: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Reclamada | Desviación aprobada | Descartada | Validada. Null si sigue abierta.
+    resolucion: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Otra factura ya recibida con el mismo proveedor, número e importe.
+    duplicado_de_id: Mapped[int | None] = mapped_column(
+        ForeignKey("factura.id"),
+        nullable=True,
+    )
 
     proyecto: Mapped[Proyecto | None] = relationship(back_populates="facturas")
     contratista: Mapped[Contratista] = relationship(back_populates="facturas")
@@ -80,6 +87,14 @@ class LineaFactura(Base):
     )
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     importe: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    # Comparación partida a partida. Null si la factura no trae desglose.
+    cantidad: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    precio_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    tarea_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tarea.id"),
+        nullable=True,
+        index=True,
+    )
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(EMBEDDING_DIM), nullable=True
     )

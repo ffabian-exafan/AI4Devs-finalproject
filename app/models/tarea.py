@@ -65,6 +65,8 @@ class Tarea(Base):
     tiene_anotacion_manual: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    # Duda de lectura en la partida: "Medición" | "Unidad". Null si no hay duda.
+    marca_duda: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # pendiente | revisada | confirmada
     estado_revision: Mapped[str] = mapped_column(String(50), nullable=False)
     # no_iniciada | en_curso | finalizada (avance administrativo, no físico)

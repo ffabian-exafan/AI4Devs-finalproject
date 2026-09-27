@@ -126,12 +126,26 @@ def test_sin_claves_cloud_error_claro(monkeypatch):
 def test_post_json_llm_vision_parsea_choices(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "k")
     monkeypatch.setenv("LLM_API_BASE", "https://ejemplo.test/v1")
+    monkeypatch.setenv("LLM_PROVEEDOR", "openai")
     get_settings.cache_clear()
 
-    fake_resp = {
-        "choices": [{"message": {"content": "Línea 1\nElectricidad 8.2"}}]
-    }
-    with patch("app.services.ocr._post_json", return_value=fake_resp):
+    import json
+
+    raw = json.dumps(
+        {"choices": [{"message": {"content": "Línea 1\nElectricidad 8.2"}}]}
+    ).encode("utf-8")
+
+    class _Resp:
+        def read(self):
+            return raw
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    with patch("app.services.llm.request.urlopen", return_value=_Resp()):
         r = ocr_svc._ocr_llm_vision(
             b"abc",
             mime="image/png",

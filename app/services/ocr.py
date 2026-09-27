@@ -2,7 +2,7 @@
 
 Orden de motores (el primero disponible gana):
 1. OCR cloud dedicado (`OCR_API_KEY` + `OCR_API_BASE`)
-2. Visión vía LLM compatible OpenAI (`LLM_API_KEY` + `LLM_API_BASE`)
+2. Visión vía Claude o LLM compatible (`LLM_API_KEY`; `LLM_API_BASE` si no es Claude)
 3. Tesseract local — solo si está instalado; no es obligatorio
 
 Los documentos de obra son [SENSIBLE]: el cloud exige autorización de Seguridad
@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from urllib import error, request
 
 from app.config import get_settings
+from app.services import llm as llm_svc
 
 # Umbral: por debajo, un PDF se trata como escaneado
 MIN_CHARS_TEXTO_NATIVO = 40
@@ -95,14 +96,15 @@ def _ocr_bytes(contenido: bytes, *, mime: str, lang: str) -> ResultadoOcr:
         except ValueError as exc:
             errores.append(f"OCR cloud: {exc}")
 
-    if settings.llm_api_key and settings.llm_api_base:
+    if llm_svc.hay_llm(settings):
         try:
             return _ocr_llm_vision(
                 contenido,
                 mime=mime,
                 api_key=settings.llm_api_key,
                 api_base=settings.llm_api_base,
-                model=settings.llm_vision_model,
+                model=llm_svc.modelo_vision(settings),
+                anthropic=llm_svc.es_anthropic(settings),
             )
         except ValueError as exc:
             errores.append(f"LLM visión: {exc}")
@@ -156,34 +158,27 @@ def _ocr_llm_vision(
     *,
     mime: str,
     api_key: str,
-    api_base: str,
+    api_base: str | None,
     model: str,
+    anthropic: bool = False,
 ) -> ResultadoOcr:
-    """Chat/completions multimodal compatible OpenAI (sin binarios locales)."""
-    url = api_base.rstrip("/") + "/chat/completions"
+    """Visión: API de Claude o chat/completions multimodal. Sin binarios locales."""
     b64 = base64.b64encode(contenido).decode("ascii")
-    data_url = f"data:{mime};base64,{b64}"
-    payload = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _PROMPT_OCR},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ],
-            }
-        ],
-    }
-    data = _post_json(url, payload, api_key)
     try:
-        texto = data["choices"][0]["message"]["content"] or ""
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ValueError(f"respuesta LLM visión inesperada: {data!r}") from exc
-    if not str(texto).strip():
-        raise ValueError("el LLM visión devolvió texto vacío")
-    return ResultadoOcr(texto=str(texto), motor="llm_vision")
+        texto = llm_svc.completar_texto(
+            api_key=api_key,
+            api_base=api_base,
+            anthropic=anthropic,
+            model=model,
+            system="Transcribes documentos de obra. No inventas texto.",
+            user=_PROMPT_OCR,
+            imagen_b64=b64,
+            mime=mime,
+            max_tokens=8000,
+        )
+    except RuntimeError as exc:
+        raise ValueError(str(exc)) from exc
+    return ResultadoOcr(texto=texto, motor="claude_vision" if anthropic else "llm_vision")
 
 
 def _ocr_tesseract_opcional(contenido: bytes, *, lang: str) -> ResultadoOcr:

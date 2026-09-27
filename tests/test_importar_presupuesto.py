@@ -57,6 +57,7 @@ def test_importar_presupuesto_fixture_destete(client: TestClient, db: Session):
     assert body["requiere_revision"] is True
 
     proyecto_id = body["proyecto_id"]
+    assert isinstance(body["presupuesto_id"], int)
     proyecto = db.get(Proyecto, proyecto_id)
     assert proyecto is not None
     assert proyecto.estado == "pendiente_revision"

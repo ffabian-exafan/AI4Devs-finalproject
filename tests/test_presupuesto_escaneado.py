@@ -98,16 +98,28 @@ def test_pdf_sin_texto_se_trata_como_escaneado(client: TestClient, db: Session):
     doc.close()
 
     with patch(
-        "app.services.ocr.ocr_paginas_pdf",
-        return_value=ResultadoOcr(texto=texto_fixture, motor="mock"),
-    ) as mock_ocr:
-        response = client.post(
-            "/proyectos/importar-presupuesto",
-            files={"fichero": ("presupuesto_scan.pdf", pdf_bytes, "application/pdf")},
-        )
+        "app.services.ingesta.transcribir_pdf_a_markdown",
+        return_value=texto_fixture,
+    ) as mock_md:
+        with patch(
+            "app.services.ocr.ocr_paginas_pdf",
+            return_value=ResultadoOcr(texto=texto_fixture, motor="mock"),
+        ) as mock_ocr:
+            response = client.post(
+                "/proyectos/importar-presupuesto",
+                files={"fichero": ("presupuesto_scan.pdf", pdf_bytes, "application/pdf")},
+            )
 
     assert response.status_code == 201, response.text
-    mock_ocr.assert_called_once()
+    from app.config import get_settings
+    from app.services.llm import es_anthropic, hay_llm
+
+    get_settings.cache_clear()
+    if hay_llm(get_settings()) and es_anthropic(get_settings()):
+        mock_md.assert_called_once()
+        mock_ocr.assert_not_called()
+    else:
+        mock_ocr.assert_called_once()
     body = response.json()
     assert body["es_escaneado"] is True
     assert body["requiere_revision"] is True

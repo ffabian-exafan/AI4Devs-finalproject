@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import facturas, health, proyectos, revisiones
+from app.routers import facturas, health, proyectos, revisiones, vista
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -18,6 +18,7 @@ app.include_router(health.router)
 app.include_router(proyectos.router)
 app.include_router(revisiones.router)
 app.include_router(facturas.router)
+app.include_router(vista.router)
 
 # El front se sirve en "/". Los routers de API deben registrarse antes del mount.
 app.mount(

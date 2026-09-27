@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 from decimal import Decimal
-from urllib import error, request
 
 from app.config import get_settings
+from app.services import llm as llm_svc
 from app.schemas.extraccion import (
     AnotacionManuscrita,
     ApartadoExtraido,
@@ -105,8 +104,8 @@ def extraer_presupuesto(texto: str) -> PresupuestoExtraido:
         resultado = _extraer_fixture_destete(texto)
     else:
         settings = get_settings()
-        if settings.llm_api_key and settings.llm_api_base:
-            resultado = _extraer_con_llm(texto, settings.llm_api_key, settings.llm_api_base)
+        if llm_svc.hay_llm(settings):
+            resultado = _extraer_con_llm(texto, settings)
         else:
             # Sin LLM autorizado: parser heurístico mínimo sobre tablas markdown
             resultado = _extraer_heuristico(texto)
@@ -348,45 +347,23 @@ def _parse_decimal(raw: str) -> Decimal | None:
         return None
 
 
-def _extraer_con_llm(texto: str, api_key: str, api_base: str) -> PresupuestoExtraido:
+def _extraer_con_llm(texto: str, settings) -> PresupuestoExtraido:
     """
-    Llama a un endpoint tipo chat/completions compatible.
+    Extrae con Claude (Messages) o con un endpoint chat/completions.
     Solo si Seguridad autorizó el uso cloud (clave presente).
     """
-    url = api_base.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": "gpt-4o-mini",
-        "temperature": 0,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "system", "content": _PROMPT_SISTEMA},
-            {
-                "role": "user",
-                "content": (
-                    "Extrae el presupuesto siguiente. "
-                    "Distingue valor impreso vs manuscrito.\n\n" + texto
-                ),
-            },
-        ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-    req = request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
+    contenido = llm_svc.completar_texto(
+        api_key=settings.llm_api_key,
+        api_base=settings.llm_api_base,
+        anthropic=llm_svc.es_anthropic(settings),
+        model=llm_svc.modelo_extraccion(settings),
+        system=_PROMPT_SISTEMA,
+        user=(
+            "Extrae el presupuesto siguiente. "
+            "Distingue valor impreso vs manuscrito.\n\n" + texto
+        ),
     )
-    try:
-        with request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except error.URLError as exc:
-        raise RuntimeError(f"Error llamando al LLM: {exc}") from exc
-
-    contenido = data["choices"][0]["message"]["content"]
-    parsed = json.loads(contenido)
+    parsed = llm_svc.parsear_json_llm(contenido)
     return PresupuestoExtraido.model_validate(parsed)
 
 

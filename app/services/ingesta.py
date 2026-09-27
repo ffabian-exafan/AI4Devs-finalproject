@@ -18,7 +18,10 @@ from app.schemas.presupuesto import ImportarPresupuestoOut
 from app.services import casado as casado_svc
 from app.services import extraccion as extraccion_svc
 from app.services import extraccion_contrato as extraccion_contrato_svc
+from app.config import get_settings
+from app.services import llm as llm_svc
 from app.services import ocr as ocr_svc
+from app.services.transcripcion import transcribir_pdf_a_markdown
 
 
 @dataclass(frozen=True)
@@ -64,13 +67,34 @@ def leer_fichero(ruta: Path | str) -> DocumentoLeido:
     return leer_documento(path.read_bytes(), path.name)
 
 
+def leer_presupuesto(contenido: bytes, nombre_fichero: str) -> DocumentoLeido:
+    """
+    PDF con Claude: Sonnet lo pasa a markdown.
+    El resto (markdown, imagen, PDF sin clave) sigue la lectura anterior.
+    """
+    if not nombre_fichero.lower().endswith(".pdf"):
+        return leer_documento(contenido, nombre_fichero)
+
+    settings = get_settings()
+    if not (llm_svc.hay_llm(settings) and llm_svc.es_anthropic(settings)):
+        return leer_documento(contenido, nombre_fichero)
+
+    texto_nativo = _leer_pdf_pymupdf(contenido)
+    es_escaneado = ocr_svc.pdf_parece_escaneado(texto_nativo)
+    if es_escaneado:
+        es_escaneado = ocr_svc.pdf_parece_escaneado(_leer_pdf_pdfplumber(contenido))
+
+    markdown = transcribir_pdf_a_markdown(contenido)
+    return DocumentoLeido(texto=markdown, es_escaneado=es_escaneado)
+
+
 def importar_presupuesto(
     db: Session,
     contenido: bytes,
     nombre_fichero: str,
 ) -> ImportarPresupuestoOut:
     """Lee, extrae, valida forma y persiste proyecto en pendiente de revisión."""
-    leido = leer_documento(contenido, nombre_fichero)
+    leido = leer_presupuesto(contenido, nombre_fichero)
     extraido = extraccion_svc.extraer_presupuesto(leido.texto)
     if leido.es_escaneado:
         extraido = extraido.model_copy(update={"requiere_revision": True})
@@ -157,13 +181,30 @@ def persistir_presupuesto(
     db.commit()
     db.refresh(proyecto)
 
+    total = extraido.total_manuscrito
+    if total is None:
+        total = extraido.total_impreso
+    if total is None:
+        total = sum(
+            (
+                ap.importe
+                for nave in extraido.naves
+                for ap in nave.apartados
+                if not ap.excluido_de_suma
+            ),
+            Decimal("0"),
+        )
+
     return ImportarPresupuestoOut(
         proyecto_id=proyecto.id,
+        presupuesto_id=presupuesto.id,
         naves_detectadas=len(extraido.naves),
         partidas_detectadas=partidas,
         requiere_revision=requiere,
         anotaciones_manuscritas_detectadas=anotaciones,
         es_escaneado=es_escaneado,
+        sumas_cuadran=bool(extraido.sumas_cuadran),
+        total_leido=total,
     )
 
 

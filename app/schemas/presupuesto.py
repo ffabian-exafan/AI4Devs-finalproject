@@ -4,6 +4,8 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.tipos import Money
+
 
 class PresupuestoCreate(BaseModel):
     proyecto_id: int
@@ -30,8 +32,11 @@ class ImportarPresupuestoOut(BaseModel):
     """Respuesta de POST /proyectos/importar-presupuesto."""
 
     proyecto_id: int
+    presupuesto_id: int
     naves_detectadas: int
     partidas_detectadas: int
     requiere_revision: bool
     anotaciones_manuscritas_detectadas: int
     es_escaneado: bool = False
+    sumas_cuadran: bool = False
+    total_leido: Money | None = None
