@@ -19,10 +19,8 @@
           </button>
           <button type="button" :class="navActivo('facturas') && 'activo'" @click="ir('facturas')">
             <span>Bandeja de facturas</span>
-            <span class="cuenta" x-show="vista" x-text="vista.nav_incidencias"></span>
+            <span class="cuenta" x-show="navIncidencias" x-text="navIncidencias"></span>
           </button>
-          <button type="button"><span>Contratistas</span></button>
-          <button type="button"><span>Informes</span></button>
         </nav>
       </aside>
 
@@ -34,15 +32,29 @@
           accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
           @change="elegirPresupuesto($event)"
         />
+        <input
+          class="oculto"
+          type="file"
+          x-ref="ficheroContrato"
+          accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
+          @change="elegirContrato($event)"
+        />
+        <input
+          class="oculto"
+          type="file"
+          x-ref="ficheroFactura"
+          accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
+          @change="elegirFactura($event)"
+        />
         <p class="estado-msg" x-show="error" x-text="error"></p>
-        <p class="sub" x-show="!vista && !error">Cargando…</p>
+        <p class="sub" x-show="cargando && screen === 'obras'">Cargando obras…</p>
 
-        <template x-if="vista && screen === 'obras'">
+        <template x-if="!cargando && screen === 'obras'">
           <div class="stack">
             <div class="fila-titulo">
               <div>
                 <h1 class="h1 h1-lista">Obras</h1>
-                <p class="sub" x-text="vista.resumen_obras"></p>
+                <p class="sub" x-text="resumenObras"></p>
               </div>
               <button type="button" class="btn btn-primary btn-md" @click="nuevaObra()">+ Nueva obra</button>
             </div>
@@ -51,21 +63,27 @@
                 <div class="cabecera cols-obras">
                   <span>Obra</span><span>Presupuesto</span><span>Facturado</span><span>Fase</span><span>Estado</span>
                 </div>
-                <template x-for="obra in vista.obras" :key="obra.meta">
+                <template x-if="proyectos.length === 0">
+                  <p class="sub" style="padding: 16px">Todavía no hay obras. Sube un presupuesto para crear la primera.</p>
+                </template>
+                <template x-for="obra in proyectos" :key="obra.id">
                   <div class="fila-obra cols-obras" role="button" tabindex="0" @click="abrirObra(obra)">
                     <div class="obra-nombre">
                       <div>
                         <strong x-text="obra.nombre"></strong><br />
-                        <span class="meta" x-text="obra.meta"></span>
+                        <span class="meta" x-text="'#' + obra.id + ' · ' + obra.tipo"></span>
                       </div>
                     </div>
-                    <span class="num" x-text="obra.presupuestado"></span>
+                    <span class="num" x-text="euro(obra.presupuestado)"></span>
                     <div>
-                      <span class="num" x-text="obra.facturado + ' · ' + obra.porcentaje"></span>
-                      <div class="barra-mini"><span :style="'width:' + obra.porcentaje"></span></div>
+                      <span class="num" x-text="euro(obra.facturado) + ' · ' + porcentajeObra(obra)"></span>
+                      <div class="barra-mini"><span :style="'width:' + porcentajeObra(obra)"></span></div>
                     </div>
-                    <span class="meta" x-text="obra.fase"></span>
-                    <div><span class="badge" :class="'badge-' + obra.tono" x-text="obra.estado"></span></div>
+                    <span class="meta" x-text="obra.tipo"></span>
+                    <div class="obra-acciones">
+                      <span class="badge" :class="'badge-' + tonoEstado(obra.estado)" x-text="etiquetaEstado(obra.estado)"></span>
+                      <button type="button" class="btn btn-secondary btn-sm" @click.stop="borrarObra(obra)">Borrar</button>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -73,18 +91,27 @@
           </div>
         </template>
 
-        <template x-if="vista && enObra">
+        <template x-if="screen !== 'obras'">
           <div class="stack">
-            <div>
-              <div class="crumbs">
-                <a href="#" @click.prevent="ir('obras')">Obras</a>
-                <span>/</span>
-                <span x-text="lectura ? 'Lectura' : (altaLectura ? 'Nueva' : vista.proyecto.codigo)"></span>
+            <div class="fila-titulo">
+              <div>
+                <div class="crumbs">
+                  <a href="#" @click.prevent="ir('obras')">Obras</a>
+                  <span>/</span>
+                  <span x-text="miga"></span>
+                </div>
+                <h1 class="h1 h1-obra" x-text="tituloObra"></h1>
+                <p class="sub" x-text="subtituloObra"></p>
               </div>
-              <h1 class="h1 h1-obra" x-text="lectura ? lectura.nombre : (altaLectura ? 'Nueva obra' : vista.proyecto.nombre)"></h1>
-              <p class="sub" x-text="lectura ? (lectura.fichero + ' · pendiente de revisión') : (altaLectura ? 'Sube el presupuesto para crear la obra' : vista.proyecto.subtitulo)"></p>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                x-show="proyecto"
+                @click="borrarObra(proyecto)"
+              >Borrar obra</button>
             </div>
-            <div class="pasos" x-show="!lectura && !altaLectura">
+            <template x-if="vista && vista.pasos && vista.pasos.length">
+            <div class="pasos">
               <template x-for="(paso, i) in vista.pasos" :key="paso.id">
                 <button
                   type="button"
@@ -100,10 +127,11 @@
                 </button>
               </template>
             </div>
+            </template>
           </div>
         </template>
 
-        <template x-if="vista && screen === 'presupuesto' && up === 'empty'">
+        <template x-if="screen === 'presupuesto' && up === 'empty'">
           <div
             class="dropzone"
             role="button"
@@ -123,7 +151,7 @@
           </div>
         </template>
 
-        <template x-if="vista && screen === 'presupuesto' && up === 'reading'">
+        <template x-if="screen === 'presupuesto' && up === 'reading'">
           <div class="leyendo">
             <div class="preview-scan">
               <template x-for="(ancho, i) in lineasDoc" :key="i">
@@ -142,16 +170,16 @@
           </div>
         </template>
 
-        <template x-if="vista && screen === 'presupuesto' && up === 'confirmado'">
+        <template x-if="lectura && screen === 'presupuesto' && up === 'confirmado'">
           <div class="card" style="padding: 28px">
             <h2 class="h2">Presupuesto confirmado</h2>
             <p class="sub" x-text="lectura.nombre + ' · ' + lectura.fichero"></p>
             <p>La lectura ya está revisada. El proyecto deja de estar pendiente de esta confirmación.</p>
-            <button type="button" class="btn btn-primary btn-md" @click="lectura = null; ir('obras')">Volver a obras</button>
+            <button type="button" class="btn btn-primary btn-md" @click="abrirProyectoLeido()">Abrir el proyecto</button>
           </div>
         </template>
 
-        <template x-if="vista && screen === 'presupuesto' && up === 'done'">
+        <template x-if="screen === 'presupuesto' && up === 'done' && panelPresupuesto">
           <div class="revision">
             <aside class="panel-doc">
               <div class="preview-pdf" x-text="lectura && lectura.esEscaneado ? 'OCR' : 'Documento'"></div>
@@ -187,8 +215,26 @@
             <div class="lista-aps">
               <div class="fila-titulo">
                 <h2 class="h2">Apartados detectados</h2>
-                <span class="meta">Abre cada apartado, comprueba sus partidas y márcalo como revisado</span>
+                <button type="button" class="btn btn-secondary btn-sm" @click="nuevaLinea()">Añadir línea</button>
               </div>
+              <p class="meta">Abre cada apartado y comprueba sus subapartados. Puedes corregir o borrar lo detectado.</p>
+              <template x-if="lineaForm">
+                <form class="linea-form" @submit.prevent="guardarLinea()">
+                  <label>Código
+                    <input x-model="lineaForm.codigo" maxlength="50" required />
+                  </label>
+                  <label>Descripción
+                    <input x-model="lineaForm.descripcion" required />
+                  </label>
+                  <label>Importe
+                    <input x-model="lineaForm.importe" inputmode="decimal" required />
+                  </label>
+                  <div class="linea-botones">
+                    <button type="submit" class="btn btn-primary btn-sm" :disabled="guardandoLinea" x-text="lineaForm.id ? 'Guardar' : 'Añadir'"></button>
+                    <button type="button" class="btn btn-secondary btn-sm" @click="lineaForm = null">Cancelar</button>
+                  </div>
+                </form>
+              </template>
               <template x-for="(ap, i) in panelPresupuesto.apartados" :key="(ap.id || ap.codigo) + '-' + i">
                 <article class="ap" :class="{ abierto: open === i, revisado: ap.revisado }">
                   <div class="ap-cab">
@@ -201,9 +247,11 @@
                       <div class="meta" :class="ap.hay_dudas && 'ambar'" x-text="ap.resumen"></div>
                     </div>
                     <strong class="num" x-text="ap.importe"></strong>
-                    <div>
+                    <div class="ap-acciones">
                       <button type="button" class="pill-ok" x-show="ap.revisado" @click="revisar(i)">✓ Revisado</button>
                       <button type="button" class="btn btn-secondary btn-sm" x-show="!ap.revisado" @click="revisar(i)">Revisar</button>
+                      <button type="button" class="btn-linea" @click.stop="editarLinea(ap)">Editar</button>
+                      <button type="button" class="btn-linea btn-linea-peligro" @click.stop="borrarLinea(ap)">Borrar</button>
                     </div>
                   </div>
                   <div class="partidas" x-show="open === i">
@@ -212,12 +260,16 @@
                         <span>Código</span><span>Descripción</span><span>Ud</span>
                         <span class="der">Medición</span><span class="der">Precio</span><span class="der">Importe</span>
                       </div>
-                      <template x-for="p in ap.partidas" :key="p.codigo">
+                      <template x-for="p in ap.partidas" :key="p.id || p.codigo">
                         <div class="grid-part td">
                           <span class="meta" x-text="p.codigo"></span>
                           <span>
                             <span x-text="p.descripcion"></span>
                             <span class="badge badge-warning" x-show="p.duda" x-text="p.duda"></span>
+                            <span class="linea-mini" x-show="p.id && p.id !== ap.id">
+                              <button type="button" class="btn-linea" @click.stop="editarLinea(p)">Editar</button>
+                              <button type="button" class="btn-linea btn-linea-peligro" @click.stop="borrarLinea(p)">Borrar</button>
+                            </span>
                           </span>
                           <span x-text="p.unidad"></span>
                           <span class="der" x-text="p.medicion"></span>
@@ -229,18 +281,93 @@
                   </div>
                 </article>
               </template>
+              <template x-if="(panelPresupuesto.gestiones && panelPresupuesto.gestiones.length) || (panelPresupuesto.descuentos && panelPresupuesto.descuentos.length)">
+                <div class="card card-descuentos">
+                  <template x-if="panelPresupuesto.gestiones && panelPresupuesto.gestiones.length">
+                    <div>
+                      <div class="fila-titulo">
+                        <h2 class="h2">Gestión</h2>
+                        <span class="meta">Se suma al precio de los apartados.</span>
+                      </div>
+                      <template x-for="g in panelPresupuesto.gestiones" :key="g.id || g.codigo">
+                        <div class="dto-fila">
+                          <span class="codigo" x-text="g.codigo"></span>
+                          <div class="ap-nombre">
+                            <strong x-text="g.descripcion"></strong>
+                            <div class="meta" x-show="g.nota" x-text="g.nota"></div>
+                          </div>
+                          <div class="dto-acciones">
+                            <strong class="num" x-text="g.importe"></strong>
+                            <button type="button" class="btn-linea" @click="editarLinea(g)">Editar</button>
+                            <button type="button" class="btn-linea btn-linea-peligro" @click="borrarLinea(g)">Borrar</button>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="panelPresupuesto.descuentos && panelPresupuesto.descuentos.length">
+                    <div>
+                      <div class="fila-titulo">
+                        <h2 class="h2">Descuentos del cierre</h2>
+                        <span class="meta">Se restan del precio de los apartados. El manuscrito hay que confirmarlo.</span>
+                      </div>
+                      <template x-for="d in panelPresupuesto.descuentos" :key="d.id || d.codigo">
+                        <div class="dto-fila">
+                          <span class="codigo" x-text="d.codigo"></span>
+                          <div class="ap-nombre">
+                            <strong x-text="d.descripcion"></strong>
+                            <div class="meta" x-show="d.manuscrito">Anotación manuscrita · pendiente de revisión</div>
+                          </div>
+                          <div class="dto-acciones">
+                            <strong class="num" x-text="d.importe"></strong>
+                            <button type="button" class="btn-linea" @click="editarLinea(d)">Editar</button>
+                            <button type="button" class="btn-linea btn-linea-peligro" @click="borrarLinea(d)">Borrar</button>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </template>
             </div>
           </div>
         </template>
 
-        <template x-if="vista && screen === 'contratos'">
+        <template x-if="!vista && (screen === 'facturas' || screen === 'contratos' || screen === 'control')">
+          <div class="card" style="padding: 28px">
+            <h2 class="h2">Abre una obra</h2>
+            <p class="sub">Elige una obra en el listado para ver su presupuesto, contratos, facturas y control.</p>
+            <button type="button" class="btn btn-primary btn-md" @click="ir('obras')">Volver a obras</button>
+          </div>
+        </template>
+
+        <template x-if="vista && screen === 'contratos' && leyendoContrato">
+          <div class="leyendo">
+            <div class="preview-scan">
+              <template x-for="(ancho, i) in lineasDoc" :key="'c' + i">
+                <div class="fake-line" :style="'width:' + ancho"></div>
+              </template>
+              <div class="scan"></div>
+            </div>
+            <div class="stack" style="justify-content: center">
+              <strong style="font-size: 18px; color: #6e2094">Leyendo contrato…</strong>
+              <span class="sub" x-text="ficheroNombre"></span>
+              <div class="stack" style="gap: 8px">
+                <span>Sonnet transcribe el PDF a markdown.</span>
+                <span class="apagado">Haiku extrae el desglose y propone el apartado. Hay que asociarlo a mano.</span>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="vista && screen === 'contratos' && !leyendoContrato">
           <div class="stack">
             <div class="subida">
               <span>
                 <strong style="color: #6e2094">Arrastra aquí los contratos con los gremios.</strong>
-                <span class="sub">Leemos objeto, importe y precios y proponemos a qué apartado pertenece cada uno.</span>
+                <span class="sub">Sonnet pasa el PDF a markdown. Haiku lee ese texto, saca el desglose y propone el apartado. El enlace no queda confirmado hasta que lo asocies.</span>
               </span>
-              <button type="button" class="btn btn-secondary btn-sm">Subir contratos</button>
+              <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir contratos</button>
             </div>
             <h2 class="h2" x-text="'Contratos leídos · ' + vista.contratos.pendientes + ' pendientes de validar'"></h2>
             <template x-for="c in vista.contratos.filas" :key="c.id">
@@ -285,7 +412,7 @@
             </template>
             <div class="aviso-rojo" x-show="vista.contratos.hay_sin_contrato">
               <span><strong x-text="vista.contratos.sin_contrato"></strong> sin contrato asociado.</span>
-              <button type="button" class="btn btn-secondary btn-sm">Subir contrato</button>
+              <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir contrato</button>
             </div>
           </div>
         </template>
@@ -295,9 +422,10 @@
             <div class="syncbar">
               <span>
                 <span class="punto-sync"></span>
-                <strong>SharePoint · Obras / OB-2026-014 / Facturas</strong>
-                <span class="apagado">· sincronizada hace 4 min</span>
+                <strong x-text="tituloObra"></strong>
+                <span class="apagado">· bandeja de facturas</span>
               </span>
+              <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroFactura.click()">Subir factura</button>
               <div class="pills">
                 <template x-for="f in filtros" :key="f.id">
                   <button type="button" class="pill" :class="filter === f.id && 'activo'" @click="filter = f.id" x-text="f.etiqueta + ' · ' + f.n"></button>
@@ -311,7 +439,7 @@
                     <span>Factura</span><span>Apartado</span><span class="der">Importe</span><span>Resultado</span>
                   </div>
                   <template x-for="f in facturasVisibles" :key="f.id">
-                    <div class="fila-factura cols-facturas" role="button" tabindex="0" :class="sel === f.id && 'sel'" @click="sel = sel === f.id ? null : f.id">
+                    <div class="fila-factura cols-facturas" role="button" tabindex="0" :class="sel === f.id && 'sel'" @click="seleccionarFactura(f.id)">
                       <div>
                         <strong x-text="f.proveedor"></strong><br />
                         <span class="meta" x-text="f.numero + ' · ' + f.fecha"></span>

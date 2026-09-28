@@ -26,6 +26,10 @@ class ProyectoRead(BaseModel):
     fecha_inicio: date | None
     estado: str
     created_at: datetime
+    # Suma de apartados raíz del presupuesto (los descuentos de cierre restan).
+    presupuestado: Money = Decimal("0")
+    # Solo facturas con estado_revision confirmada.
+    facturado: Money = Decimal("0")
 
 
 class NaveResumenOut(BaseModel):
@@ -63,6 +67,7 @@ class ApartadoResumenOut(BaseModel):
     estado_revision: str
     contrato_enlazado_id: int | None = None
     contratos: list[ContratoApartadoOut] = Field(default_factory=list)
+    subapartados: list["ApartadoResumenOut"] = Field(default_factory=list)
 
 
 class ContratoResumenOut(BaseModel):

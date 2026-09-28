@@ -20,6 +20,13 @@ function proyectoApp() {
     anchoProgreso(v) {
       return Math.max(0, Math.min(100, Number(v) || 0));
     },
+    get apartadosEnlazables() {
+      if (!this.proyecto) return [];
+      return (this.proyecto.apartados || []).filter(
+        (ap) => !String(ap.codigo || "").startsWith("descuento.")
+      );
+    },
+
     textoPendiente(v) {
       const importe = Number(v);
       return importe < 0

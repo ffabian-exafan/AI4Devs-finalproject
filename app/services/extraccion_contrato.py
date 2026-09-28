@@ -1,10 +1,17 @@
-"""Extracción de contratos de subcontrata (cabecera + árbol de partidas)."""
+"""Extracción de contratos de subcontrata (cabecera + árbol de partidas).
+
+El PDF ya llega en markdown (Sonnet). Haiku lee ese texto, arma el árbol
+y propone el apartado de presupuesto. No confirma el enlace.
+"""
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
+from app.config import get_settings
 from app.schemas.extraccion import ContratoExtraido, NodoTareaExtraido
+from app.services import llm as llm_svc
 
 # NIF ficticio corto (el marcador [CIF_SUBCONTRATISTA_1] supera String(20))
 _NIF_SUBCONTRATA = "B00000001"
@@ -13,13 +20,62 @@ _PRECIO_TOTAL = Decimal("45000.00")
 _PU = Decimal("5.00")
 
 
-def extraer_contrato(texto: str) -> ContratoExtraido:
+_PROMPT_SISTEMA = """\
+Eres un extractor de contratos de subcontrata de obra. Respondes solo JSON compacto, en una sola línea, sin markdown.
+El contrato queda pendiente de revisión humana: no confirmes nada.
+No inventes NIF, nombres, fechas, cantidades ni importes que no estén en el texto.
+Si un valor manuscrito corrige uno impreso, usa el manuscrito.
+Esquema:
+{
+  "contratista_nif": "string, máximo 20 caracteres",
+  "contratista_nombre": "string",
+  "contratista_tipo": "externo",
+  "referencia_presupuesto": "string o null",
+  "precio_total": number,
+  "fecha_firma": "YYYY-MM-DD o null",
+  "plazo_ejecucion": "YYYY-MM-DD o null",
+  "condiciones_facturacion": "string o null",
+  "requiere_revision": true,
+  "apartado_sugerido_codigo": "código de la lista de apartados, o null",
+  "apartado_sugerido_motivo": "una frase, o null",
+  "arbol_tareas": [
+    {
+      "codigo": "string",
+      "nivel": "apartado | subapartado | partida",
+      "capitulo": "string o null",
+      "descripcion": "string",
+      "importe": number,
+      "unidad": "string o null",
+      "cantidad": number o null,
+      "precio_unitario": number o null,
+      "hijos": []
+    }
+  ]
+}
+Reglas:
+- apartado > subapartado > partida, con tarea anidada en "hijos".
+- Una partida lleva unidad, cantidad y precio si el documento los trae. Si no, déjalos null. No los calcules.
+- El importe de un nodo es el que figura. Si no figura y hay hijos, puede ser la suma de los hijos.
+- apartado_sugerido_codigo tiene que ser uno de los códigos que te paso, o null si ninguno encaja.
+- No elijas un descuento ni una línea de gestión.
+- requiere_revision es siempre true.
+"""
+
+
+def extraer_contrato(
+    texto: str,
+    apartados: list[tuple[str, str]] | None = None,
+) -> ContratoExtraido:
+    """Fixture anonimizada sin LLM. El resto lo lee Haiku sobre el markdown."""
     if _es_fixture_electricidad(texto):
         return _extraer_fixture_electricidad(texto)
-    raise ValueError(
-        "No hay extractor para este contrato. "
-        "Usa la fixture anonimizada o configura LLM (Ticket pendiente de ampliar)."
-    )
+    settings = get_settings()
+    if not llm_svc.hay_llm(settings):
+        raise ValueError(
+            "No hay extractor para este contrato. "
+            "Hace falta la clave del modelo de lectura."
+        )
+    return _extraer_con_llm(texto, settings, apartados or [])
 
 
 def _es_fixture_electricidad(texto: str) -> bool:
@@ -441,3 +497,102 @@ def _arbol_sala(numero_sala: int, codigo_raiz: str) -> NodoTareaExtraido:
         importe=importe,
         hijos=hijos_sub,
     )
+
+
+def _extraer_con_llm(texto: str, settings, apartados: list[tuple[str, str]]) -> ContratoExtraido:
+    lista = "\n".join(f"- {codigo} · {descripcion}" for codigo, descripcion in apartados)
+    if not lista:
+        lista = "(este proyecto no tiene apartados de presupuesto)"
+    contenido = llm_svc.completar_texto(
+        api_key=settings.llm_api_key or "",
+        api_base=settings.llm_api_base,
+        anthropic=llm_svc.es_anthropic(settings),
+        model=llm_svc.modelo_extraccion(settings),
+        system=_PROMPT_SISTEMA,
+        user=(
+            "Extrae el contrato y propone el apartado del presupuesto. "
+            "El JSON tiene que cerrarse: no dejes un texto a medias.\n\n"
+            "Apartados:\n"
+            f"{lista}\n\n"
+            "Contrato:\n"
+            f"{texto}"
+        ),
+        max_tokens=64000,
+    )
+    parsed = llm_svc.parsear_json_llm(contenido)
+    codigos = {codigo for codigo, _desc in apartados}
+    sugerido = parsed.get("apartado_sugerido_codigo")
+    if sugerido is not None:
+        sugerido = str(sugerido).strip()
+        if sugerido not in codigos:
+            parsed["apartado_sugerido_codigo"] = None
+            parsed["apartado_sugerido_motivo"] = None
+        else:
+            parsed["apartado_sugerido_codigo"] = sugerido
+    parsed["requiere_revision"] = True
+    parsed["contratista_tipo"] = parsed.get("contratista_tipo") or "externo"
+    parsed["fecha_firma"] = _fecha_iso(parsed.get("fecha_firma"))
+    parsed["plazo_ejecucion"] = _fecha_iso(parsed.get("plazo_ejecucion"))
+    nif = str(parsed.get("contratista_nif") or "").strip().upper()
+    if not nif or len(nif) > 20:
+        raise ValueError("El modelo no devolvió un NIF de contratista válido")
+    parsed["contratista_nif"] = nif
+    nombre = str(parsed.get("contratista_nombre") or "").strip()
+    if not nombre:
+        raise ValueError("El modelo no devolvió el nombre del contratista")
+    parsed["contratista_nombre"] = nombre
+    parsed["arbol_tareas"] = _normalizar_nodos(parsed.get("arbol_tareas") or [])
+    if parsed.get("precio_total") is None:
+        parsed["precio_total"] = sum(
+            (Decimal(str(n["importe"])) for n in parsed["arbol_tareas"]),
+            Decimal("0"),
+        )
+    return ContratoExtraido.model_validate(parsed)
+
+
+def _fecha_iso(valor: object) -> str | None:
+    if valor is None or valor == "":
+        return None
+    texto = str(valor).strip()[:10]
+    try:
+        date.fromisoformat(texto)
+    except ValueError:
+        return None
+    return texto
+
+
+def _normalizar_nodos(nodos: object) -> list[dict]:
+    if not isinstance(nodos, list):
+        return []
+    salida: list[dict] = []
+    for crudo in nodos:
+        if not isinstance(crudo, dict):
+            continue
+        descripcion = str(crudo.get("descripcion") or "").strip()
+        codigo = str(crudo.get("codigo") or "").strip()
+        if not descripcion or not codigo:
+            continue
+        nivel = str(crudo.get("nivel") or "partida").strip().lower()
+        if nivel not in {"apartado", "subapartado", "partida"}:
+            nivel = "partida"
+        hijos = _normalizar_nodos(crudo.get("hijos") or [])
+        importe = crudo.get("importe")
+        if importe is None and hijos:
+            importe = sum((Decimal(str(h["importe"])) for h in hijos), Decimal("0"))
+        if importe is None:
+            # Línea cortada: no se inventa un importe 0.
+            continue
+        salida.append(
+            {
+                "codigo": codigo[:50],
+                "nivel": nivel,
+                "capitulo": crudo.get("capitulo"),
+                "descripcion": descripcion,
+                "importe": importe,
+                "unidad": (str(crudo["unidad"])[:50] if crudo.get("unidad") else None),
+                "cantidad": crudo.get("cantidad"),
+                "precio_unitario": crudo.get("precio_unitario"),
+                "hijos": hijos,
+            }
+        )
+    return salida

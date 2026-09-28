@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import Contrato, Nave, Tarea
 from app.schemas.casado import SugerenciaApartadoOut
+from app.services.jerarquia import mapa_padres
 
 # Umbral mínimo para devolver un candidato (0–1)
 _CONFIANZA_MIN = Decimal("0.25")
@@ -29,6 +30,11 @@ _RAICES = (
     "obra civil",
     "instalac",
 )
+
+
+def apartados_de_presupuesto(db: Session, proyecto_id: int) -> list[Tarea]:
+    """Apartados raíz del presupuesto. Los descuentos de cierre no se ofrecen."""
+    return _apartados_presupuesto(db, proyecto_id)
 
 
 def sugerir_apartados_para_contrato(
@@ -54,7 +60,12 @@ def sugerir_apartados_para_contrato(
 
     puntuados.sort(key=lambda x: (-x[0], x[1].codigo))
     salida: list[SugerenciaApartadoOut] = []
-    for conf, ap, motivo in puntuados[:max_resultados]:
+    modelo = _sugerencia_guardada(contrato, apartados)
+    if modelo is not None:
+        salida.append(modelo)
+    for conf, ap, motivo in puntuados:
+        if modelo is not None and ap.id == modelo.tarea_id:
+            continue
         salida.append(
             SugerenciaApartadoOut(
                 tarea_id=ap.id,
@@ -64,7 +75,37 @@ def sugerir_apartados_para_contrato(
                 motivo=motivo,
             )
         )
-    return salida
+        if len(salida) >= max_resultados:
+            break
+    return salida[:max_resultados]
+
+
+def _sugerencia_guardada(
+    contrato: Contrato,
+    apartados: list[Tarea],
+) -> SugerenciaApartadoOut | None:
+    """La propuesta de la lectura queda en motivo_sugerencia como «codigo\\nmotivo»."""
+    raw = (contrato.motivo_sugerencia or "").strip()
+    if "\n" not in raw:
+        return None
+    codigo, motivo = raw.split("\n", 1)
+    codigo = codigo.strip()
+    apartado = next((ap for ap in apartados if ap.codigo == codigo), None)
+    if apartado is None:
+        return None
+    puntos = contrato.confianza if contrato.confianza is not None else 75
+    confianza = Decimal(puntos) / Decimal(100)
+    if confianza > 1:
+        confianza = Decimal(1)
+    if confianza < 0:
+        confianza = Decimal(0)
+    return SugerenciaApartadoOut(
+        tarea_id=apartado.id,
+        codigo=apartado.codigo,
+        descripcion=apartado.descripcion,
+        confianza=confianza,
+        motivo=motivo.strip() or "Propuesto al leer el contrato",
+    )
 
 
 def enlazar_contrato_apartado(
@@ -90,8 +131,13 @@ def enlazar_contrato_apartado(
         raise ValueError(f"Apartado {tarea_apartado_id} no encontrado")
     if apartado.presupuesto_id is None:
         raise ValueError("La tarea indicada no proviene de un presupuesto")
-    if apartado.nivel != "apartado":
+    if apartado.nivel != "apartado" or apartado.tarea_padre_id is not None:
         raise ValueError("Solo se puede enlazar a una tarea de nivel 'apartado'")
+    hermanos = _apartados_y_subapartados(db, proyecto_id)
+    if mapa_padres(hermanos).get(apartado.id) is not None:
+        raise ValueError("Solo se puede enlazar a un apartado, no a un subapartado")
+    if apartado.codigo.startswith("descuento."):
+        raise ValueError("Un descuento de cierre no es un apartado contratable")
 
     nave = db.get(Nave, apartado.nave_id)
     if nave is None or nave.proyecto_id != proyecto_id:
@@ -104,7 +150,7 @@ def enlazar_contrato_apartado(
     return contrato, apartado
 
 
-def _apartados_presupuesto(db: Session, proyecto_id: int) -> list[Tarea]:
+def _apartados_y_subapartados(db: Session, proyecto_id: int) -> list[Tarea]:
     nave_ids = [
         n.id for n in db.query(Nave).filter(Nave.proyecto_id == proyecto_id).all()
     ]
@@ -115,12 +161,20 @@ def _apartados_presupuesto(db: Session, proyecto_id: int) -> list[Tarea]:
         .filter(
             Tarea.nave_id.in_(nave_ids),
             Tarea.presupuesto_id.isnot(None),
-            Tarea.nivel == "apartado",
-            Tarea.tarea_padre_id.is_(None),
         )
-        .order_by(Tarea.codigo)
+        .order_by(Tarea.codigo, Tarea.id)
         .all()
     )
+
+
+def _apartados_presupuesto(db: Session, proyecto_id: int) -> list[Tarea]:
+    tareas = _apartados_y_subapartados(db, proyecto_id)
+    padres = mapa_padres(tareas)
+    return [
+        t
+        for t in tareas
+        if padres.get(t.id) is None and not t.codigo.startswith("descuento.")
+    ]
 
 
 def _texto_consulta_contrato(db: Session, contrato: Contrato) -> str:

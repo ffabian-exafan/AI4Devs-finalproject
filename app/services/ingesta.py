@@ -21,7 +21,10 @@ from app.services import extraccion_contrato as extraccion_contrato_svc
 from app.config import get_settings
 from app.services import llm as llm_svc
 from app.services import ocr as ocr_svc
-from app.services.transcripcion import transcribir_pdf_a_markdown
+from app.services.transcripcion import (
+    transcribir_contrato_a_markdown,
+    transcribir_pdf_a_markdown,
+)
 
 
 @dataclass(frozen=True)
@@ -149,8 +152,20 @@ def persistir_presupuesto(
         db.add(nave)
         db.flush()
 
-        for ap in nave_x.apartados:
-            if ap.tiene_anotacion_manual:
+        def guardar_nodo(ap, padre_id: int | None, nivel: str) -> None:
+            nonlocal anotaciones, partidas
+            descripcion = ap.descripcion
+            importe = ap.importe
+            if importe is None and nivel == "apartado":
+                # La columna no admite null. El 0 no es un importe leído.
+                descripcion = f"{descripcion} [VERIFICAR] sin importe en el documento"
+                importe = Decimal("0")
+                estado_rev = "pendiente"
+            elif importe is None:
+                # El subapartado no cierra precio; el importe está en el apartado padre.
+                importe = Decimal("0")
+                estado_rev = "pendiente" if requiere else "revisada"
+            elif ap.tiene_anotacion_manual:
                 anotaciones += 1
                 estado_rev = "pendiente"
             else:
@@ -160,40 +175,84 @@ def persistir_presupuesto(
                 nave_id=nave.id,
                 presupuesto_id=presupuesto.id,
                 contrato_id=None,
-                tarea_padre_id=None,
+                tarea_padre_id=padre_id,
                 contratista_id=None,
                 codigo=ap.codigo,
-                nivel="apartado",
+                nivel=nivel,
                 capitulo=ap.capitulo,
-                descripcion=ap.descripcion,
+                descripcion=descripcion,
                 unidad=ap.unidad,
                 cantidad=ap.cantidad,
                 precio_unitario=ap.precio_unitario,
-                importe_presupuestado=ap.importe,
+                importe_presupuestado=importe,
                 tiene_anotacion_manual=ap.tiene_anotacion_manual,
                 estado_revision=estado_rev,
                 estado="no_iniciada",
                 avance_fisico_pct=Decimal("0"),
             )
             db.add(tarea)
+            db.flush()
             partidas += 1
+            for hijo in ap.subapartados:
+                nivel_hijo = (
+                    "partida"
+                    if hijo.unidad or hijo.cantidad is not None or hijo.precio_unitario is not None
+                    else "subapartado"
+                )
+                guardar_nodo(hijo, tarea.id, nivel_hijo)
+
+        for ap in nave_x.apartados:
+            guardar_nodo(ap, None, "apartado")
+
+    if extraido.naves:
+        nave_cierre = (
+            db.query(Nave).filter(Nave.proyecto_id == proyecto.id).order_by(Nave.id).first()
+        )
+        if nave_cierre is not None:
+            for indice, descuento in enumerate(extraido.descuentos, start=1):
+                db.add(
+                    Tarea(
+                        nave_id=nave_cierre.id,
+                        presupuesto_id=presupuesto.id,
+                        contrato_id=None,
+                        tarea_padre_id=None,
+                        contratista_id=None,
+                        codigo=f"descuento.{indice}",
+                        nivel="apartado",
+                        capitulo="Precio final",
+                        descripcion=descuento.descripcion,
+                        importe_presupuestado=-abs(descuento.importe),
+                        tiene_anotacion_manual=descuento.es_manuscrito,
+                        estado_revision="pendiente",
+                        estado="no_iniciada",
+                        avance_fisico_pct=Decimal("0"),
+                    )
+                )
+                partidas += 1
+                if descuento.es_manuscrito:
+                    anotaciones += 1
 
     db.commit()
     db.refresh(proyecto)
 
+    base = sum(
+        (
+            ap.importe
+            for nave in extraido.naves
+            for ap in nave.apartados
+            if not ap.excluido_de_suma and ap.importe is not None
+        ),
+        Decimal("0"),
+    )
+    resta = sum((d.importe for d in extraido.descuentos), Decimal("0"))
+    # El manuscrito prevalece. Si no hay cifra final, el total es la suma menos descuentos.
     total = extraido.total_manuscrito
+    if total is None and extraido.descuentos:
+        total = base - resta
     if total is None:
         total = extraido.total_impreso
     if total is None:
-        total = sum(
-            (
-                ap.importe
-                for nave in extraido.naves
-                for ap in nave.apartados
-                if not ap.excluido_de_suma
-            ),
-            Decimal("0"),
-        )
+        total = base
 
     return ImportarPresupuestoOut(
         proyecto_id=proyecto.id,
@@ -208,6 +267,27 @@ def persistir_presupuesto(
     )
 
 
+def leer_contrato(contenido: bytes, nombre_fichero: str) -> DocumentoLeido:
+    """
+    PDF con Claude: Sonnet lo pasa a markdown.
+    Markdown, imagen o PDF sin clave siguen la lectura anterior.
+    """
+    if not nombre_fichero.lower().endswith(".pdf"):
+        return leer_documento(contenido, nombre_fichero)
+
+    settings = get_settings()
+    if not (llm_svc.hay_llm(settings) and llm_svc.es_anthropic(settings)):
+        return leer_documento(contenido, nombre_fichero)
+
+    texto_nativo = _leer_pdf_pymupdf(contenido)
+    es_escaneado = ocr_svc.pdf_parece_escaneado(texto_nativo)
+    if es_escaneado:
+        es_escaneado = ocr_svc.pdf_parece_escaneado(_leer_pdf_pdfplumber(contenido))
+
+    markdown = transcribir_contrato_a_markdown(contenido)
+    return DocumentoLeido(texto=markdown, es_escaneado=es_escaneado)
+
+
 def importar_contrato(
     db: Session,
     proyecto_id: int,
@@ -220,9 +300,21 @@ def importar_contrato(
     if proyecto is None:
         raise ValueError(f"Proyecto {proyecto_id} no encontrado")
 
-    leido = leer_documento(contenido, nombre_fichero)
-    extraido = extraccion_contrato_svc.extraer_contrato(leido.texto)
+    leido = leer_contrato(contenido, nombre_fichero)
+    apartados = [
+        (tarea.codigo, tarea.descripcion)
+        for tarea in casado_svc.apartados_de_presupuesto(db, proyecto.id)
+        if not _es_gestion(tarea.descripcion)
+    ]
+    extraido = extraccion_contrato_svc.extraer_contrato(leido.texto, apartados)
+    if leido.es_escaneado:
+        extraido = extraido.model_copy(update={"requiere_revision": True})
     return persistir_contrato(db, proyecto, extraido, nombre_fichero, nave_id)
+
+
+def _es_gestion(descripcion: str) -> bool:
+    texto = (descripcion or "").lower()
+    return "gestión" in texto or "gestion" in texto
 
 
 def persistir_contrato(
@@ -251,6 +343,7 @@ def persistir_contrato(
     )
     db.add(contrato)
     db.flush()
+    _guardar_sugerencia_modelo(contrato, extraido)
 
     for nodo in extraido.arbol_tareas:
         _persistir_nodo_tarea(
@@ -276,6 +369,16 @@ def persistir_contrato(
         requiere_revision=extraido.requiere_revision,
         sugerencias_apartado=sugerencias,
     )
+
+
+def _guardar_sugerencia_modelo(contrato: Contrato, extraido: ContratoExtraido) -> None:
+    """Guarda la propuesta de Haiku. No rellena tarea_apartado_id."""
+    codigo = (extraido.apartado_sugerido_codigo or "").strip()
+    if not codigo:
+        return
+    motivo = (extraido.apartado_sugerido_motivo or "Propuesto al leer el contrato").strip()
+    contrato.motivo_sugerencia = f"{codigo}\n{motivo}"
+    contrato.confianza = 75
 
 
 def _resolver_nave(

@@ -31,6 +31,26 @@ class TareaCreate(BaseModel):
     avance_fisico_pct: Money = Decimal("0")
 
 
+class LineaPresupuestoIn(BaseModel):
+    """Alta o corrección de una línea de presupuesto.
+
+    [VERIFICAR] docs/readme.md no define el alta manual de una TAREA.
+    """
+
+    codigo: str = Field(min_length=1, max_length=50)
+    descripcion: str = Field(min_length=1)
+    importe_presupuestado: Money
+
+
+class LineaPresupuestoOut(BaseModel):
+    id: int
+    codigo: str
+    descripcion: str
+    nivel: str
+    importe_presupuestado: Money
+    estado_revision: str
+
+
 class TareaRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

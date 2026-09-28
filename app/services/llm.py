@@ -124,10 +124,68 @@ def parsear_json_llm(contenido: str) -> dict:
     if texto.startswith("```"):
         texto = re.sub(r"^```(?:json)?\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto)
-    parsed = json.loads(texto)
+    try:
+        parsed = json.loads(texto)
+    except json.JSONDecodeError:
+        # La respuesta se corta al llegar al tope de tokens, a mitad de un texto.
+        try:
+            parsed = json.loads(_cerrar_json_truncado(texto))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "La lectura llegó cortada y no se pudo reconstruir. Vuelve a subir el documento."
+            ) from exc
     if not isinstance(parsed, dict):
         raise ValueError("el modelo no devolvió un objeto JSON")
     return parsed
+
+
+def _cerrar_json_truncado(texto: str) -> str:
+    """Corta el valor a medias y cierra llaves y corchetes que quedaron abiertos."""
+    corte = texto
+    try:
+        json.loads(texto)
+        return texto
+    except json.JSONDecodeError as exc:
+        if "Unterminated string" in exc.msg or "Invalid control character" in exc.msg:
+            corte = texto[: exc.pos]
+    corte = _podar_cola_incompleta(corte)
+    pila: list[str] = []
+    en_cadena = False
+    escape = False
+    for ch in corte:
+        if en_cadena:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                en_cadena = False
+            continue
+        if ch == '"':
+            en_cadena = True
+        elif ch == "{":
+            pila.append("}")
+        elif ch == "[":
+            pila.append("]")
+        elif ch in "}]" and pila:
+            pila.pop()
+    if en_cadena:
+        corte += '"'
+    corte += "".join(reversed(pila))
+    return corte
+
+
+def _podar_cola_incompleta(texto: str) -> str:
+    """Quita la clave, la coma o el contenedor que quedó a medias al final."""
+    corte = texto.rstrip()
+    anterior = None
+    while corte and corte != anterior:
+        anterior = corte
+        corte = re.sub(r',?\s*"(?:[^"\\]|\\.)*"\s*:\s*$', "", corte)
+        corte = re.sub(r"[,:]\s*$", "", corte)
+        corte = re.sub(r"[\[{]\s*$", "", corte)
+        corte = corte.rstrip()
+    return corte
 
 
 def _url_messages(api_base: str | None) -> str:

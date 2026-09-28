@@ -47,7 +47,8 @@
               · <span x-text="proyecto.estado"></span>
             </p>
             <div class="acciones-mini" style="margin-top: 0.5rem">
-              <a :href="'/revision.html'">Revisión</a>
+              <a href="/revision.html">Revisión</a>
+              <a :href="'/facturas.html?proyecto_id=' + proyecto.id">Facturas</a>
               <a :href="'/control.html?proyecto_id=' + proyecto.id">Control económico</a>
             </div>
           </section>
@@ -73,8 +74,8 @@
                   <th>Contrato y facturación</th>
                 </tr>
               </thead>
-              <tbody>
-                <template x-for="ap in proyecto.apartados" :key="ap.id">
+              <template x-for="ap in proyecto.apartados" :key="ap.id">
+                <tbody>
                   <tr>
                     <td x-text="ap.codigo"></td>
                     <td x-text="ap.descripcion"></td>
@@ -109,8 +110,18 @@
                       </div>
                     </td>
                   </tr>
-                </template>
-              </tbody>
+                  <template x-for="sub in ap.subapartados" :key="sub.id">
+                    <tr class="fila-sub">
+                      <td class="indent-1" x-text="sub.codigo"></td>
+                      <td x-text="sub.descripcion"></td>
+                      <td x-text="sub.nave_codigo"></td>
+                      <td x-text="Number(sub.importe_presupuestado) ? euro(sub.importe_presupuestado) : '—'"></td>
+                      <td x-text="sub.estado_revision"></td>
+                      <td class="muted">Subapartado</td>
+                    </tr>
+                  </template>
+                </tbody>
+              </template>
             </table>
             </div>
           </section>
@@ -172,7 +183,7 @@
                       Apartado
                       <select x-model="manualApartado[c.id]">
                         <option value="">—</option>
-                        <template x-for="ap in proyecto.apartados" :key="'m-' + ap.id">
+                        <template x-for="ap in apartadosEnlazables" :key="'m-' + ap.id">
                           <option :value="ap.id" x-text="ap.codigo + ' — ' + ap.descripcion"></option>
                         </template>
                       </select>

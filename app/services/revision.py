@@ -7,6 +7,7 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 
 from app.models import Contrato, Contratista, Presupuesto, Proyecto, Tarea
+from app.services.jerarquia import asegurar_apartados_padre, mapa_padres
 from app.schemas.revision import (
     ConfirmarRevisionIn,
     ConfirmarRevisionOut,
@@ -82,6 +83,7 @@ def obtener_documento(
         if proyecto is None:
             raise ValueError(f"Proyecto {doc.proyecto_id} no encontrado")
         tareas = db.query(Tarea).filter(Tarea.presupuesto_id == doc.id).all()
+        asegurar_apartados_padre(db, tareas)
         return DocumentoRevisionOut(
             proyecto_id=proyecto.id,
             proyecto_nombre=proyecto.nombre,
@@ -203,17 +205,22 @@ def _validar_negocio_fila(tarea: Tarea, upd: TareaRevisionUpdate) -> None:
 
 
 def _construir_arbol(tareas: list[Tarea]) -> list[TareaRevisionNodo]:
+    padres = mapa_padres(tareas)
     por_padre: dict[int | None, list[Tarea]] = defaultdict(list)
     for t in tareas:
-        por_padre[t.tarea_padre_id].append(t)
+        por_padre[padres.get(t.id)].append(t)
 
     def _nodo(t: Tarea) -> TareaRevisionNodo:
+        padre_id = padres.get(t.id)
         hijos = sorted(por_padre.get(t.id, []), key=lambda x: (x.codigo, x.id))
+        nivel = t.nivel
+        if padre_id is not None and nivel == "apartado":
+            nivel = "subapartado"
         return TareaRevisionNodo(
             id=t.id,
-            tarea_padre_id=t.tarea_padre_id,
+            tarea_padre_id=padre_id,
             codigo=t.codigo,
-            nivel=t.nivel,
+            nivel=nivel,
             capitulo=t.capitulo,
             descripcion=t.descripcion,
             unidad=t.unidad,

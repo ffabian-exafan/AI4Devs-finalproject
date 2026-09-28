@@ -9,9 +9,11 @@ from app.schemas.contrato import ImportarContratoOut
 from app.schemas.control_economico import ControlEconomicoOut
 from app.schemas.presupuesto import ImportarPresupuestoOut
 from app.schemas.proyecto import ProyectoDetalleOut, ProyectoRead
+from app.schemas.tarea import LineaPresupuestoIn, LineaPresupuestoOut
 from app.services import casado as casado_svc
 from app.services import economico as economico_svc
 from app.services import ingesta as ingesta_svc
+from app.services import lineas as lineas_svc
 from app.services import proyectos as proyectos_svc
 
 router = APIRouter(tags=["proyectos"])
@@ -20,6 +22,88 @@ router = APIRouter(tags=["proyectos"])
 @router.get("/proyectos", response_model=list[ProyectoRead])
 def listar_proyectos(db: Session = Depends(get_db)) -> list[ProyectoRead]:
     return proyectos_svc.listar_proyectos(db)
+
+
+@router.delete("/proyectos/{proyecto_id}", status_code=status.HTTP_204_NO_CONTENT)
+def borrar_proyecto(proyecto_id: int, db: Session = Depends(get_db)) -> None:
+    try:
+        proyectos_svc.borrar_proyecto(db, proyecto_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/lineas",
+    response_model=LineaPresupuestoOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_linea(
+    proyecto_id: int,
+    payload: LineaPresupuestoIn,
+    db: Session = Depends(get_db),
+) -> LineaPresupuestoOut:
+    try:
+        return lineas_svc.crear_linea(db, proyecto_id, payload)
+    except lineas_svc.LineaNoEncontrada as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+
+@router.patch(
+    "/proyectos/{proyecto_id}/lineas/{tarea_id}",
+    response_model=LineaPresupuestoOut,
+)
+def editar_linea(
+    proyecto_id: int,
+    tarea_id: int,
+    payload: LineaPresupuestoIn,
+    db: Session = Depends(get_db),
+) -> LineaPresupuestoOut:
+    try:
+        return lineas_svc.editar_linea(db, proyecto_id, tarea_id, payload)
+    except lineas_svc.LineaNoEncontrada as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+
+@router.delete(
+    "/proyectos/{proyecto_id}/lineas/{tarea_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def borrar_linea(
+    proyecto_id: int,
+    tarea_id: int,
+    db: Session = Depends(get_db),
+) -> None:
+    try:
+        lineas_svc.borrar_linea(db, proyecto_id, tarea_id)
+    except lineas_svc.LineaNoEncontrada as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except lineas_svc.LineaEnlazada as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/proyectos/{proyecto_id}", response_model=ProyectoDetalleOut)

@@ -6,10 +6,16 @@ import re
 from decimal import Decimal
 
 from app.config import get_settings
+from app.services.jerarquia import (
+    debe_elevar_grupo,
+    descripcion_apartado,
+    padre_mas_especifico,
+)
 from app.services import llm as llm_svc
 from app.schemas.extraccion import (
     AnotacionManuscrita,
     ApartadoExtraido,
+    DescuentoExtraido,
     NaveExtraida,
     PresupuestoExtraido,
 )
@@ -67,18 +73,28 @@ Eres un extractor de presupuestos de obra. Devuelves SOLO JSON válido con esta 
           "codigo": string,
           "capitulo": string|null,
           "descripcion": string,
-          "importe": number,
+          "importe": number|null,
           "tiene_anotacion_manual": bool,
           "excluido_de_suma": bool,
           "unidad": null,
           "cantidad": null,
-          "precio_unitario": null
+          "precio_unitario": null,
+          "subapartados": [
+            {
+              "codigo": "1.1.1",
+              "descripcion": string,
+              "importe": number|null
+            }
+          ]
         }
       ]
     }
   ],
   "total_impreso": number|null,
   "total_manuscrito": number|null,
+  "descuentos": [
+    {"descripcion": string, "importe": number, "es_manuscrito": bool}
+  ],
   "anotaciones": [
     {
       "campo": string,
@@ -90,11 +106,21 @@ Eres un extractor de presupuestos de obra. Devuelves SOLO JSON válido con esta 
 }
 
 Reglas:
-- Nivel de desglose: solo "apartado" si el documento no da partida con precio unitario.
+- El importe cierra en el apartado (ejemplo 1.1). Los subapartados (1.1.1, 1.1.2)
+  van dentro de ese apartado, no como apartados sueltos.
+- Si el subapartado no tiene importe propio, pon null. No copies el importe del padre.
 - unidad, cantidad y precio_unitario deben ser null si no aparecen a nivel de apartado.
 - Si hay anotación manuscrita sobre valor impreso (tachado + corrección), marca
   tiene_anotacion_manual=true en esa fila y usa el valor manuscrito como válido.
 - No inventes importes ni campos que no estén en el documento.
+- Si la fila no muestra importe, pon null. No uses 0 salvo que el documento ponga 0.
+- La línea de gestión o honorarios (un porcentaje sobre otros apartados, junto al
+  precio final) es un apartado con su propio importe. No es un descuento y no se omite.
+  No la conviertas en un subapartado sin importe.
+- Los descuentos del final no son apartados. Van en "descuentos" con importe positivo
+  (lo que se resta). El impreso y, si existe, el manuscrito van por separado.
+- total_impreso es el precio total final impreso, ya restado el descuento impreso.
+- total_manuscrito es el importe final escrito a mano, si lo hay. No lo recalcules.
 """
 
 
@@ -110,6 +136,8 @@ def extraer_presupuesto(texto: str) -> PresupuestoExtraido:
             # Sin LLM autorizado: parser heurístico mínimo sobre tablas markdown
             resultado = _extraer_heuristico(texto)
 
+    _anidar_subapartados(resultado)
+    _separar_descuentos(resultado)
     return _aplicar_comprobaciones(resultado)
 
 
@@ -367,6 +395,105 @@ def _extraer_con_llm(texto: str, settings) -> PresupuestoExtraido:
     return PresupuestoExtraido.model_validate(parsed)
 
 
+def _aplanar_apartados(apartados: list[ApartadoExtraido]) -> list[ApartadoExtraido]:
+    planos: list[ApartadoExtraido] = []
+    for ap in apartados:
+        hijos = list(ap.subapartados)
+        ap.subapartados = []
+        planos.append(ap)
+        planos.extend(_aplanar_apartados(hijos))
+    return planos
+
+
+def _completar_apartados_padre(planos: list[ApartadoExtraido]) -> list[ApartadoExtraido]:
+    """Si faltó la fila 1.1, la crea y sube el único importe del grupo."""
+    codigos = {ap.codigo for ap in planos}
+    grupos: dict[str, list[ApartadoExtraido]] = {}
+    for ap in planos:
+        partes = ap.codigo.split(".")
+        if len(partes) < 2:
+            continue
+        padre = ".".join(partes[:-1])
+        # 2.2 y 2.3 son apartados distintos. Solo se eleva 1.1.1 → 1.1.
+        if "." not in padre or padre in codigos:
+            continue
+        grupos.setdefault(padre, []).append(ap)
+
+    nuevos: list[ApartadoExtraido] = []
+    for codigo, miembros in grupos.items():
+        tienen = [m.importe is not None for m in miembros]
+        if not debe_elevar_grupo(tienen):
+            continue
+        con_importe = [m for m in miembros if m.importe is not None]
+        importe_padre = con_importe[0].importe if len(con_importe) == 1 else None
+        if len(con_importe) == 1:
+            con_importe[0].importe = None
+            con_importe[0].excluido_de_suma = True
+        nuevos.append(
+            ApartadoExtraido(
+                codigo=codigo,
+                capitulo=miembros[0].capitulo,
+                descripcion=descripcion_apartado(
+                    codigo, [m.descripcion for m in miembros]
+                ),
+                importe=importe_padre,
+                tiene_anotacion_manual=any(m.tiene_anotacion_manual for m in miembros),
+            )
+        )
+    return planos + nuevos
+
+
+def _anidar_subapartados(resultado: PresupuestoExtraido) -> None:
+    """1.1.1 y 1.1.2 pasan a ser hijos de 1.1 cuando ese código existe."""
+    for nave in resultado.naves:
+        planos = _completar_apartados_padre(_aplanar_apartados(nave.apartados))
+        codigos = {ap.codigo for ap in planos}
+        hijos: dict[str, list[ApartadoExtraido]] = {}
+        raices: list[ApartadoExtraido] = []
+        for ap in planos:
+            padre = padre_mas_especifico(ap.codigo, codigos)
+            if padre is None:
+                raices.append(ap)
+            else:
+                hijos.setdefault(padre, []).append(ap)
+        for ap in planos:
+            ap.subapartados = hijos.get(ap.codigo, [])
+        nave.apartados = raices
+
+
+def _es_fila_descuento(ap: ApartadoExtraido) -> bool:
+    texto = f"{ap.codigo} {ap.descripcion}".casefold()
+    return "descuento" in texto or texto.strip().startswith("dto")
+
+
+def _separar_descuentos(resultado: PresupuestoExtraido) -> None:
+    """Saca del árbol las filas de descuento y las deja como resta del cierre."""
+    for nave in resultado.naves:
+        quedan: list[ApartadoExtraido] = []
+        for ap in nave.apartados:
+            if (
+                not _es_fila_descuento(ap)
+                or ap.importe is None
+                or (
+                    resultado.total_manuscrito is not None
+                    and ap.importe == resultado.total_manuscrito
+                )
+            ):
+                quedan.append(ap)
+                continue
+            resultado.descuentos.append(
+                DescuentoExtraido(
+                    descripcion=ap.descripcion,
+                    importe=abs(ap.importe),
+                    es_manuscrito=ap.tiene_anotacion_manual,
+                )
+            )
+        nave.apartados = quedan
+    for descuento in resultado.descuentos:
+        if descuento.importe < 0:
+            descuento.importe = abs(descuento.importe)
+
+
 def _aplicar_comprobaciones(resultado: PresupuestoExtraido) -> PresupuestoExtraido:
     """Comprueba sumas y fuerza revisión si hay manuscrito o descuadre."""
     apartados_suma: list[ApartadoExtraido] = []
@@ -375,7 +502,10 @@ def _aplicar_comprobaciones(resultado: PresupuestoExtraido) -> PresupuestoExtrai
             if not ap.excluido_de_suma:
                 apartados_suma.append(ap)
 
-    suma = sum((a.importe for a in apartados_suma), Decimal("0"))
+    suma = sum(
+        (a.importe for a in apartados_suma if a.importe is not None),
+        Decimal("0"),
+    )
 
     # Comprobación específica fixture: bloques EXAFAN y proveedores
     if _importes_de_fixture_presentes(resultado):
@@ -388,18 +518,40 @@ def _aplicar_comprobaciones(resultado: PresupuestoExtraido) -> PresupuestoExtrai
             suma_exafan == _IMPORTES_FIXTURE["IMPORTE_TOTAL_EXAFAN"]
             and suma_prov == _IMPORTES_FIXTURE["IMPORTE_TOTAL_PROVEEDORES"]
         )
-    elif resultado.total_impreso is not None:
-        cuadran = abs(suma - resultado.total_impreso) < Decimal("0.01")
     else:
-        cuadran = False
+        impresos = sum(
+            (d.importe for d in resultado.descuentos if not d.es_manuscrito),
+            Decimal("0"),
+        )
+        manuscritos = sum(
+            (d.importe for d in resultado.descuentos if d.es_manuscrito),
+            Decimal("0"),
+        )
+        neto_impreso = suma - impresos
+        neto_final = neto_impreso - manuscritos
+        if resultado.total_impreso is None and resultado.total_manuscrito is None:
+            cuadran = False
+        else:
+            cuadran = True
+            if resultado.total_impreso is not None:
+                cuadran = abs(neto_impreso - resultado.total_impreso) < Decimal("0.01")
+            if resultado.total_manuscrito is not None:
+                cuadran = cuadran and abs(neto_final - resultado.total_manuscrito) < Decimal("0.01")
 
-    hay_manuscrito = bool(resultado.anotaciones) or any(
-        ap.tiene_anotacion_manual for nave in resultado.naves for ap in nave.apartados
+    hay_manuscrito = (
+        bool(resultado.anotaciones)
+        or any(d.es_manuscrito for d in resultado.descuentos)
+        or any(
+            ap.tiene_anotacion_manual for nave in resultado.naves for ap in nave.apartados
+        )
+    )
+    falta_importe = any(
+        ap.importe is None for nave in resultado.naves for ap in nave.apartados
     )
 
-    resultado.sumas_cuadran = cuadran
-    # Revisión humana obligatoria si hay manuscrito o las sumas no cuadran
-    resultado.requiere_revision = hay_manuscrito or not cuadran
+    resultado.sumas_cuadran = cuadran and not falta_importe
+    # Revisión humana obligatoria si hay manuscrito, descuadre o filas sin cifra
+    resultado.requiere_revision = hay_manuscrito or not cuadran or falta_importe
     return resultado
 
 
@@ -412,6 +564,6 @@ def _suma_codigos(resultado: PresupuestoExtraido, codigos: set[str]) -> Decimal:
     total = Decimal("0")
     for nave in resultado.naves:
         for ap in nave.apartados:
-            if ap.codigo in codigos:
+            if ap.codigo in codigos and ap.importe is not None:
                 total += ap.importe
     return total
