@@ -83,26 +83,17 @@ _[VERIFICAR] — Faltan capturas o vídeo del recorrido. Añadir cuando exista U
 
 ### **1.4. Instrucciones de instalación:**
 
-_[VERIFICAR] — Comandos de referencia según el stack; ajustar al repo final._
+Guía completa para Windows, macOS y Linux: [`docs/arranque.md`](arranque.md).
 
-Requisitos:
+Resumen:
 
-- Python 3.11+
-- PostgreSQL 16 con extensiones `pgvector` y `pg_trgm`
-- Para presupuestos escaneados: claves `OCR_API_*` o `LLM_API_*` en `.env` (autorización Seguridad). **No hace falta Tesseract en el sistema.**
+1. Python 3.11+ y un Postgres 16 **con `pgvector`** (contenedor `pgvector/pgvector:pg16` en el puerto 5433 del host).
+2. Entorno virtual e `pip install -r requirements.txt`.
+3. Copiar `.env.example` a `.env`. `DATABASE_URL` con driver `postgresql+psycopg`. Claves LLM/OCR solo si Seguridad autoriza el cloud (sección 2.5).
+4. `alembic upgrade head` (crea `vector` y `pg_trgm`). Las semillas (`python -m app.seed`) aún no están implementadas.
+5. `uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`.
 
-Pasos:
-
-1. Clona el repo y entra en la carpeta.
-2. Crea el entorno: `python -m venv .venv && source .venv/bin/activate`.
-3. Instala dependencias: `pip install -r requirements.txt`.
-4. Copia `.env.example` a `.env` y rellena `DATABASE_URL` y las claves de LLM/OCR **solo si Seguridad autoriza el uso cloud** (ver sección 2.5).
-5. Crea la base de datos y habilita extensiones: `CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;`.
-6. Aplica migraciones: `alembic upgrade head`.
-7. Carga semillas (contratistas y usuarios de prueba, anonimizados): `python -m app.seed`.
-8. Arranca: `uvicorn app.main:app --reload`.
-
-El front se sirve desde FastAPI en `/`. No hay build ni proyecto de front aparte.
+El front se sirve desde FastAPI en `/`. No hay build ni Tesseract obligatorio. `/health` no comprueba la base de datos.
 
 ---
 
