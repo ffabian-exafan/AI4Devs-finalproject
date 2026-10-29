@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.casado import SugerenciaApartadoOut
+from app.schemas.presupuesto import ContrastarClienteOut
 from app.schemas.tipos import Money
 
 
@@ -62,6 +63,14 @@ class ApartadoResumenOut(BaseModel):
     descripcion: str
     nivel: str
     importe_presupuestado: Money
+    unidad: str | None = None
+    cantidad: Money | None = None
+    precio_unitario: Money | None = None
+    descuento_pct: Money | None = None
+    es_montaje: bool = False
+    importe_montaje: Money = Decimal("0")
+    capitulo: str | None = None
+    importe_contrato_cliente: Money | None = None
     nave_id: int
     nave_codigo: str
     estado_revision: str
@@ -82,7 +91,18 @@ class ContratoResumenOut(BaseModel):
     tarea_apartado_id: int | None = None
     apartado_codigo: str | None = None
     apartado_descripcion: str | None = None
+    fichero_origen: str = ""
+    tiene_fichero: bool = False
     sugerencias: list[SugerenciaApartadoOut] = Field(default_factory=list)
+
+
+class DocumentoProyectoOut(BaseModel):
+    """Fichero de presupuesto guardado (Excel o PDF del cliente)."""
+
+    id: int
+    fichero_origen: str
+    formato: str
+    tiene_fichero: bool = False
 
 
 class ProyectoDetalleOut(ProyectoRead):
@@ -91,3 +111,6 @@ class ProyectoDetalleOut(ProyectoRead):
     naves: list[NaveResumenOut] = Field(default_factory=list)
     apartados: list[ApartadoResumenOut] = Field(default_factory=list)
     contratos: list[ContratoResumenOut] = Field(default_factory=list)
+    documentos: list[DocumentoProyectoOut] = Field(default_factory=list)
+    # Null si el PDF aún no se ha leído a líneas. El fichero sigue en documentos.
+    contraste_cliente: ContrastarClienteOut | None = None

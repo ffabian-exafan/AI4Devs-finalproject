@@ -13,3 +13,4 @@ pgvector
 pytest
 httpx
 python-multipart
+openpyxl

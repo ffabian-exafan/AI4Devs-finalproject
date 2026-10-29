@@ -52,6 +52,8 @@ class Contrato(Base):
     plazo_ejecucion: Mapped[date | None] = mapped_column(Date, nullable=True)
     condiciones_facturacion: Mapped[str | None] = mapped_column(Text, nullable=True)
     fichero_origen: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Ruta relativa bajo UPLOADS_DIR. Null en filas anteriores a guardar el fichero.
+    ruta_almacen: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     estado_extraccion: Mapped[str] = mapped_column(String(50), nullable=False)
     # Sugerencia de la lectura: no confirma el enlace (eso es tarea_apartado_id).
     confianza: Mapped[int | None] = mapped_column(Integer, nullable=True)

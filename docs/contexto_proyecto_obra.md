@@ -20,17 +20,18 @@ Desarrollar una aplicación para el seguimiento de proyectos de explotaciones ga
 
 Detalle de pantallas y API: `docs/flujo_ui_proyecto.md` (acordado 15 sept. 2026).
 
-1. El usuario sube un presupuesto (PDF nativo, PDF escaneado o imagen).
-2. El sistema lo lee (texto directo u OCR si es escaneado) y detecta naves y partidas, respetando el nivel de desglose real (apartado o, si lo hay, partida con precio unitario).
-3. Se crea el proyecto; la pantalla del proyecto muestra la **lista de apartados**.
-4. Dentro del proyecto se suben los contratos de subcontrata; el sistema **sugiere** qué contrato va con cada apartado y una persona confirma el enlace (`CONTRATO.tarea_apartado_id`). El contrato puede aportar desglose más fino (por sala, con precio unitario) sin mezclar árboles.
+1. El usuario sube uno o varios presupuestos Excel de plantilla Expertis. Cada fichero es un apartado y trae el desglose de material y de montaje. Eso crea la obra.
+2. El PDF firmado con el cliente se sube después y solo contrasta el importe de cada apartado. Ese documento no trae las partidas de montaje que la subcontrata presupuesta y factura.
+3. La pantalla del proyecto muestra la **lista de apartados** del Excel, con las líneas de montaje marcadas (`es_montaje`).
+4. Dentro del proyecto se suben los contratos de subcontrata; el sistema **sugiere** qué contrato va con cada apartado y una persona confirma el enlace (`CONTRATO.tarea_apartado_id`). La comparación es contra la suma de montaje del apartado, no contra el total que incluye material. [VERIFICAR] si un contrato puede cubrir solo parte de esas líneas.
 5. Los usuarios suben facturas, o el sistema las lee de una carpeta compartida (por definir).
 6. El sistema casa cada factura con su contratista (por NIF) y, cuando el desglose lo permite, con su contrato o partida.
-7. Se actualiza el estado de las partidas y el control económico: presupuestado vs. contratado vs. facturado.
+7. Se actualiza el control económico: presupuestado (Excel), montaje, contrato cliente, contratado y facturado.
 
 ## 3. Contexto técnico cerrado
 
-- **Formatos de entrada (presupuestos):** no solo PDF nativo. **Muchos presupuestos llegan escaneados** (imagen JPG/PNG/TIFF, o PDF solo imagen sin texto seleccionable). También hay PDF nativos de plantilla EXAFAN y fixtures `.md` en pruebas. La ingesta debe aceptar ambos y pasar los escaneados por **OCR**.
+- **Formatos de entrada (presupuestos de origen):** Excel `.xlsx` / `.xlsm` de plantilla Expertis. Un fichero por sistema. La lectura es la rejilla `Cant.` / `Cod.` / `Descripción` / `Ref. (1)` / `Ref. (2)` / `Euros` / `Dto. %` / `TOTAL`. Las hojas `DATA` y `Traduce` no se leen. El PDF al cliente queda como contraste de importes, no como origen del desglose.
+- **Formatos de entrada (PDF al cliente y facturas):** PDF nativo, PDF escaneado o imagen. Los escaneados pasan por **OCR**.
 - **PDF nativo** (cuando lo es): lectura fiable en el texto impreso. Puede llevar correcciones **manuscritas** sobre el valor impreso; el manuscrito prevalece. Revisión humana también aquí.
 - **Escaneado / imagen:** OCR vía API cloud o visión LLM (**sin instalar Tesseract en el SO**) → baja fiabilidad → `es_escaneado = true` y revisión humana **obligatoria** sin excepción.
 - Las facturas vienen de terceros y pueden ser nativas o escaneadas: mismo patrón OCR + revisión.

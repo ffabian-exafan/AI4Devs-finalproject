@@ -26,10 +26,19 @@ class Presupuesto(Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     fichero_origen: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Ruta relativa bajo UPLOADS_DIR. Null en filas anteriores a guardar el fichero.
+    ruta_almacen: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     fecha: Mapped[date | None] = mapped_column(Date, nullable=True)
     estado_extraccion: Mapped[str] = mapped_column(String(50), nullable=False)
     # True si el origen fue imagen o PDF sin texto (pasó por OCR)
     es_escaneado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # excel_expertis | pdf_cliente. Las filas anteriores al Excel son pdf_cliente.
+    formato: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="pdf_cliente",
+        server_default="pdf_cliente",
+    )
 
     proyecto: Mapped[Proyecto] = relationship(back_populates="presupuestos")
     tareas: Mapped[list[Tarea]] = relationship(back_populates="presupuesto")

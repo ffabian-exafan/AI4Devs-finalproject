@@ -1,12 +1,14 @@
 :root {
-  --bg: #e8efe8;
-  --bg-accent: #d4e4d6;
-  --surface: #f7faf7;
-  --ink: #1a2e1c;
-  --muted: #5a6b5c;
-  --line: #b8c9ba;
-  --accent: #2f6b3a;
-  --accent-dark: #1e4a26;
+  /* #96A78D base, #B6CEB4 apoyo, #D9E9CF suave, #F0F0F0 fondo. */
+  --bg: #f0f0f0;
+  --bg-accent: #d9e9cf;
+  --surface: #ffffff;
+  --ink: #111111;
+  --muted: #666666;
+  --line: #b6ceb4;
+  --accent: #96a78d;
+  --accent-dark: #111111;
+  --on-accent: #243026;
   --warn-bg: #fff3cd;
   --warn-border: #e0a800;
   --manual-bg: #ffe8d6;
@@ -25,9 +27,7 @@ body {
   margin: 0;
   font-family: var(--font);
   color: var(--ink);
-  background:
-    radial-gradient(circle at 10% 0%, #cfe0d1 0%, transparent 45%),
-    linear-gradient(160deg, var(--bg), var(--bg-accent));
+  background: var(--bg);
   min-height: 100vh;
 }
 
@@ -77,8 +77,8 @@ a {
 }
 
 .aviso {
-  background: #eef4ff;
-  border-left: 4px solid #3b6ea5;
+  background: #d9e9cf;
+  border-left: 4px solid #96a78d;
   padding: 0.65rem 0.85rem;
   font-size: 0.88rem;
   color: var(--muted);
@@ -106,7 +106,7 @@ a {
 .lista-pendientes button:hover,
 .lista-pendientes button.activo {
   border-color: var(--accent);
-  background: #eef6ef;
+  background: #d9e9cf;
 }
 
 .meta {
@@ -154,7 +154,7 @@ table.arbol {
 
 table.arbol th {
   text-align: left;
-  background: #e3ece4;
+  background: #d9e9cf;
   padding: 0.45rem 0.5rem;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
@@ -162,7 +162,7 @@ table.arbol th {
 
 table.arbol td {
   padding: 0.35rem 0.45rem;
-  border-bottom: 1px solid #e5ebe5;
+  border-bottom: 1px solid #d9e9cf;
   vertical-align: top;
 }
 
@@ -205,7 +205,7 @@ td.nivel {
 }
 
 tr.fila-sub td {
-  background: #f6f7f4;
+  background: #f0f0f0;
 }
 
 .indent-1 {
@@ -228,7 +228,7 @@ tr.fila-sub td {
 
 button.primario {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   padding: 0.65rem 1.2rem;
   font: inherit;
@@ -237,7 +237,7 @@ button.primario {
 }
 
 button.primario:disabled {
-  background: #9aaa9c;
+  background: #b6ceb4;
   cursor: not-allowed;
 }
 
@@ -390,7 +390,7 @@ button.secundario {
 }
 
 .resultado-ok {
-  background: #eef6ef;
+  background: #d9e9cf;
   border: 1px solid var(--accent);
   padding: 0.75rem 0.9rem;
   margin-top: 1rem;
@@ -412,11 +412,11 @@ button.secundario {
 .tabla-simple td {
   text-align: left;
   padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid #e5ebe5;
+  border-bottom: 1px solid #d9e9cf;
 }
 
 .tabla-simple th {
-  background: #e3ece4;
+  background: #d9e9cf;
   border-bottom: 1px solid var(--line);
 }
 
@@ -427,9 +427,9 @@ button.secundario {
 }
 
 .badge-estimacion {
-  background: #eef4ff;
-  border: 1px solid #3b6ea5;
-  color: #234a75;
+  background: #d9e9cf;
+  border: 1px solid #96a78d;
+  color: #111111;
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -460,12 +460,12 @@ button.secundario {
 .tabla td {
   text-align: left;
   padding: 0.45rem 0.55rem;
-  border-bottom: 1px solid #e5ebe5;
+  border-bottom: 1px solid #d9e9cf;
   vertical-align: top;
 }
 
 .tabla th {
-  background: #e3ece4;
+  background: #d9e9cf;
   border-bottom: 1px solid var(--line);
 }
 
@@ -486,7 +486,7 @@ button.secundario {
 }
 
 .enlace-ok {
-  background: #eef6ef;
+  background: #d9e9cf;
   border: 1px solid var(--accent);
   padding: 0.4rem 0.55rem;
   font-size: 0.88rem;
@@ -514,7 +514,7 @@ button.secundario {
   align-items: center;
   border: 1px solid var(--line);
   padding: 0.45rem 0.55rem;
-  background: #fafcfa;
+  background: #f0f0f0;
 }
 
 .sugerencias label {
@@ -544,7 +544,7 @@ button.secundario:disabled {
 }
 
 .badge-sin-contrato {
-  background: #f1f2f1;
+  background: #f0f0f0;
   border-color: var(--line);
   color: var(--muted);
 }
@@ -571,7 +571,7 @@ button.secundario:disabled {
 .progreso {
   height: 0.42rem;
   overflow: hidden;
-  background: #dfe7e0;
+  background: #d9e9cf;
   margin: 0.3rem 0;
 }
 

@@ -5,17 +5,25 @@ from decimal import Decimal
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Contrato, Factura, Nave, Proyecto, Tarea
+from app.models import Contrato, Factura, Nave, Presupuesto, Proyecto, Tarea
 from app.schemas.proyecto import (
     ApartadoResumenOut,
     ContratoApartadoOut,
     ContratoResumenOut,
+    DocumentoProyectoOut,
     NaveResumenOut,
     ProyectoDetalleOut,
     ProyectoRead,
 )
+from app.services import almacen as almacen_svc
 from app.services import casado as casado_svc
 from app.services.jerarquia import asegurar_apartados_padre, mapa_padres
+from app.services.presupuesto_excel import (
+    contraste_guardado,
+    devolver_elementos_de_montaje,
+    rellenar_origen_montaje,
+    repartir_montaje_por_subapartado,
+)
 
 
 def listar_proyectos(db: Session) -> list[ProyectoRead]:
@@ -108,6 +116,15 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             .all()
         )
         asegurar_apartados_padre(db, tareas_presupuesto)
+        presupuestos = (
+            db.query(Presupuesto)
+            .filter(Presupuesto.proyecto_id == proyecto_id, Presupuesto.formato == "excel_expertis")
+            .all()
+        )
+        for presupuesto in presupuestos:
+            rellenar_origen_montaje(db, presupuesto)
+            devolver_elementos_de_montaje(db, presupuesto.id)
+            repartir_montaje_por_subapartado(db, presupuesto.id)
 
     contratos_db = (
         db.query(Contrato)
@@ -177,12 +194,26 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         nivel = ap.nivel
         if padres.get(ap.id) is not None and nivel == "apartado":
             nivel = "subapartado"
+        hijos = [
+            resumen_apartado(hijo, con_contratos=False)
+            for hijo in hijos_por_id.get(ap.id, [])
+        ]
+        montaje_hijos = sum((hijo.importe_montaje for hijo in hijos), Decimal("0"))
+        montaje_propio = ap.importe_presupuestado if ap.es_montaje else Decimal("0")
         return ApartadoResumenOut(
             id=ap.id,
             codigo=ap.codigo,
             descripcion=ap.descripcion,
             nivel=nivel,
             importe_presupuestado=ap.importe_presupuestado,
+            unidad=ap.unidad,
+            cantidad=ap.cantidad,
+            precio_unitario=ap.precio_unitario,
+            descuento_pct=ap.descuento_pct,
+            es_montaje=bool(ap.es_montaje),
+            importe_montaje=montaje_hijos if hijos else montaje_propio,
+            capitulo=ap.capitulo,
+            importe_contrato_cliente=ap.importe_contrato_cliente,
             nave_id=ap.nave_id,
             nave_codigo=nave_por_id[ap.nave_id].codigo
             if ap.nave_id in nave_por_id
@@ -194,10 +225,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
                 else None
             ),
             contratos=contratos_por_apartado.get(ap.id, []) if con_contratos else [],
-            subapartados=[
-                resumen_apartado(hijo, con_contratos=False)
-                for hijo in hijos_por_id.get(ap.id, [])
-            ],
+            subapartados=hijos,
         )
 
     apartados_out = [resumen_apartado(ap, con_contratos=True) for ap in raices]
@@ -224,9 +252,26 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
                 tarea_apartado_id=c.tarea_apartado_id,
                 apartado_codigo=apartado_codigo,
                 apartado_descripcion=apartado_descripcion,
+                fichero_origen=c.fichero_origen,
+                tiene_fichero=bool(c.ruta_almacen),
                 sugerencias=sugerencias,
             )
         )
+
+    documentos = [
+        DocumentoProyectoOut(
+            id=doc.id,
+            fichero_origen=doc.fichero_origen,
+            formato=doc.formato,
+            tiene_fichero=bool(doc.ruta_almacen),
+        )
+        for doc in (
+            db.query(Presupuesto)
+            .filter(Presupuesto.proyecto_id == proyecto_id)
+            .order_by(Presupuesto.id)
+            .all()
+        )
+    ]
 
     return ProyectoDetalleOut(
         id=proyecto.id,
@@ -240,6 +285,8 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         naves=[NaveResumenOut.model_validate(n) for n in naves],
         apartados=apartados_out,
         contratos=contratos_out,
+        documentos=documentos,
+        contraste_cliente=contraste_guardado(db, proyecto_id),
     )
 
 
@@ -301,6 +348,36 @@ def borrar_proyecto(db: Session, proyecto_id: int) -> None:
     db.execute(
         text(
             """
+            DELETE FROM linea_pdf_cliente_tarea
+            WHERE linea_id IN (
+                SELECT linea_pdf_cliente.id
+                FROM linea_pdf_cliente
+                JOIN presupuesto ON presupuesto.id = linea_pdf_cliente.presupuesto_id
+                WHERE presupuesto.proyecto_id = :id
+            )
+            OR tarea_id IN (
+                SELECT tarea.id FROM tarea
+                JOIN nave ON nave.id = tarea.nave_id
+                WHERE nave.proyecto_id = :id
+            )
+            """
+        ),
+        params,
+    )
+    db.execute(
+        text(
+            """
+            DELETE FROM linea_pdf_cliente
+            WHERE presupuesto_id IN (
+                SELECT id FROM presupuesto WHERE proyecto_id = :id
+            )
+            """
+        ),
+        params,
+    )
+    db.execute(
+        text(
+            """
             UPDATE tarea
             SET tarea_padre_id = NULL, contrato_id = NULL
             WHERE nave_id IN (SELECT id FROM nave WHERE proyecto_id = :id)
@@ -322,3 +399,4 @@ def borrar_proyecto(db: Session, proyecto_id: int) -> None:
     db.execute(text("DELETE FROM nave WHERE proyecto_id = :id"), params)
     db.delete(proyecto)
     db.commit()
+    almacen_svc.borrar_proyecto(proyecto_id)

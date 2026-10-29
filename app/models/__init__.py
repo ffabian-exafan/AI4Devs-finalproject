@@ -4,6 +4,7 @@ from app.models.asignacion import Asignacion
 from app.models.contratista import Contratista
 from app.models.contrato import Contrato
 from app.models.factura import Factura, LineaFactura
+from app.models.linea_pdf_cliente import LineaPdfCliente, LineaPdfClienteTarea
 from app.models.nave import Nave
 from app.models.presupuesto import Presupuesto
 from app.models.proyecto import Proyecto
@@ -16,6 +17,8 @@ __all__ = [
     "Contrato",
     "Factura",
     "LineaFactura",
+    "LineaPdfCliente",
+    "LineaPdfClienteTarea",
     "Nave",
     "Presupuesto",
     "Proyecto",

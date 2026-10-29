@@ -20,6 +20,7 @@ from app.schemas.factura import (
     FacturaResumenOut,
     LineaFacturaCreate,
 )
+from app.services import almacen as almacen_svc
 from app.services import ocr
 
 _NIF_RE = re.compile(r"\b(?:[A-Z]\d{7}[A-Z0-9]|\d{8}[A-Z])\b", re.IGNORECASE)
@@ -34,6 +35,11 @@ def importar_factura(
     proyecto = db.get(Proyecto, proyecto_id)
     if proyecto is None:
         raise ValueError(f"Proyecto {proyecto_id} no encontrado")
+    rutas = [
+        fila.ruta_almacen
+        for fila in db.query(Factura).filter(Factura.proyecto_id == proyecto.id).all()
+    ]
+    almacen_svc.exigir_distinto(contenido, nombre_fichero, rutas)
 
     texto, es_escaneada = _extraer_texto(contenido, nombre_fichero)
     datos = _parsear_factura(texto)
@@ -69,6 +75,13 @@ def importar_factura(
     )
     db.add(factura)
     db.flush()
+    factura.ruta_almacen = almacen_svc.guardar(
+        proyecto_id,
+        "factura",
+        factura.id,
+        nombre_fichero,
+        contenido,
+    )
     for linea in datos["lineas"]:
         db.add(
             LineaFactura(
@@ -123,7 +136,6 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
         iva=factura.iva,
         irpf=factura.irpf,
         retencion_garantia=factura.retencion_garantia,
-        fichero_origen=factura.fichero_origen,
         lineas=sorted(factura.lineas, key=lambda linea: linea.id),
         contratos_candidatos=[
             ContratoCandidatoFacturaOut(
@@ -226,6 +238,8 @@ def _a_resumen(factura: Factura) -> FacturaResumenOut:
         tipo=factura.tipo,
         es_escaneada=factura.es_escaneada,
         estado_revision=factura.estado_revision,
+        tiene_fichero=bool(factura.ruta_almacen),
+        fichero_origen=factura.fichero_origen,
     )
 
 

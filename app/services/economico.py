@@ -10,10 +10,12 @@ from sqlalchemy.orm import Session
 from app.models import Asignacion, Contratista, Contrato, Factura, Nave, Proyecto, Tarea
 from app.schemas.control_economico import (
     ControlEconomicoOut,
+    DesvioApartadoOut,
     DesvioContratistaOut,
     DesvioContratoOut,
     DesvioNaveOut,
 )
+from app.services.jerarquia import mapa_padres
 
 
 def control_economico(db: Session, proyecto_id: int) -> ControlEconomicoOut:
@@ -25,6 +27,7 @@ def control_economico(db: Session, proyecto_id: int) -> ControlEconomicoOut:
         por_contratista=_por_contratista(db, proyecto_id),
         por_contrato=_por_contrato(db, proyecto_id),
         por_nave=_por_nave(db, proyecto_id),
+        por_apartado=_por_apartado(db, proyecto_id),
     )
 
 
@@ -133,6 +136,96 @@ def _por_contrato(db: Session, proyecto_id: int) -> list[DesvioContratoOut]:
             )
         )
     return resultado
+
+
+def _por_apartado(db: Session, proyecto_id: int) -> list[DesvioApartadoOut]:
+    """Presupuestado Excel, montaje, contrato cliente, contratado y facturado."""
+    nave_ids = [
+        nave_id
+        for (nave_id,) in db.query(Nave.id).filter(Nave.proyecto_id == proyecto_id).all()
+    ]
+    if not nave_ids:
+        return []
+    tareas = (
+        db.query(Tarea)
+        .filter(Tarea.nave_id.in_(nave_ids), Tarea.presupuesto_id.isnot(None))
+        .all()
+    )
+    padres = mapa_padres(tareas)
+    hijos: dict[int, list[Tarea]] = {}
+    for tarea in tareas:
+        padre_id = padres.get(tarea.id)
+        if padre_id is not None:
+            hijos.setdefault(padre_id, []).append(tarea)
+
+    contratos = (
+        db.query(Contrato)
+        .filter(Contrato.proyecto_id == proyecto_id, Contrato.tarea_apartado_id.isnot(None))
+        .all()
+    )
+    facturado_por_contrato = {
+        contrato_id: Decimal(total)
+        for contrato_id, total in (
+            db.query(Factura.contrato_id, func.coalesce(func.sum(Factura.total), 0))
+            .filter(
+                Factura.proyecto_id == proyecto_id,
+                Factura.contrato_id.isnot(None),
+                Factura.estado_revision == "confirmada",
+            )
+            .group_by(Factura.contrato_id)
+            .all()
+        )
+    }
+
+    def montaje_de(tarea_id: int) -> Decimal:
+        total = Decimal("0")
+        pila = list(hijos.get(tarea_id, []))
+        while pila:
+            nodo = pila.pop()
+            if nodo.es_montaje:
+                total += Decimal(nodo.importe_presupuestado)
+            pila.extend(hijos.get(nodo.id, []))
+        return total
+
+    def cliente_de(tarea: Tarea) -> Decimal | None:
+        if tarea.importe_contrato_cliente is not None:
+            return Decimal(tarea.importe_contrato_cliente)
+        total = Decimal("0")
+        hay = False
+        pila = list(hijos.get(tarea.id, []))
+        while pila:
+            nodo = pila.pop()
+            if nodo.importe_contrato_cliente is not None:
+                total += Decimal(nodo.importe_contrato_cliente)
+                hay = True
+                continue
+            pila.extend(hijos.get(nodo.id, []))
+        return total if hay else None
+
+    salida: list[DesvioApartadoOut] = []
+    for tarea in tareas:
+        if padres.get(tarea.id) is not None or tarea.codigo.startswith("descuento."):
+            continue
+        enlazados = [c for c in contratos if c.tarea_apartado_id == tarea.id]
+        contratado = sum((Decimal(c.precio_total) for c in enlazados), Decimal("0"))
+        facturado = sum(
+            (facturado_por_contrato.get(c.id, Decimal("0")) for c in enlazados),
+            Decimal("0"),
+        )
+        salida.append(
+            DesvioApartadoOut(
+                tarea_id=tarea.id,
+                codigo=tarea.codigo,
+                descripcion=tarea.descripcion,
+                presupuestado=Decimal(tarea.importe_presupuestado),
+                montaje=montaje_de(tarea.id),
+                contrato_cliente=cliente_de(tarea),
+                contratado=contratado,
+                facturado=facturado,
+            )
+        )
+    salida.sort(key=lambda fila: fila.codigo)
+    return salida
 
 
 def _por_nave(db: Session, proyecto_id: int) -> list[DesvioNaveOut]:

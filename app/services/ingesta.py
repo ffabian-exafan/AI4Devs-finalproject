@@ -15,10 +15,11 @@ from app.models import Contratista, Contrato, Nave, Presupuesto, Proyecto, Tarea
 from app.schemas.contrato import ImportarContratoOut
 from app.schemas.extraccion import ContratoExtraido, NodoTareaExtraido, PresupuestoExtraido
 from app.schemas.presupuesto import ImportarPresupuestoOut
+from app.config import get_settings
+from app.services import almacen as almacen_svc
 from app.services import casado as casado_svc
 from app.services import extraccion as extraccion_svc
 from app.services import extraccion_contrato as extraccion_contrato_svc
-from app.config import get_settings
 from app.services import llm as llm_svc
 from app.services import ocr as ocr_svc
 from app.services.transcripcion import (
@@ -105,6 +106,7 @@ def importar_presupuesto(
         db,
         extraido,
         nombre_fichero,
+        contenido,
         es_escaneado=leido.es_escaneado,
     )
 
@@ -113,6 +115,7 @@ def persistir_presupuesto(
     db: Session,
     extraido: PresupuestoExtraido,
     nombre_fichero: str,
+    contenido: bytes,
     *,
     es_escaneado: bool = False,
 ) -> ImportarPresupuestoOut:
@@ -135,9 +138,17 @@ def persistir_presupuesto(
         fecha=fecha,
         estado_extraccion="pendiente_revision" if requiere else "extraido",
         es_escaneado=es_escaneado,
+        formato="pdf_cliente",
     )
     db.add(presupuesto)
     db.flush()
+    presupuesto.ruta_almacen = almacen_svc.guardar(
+        proyecto.id,
+        "presupuesto",
+        presupuesto.id,
+        nombre_fichero,
+        contenido,
+    )
 
     partidas = 0
     anotaciones = 0
@@ -299,6 +310,13 @@ def importar_contrato(
     proyecto = db.get(Proyecto, proyecto_id)
     if proyecto is None:
         raise ValueError(f"Proyecto {proyecto_id} no encontrado")
+    rutas = [
+        fila.ruta_almacen
+        for fila in db.query(Contrato)
+        .filter(Contrato.proyecto_id == proyecto.id)
+        .all()
+    ]
+    almacen_svc.exigir_distinto(contenido, nombre_fichero, rutas)
 
     leido = leer_contrato(contenido, nombre_fichero)
     apartados = [
@@ -309,7 +327,9 @@ def importar_contrato(
     extraido = extraccion_contrato_svc.extraer_contrato(leido.texto, apartados)
     if leido.es_escaneado:
         extraido = extraido.model_copy(update={"requiere_revision": True})
-    return persistir_contrato(db, proyecto, extraido, nombre_fichero, nave_id)
+    return persistir_contrato(
+        db, proyecto, extraido, nombre_fichero, contenido, nave_id
+    )
 
 
 def _es_gestion(descripcion: str) -> bool:
@@ -322,6 +342,7 @@ def persistir_contrato(
     proyecto: Proyecto,
     extraido: ContratoExtraido,
     nombre_fichero: str,
+    contenido: bytes,
     nave_id: int | None = None,
 ) -> ImportarContratoOut:
     nave = _resolver_nave(db, proyecto, nave_id)
@@ -343,6 +364,13 @@ def persistir_contrato(
     )
     db.add(contrato)
     db.flush()
+    contrato.ruta_almacen = almacen_svc.guardar(
+        proyecto.id,
+        "contrato",
+        contrato.id,
+        nombre_fichero,
+        contenido,
+    )
     _guardar_sugerencia_modelo(contrato, extraido)
 
     for nodo in extraido.arbol_tareas:

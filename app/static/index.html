@@ -1,124 +1,122 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Gestión de obras</title>
-    <link rel="stylesheet" href="/css/exafan.css" />
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
-    <script src="/js/api.js"></script>
-    <script src="/js/obras.js"></script>
-  </head>
-  <body>
-    <div class="shell" x-data="gestionObras()" x-init="init()" x-cloak>
-      <aside class="sidebar">
-        <div class="logo">exafan</div>
-        <nav class="nav">
-          <button type="button" :class="navActivo('obras') && 'activo'" @click="ir('obras')">
-            <span>Obras</span>
-          </button>
-          <button type="button" :class="navActivo('facturas') && 'activo'" @click="ir('facturas')">
-            <span>Bandeja de facturas</span>
-            <span class="cuenta" x-show="navIncidencias" x-text="navIncidencias"></span>
-          </button>
-        </nav>
-      </aside>
 
-      <main class="main">
-        <input
-          class="oculto"
-          type="file"
-          x-ref="ficheroPresupuesto"
-          accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
-          @change="elegirPresupuesto($event)"
-        />
-        <input
-          class="oculto"
-          type="file"
-          x-ref="ficheroContrato"
-          accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
-          @change="elegirContrato($event)"
-        />
-        <input
-          class="oculto"
-          type="file"
-          x-ref="ficheroFactura"
-          accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
-          @change="elegirFactura($event)"
-        />
-        <p class="estado-msg" x-show="error" x-text="error"></p>
-        <p class="sub" x-show="cargando && screen === 'obras'">Cargando obras…</p>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Obrix</title>
+  <link rel="icon" type="image/png" href="/assets/obrix-icon.png" />
+  <link rel="stylesheet" href="/css/exafan.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/obras.js"></script>
+</head>
 
-        <template x-if="!cargando && screen === 'obras'">
-          <div class="stack">
-            <div class="fila-titulo">
-              <div>
-                <h1 class="h1 h1-lista">Obras</h1>
-                <p class="sub" x-text="resumenObras"></p>
-              </div>
-              <button type="button" class="btn btn-primary btn-md" @click="nuevaObra()">+ Nueva obra</button>
+<body>
+  <div class="shell" :class="{ 'menu-compacto': menuCompacto }" x-data="gestionObras()" x-init="init()" x-cloak>
+    <aside class="sidebar">
+      <a class="brand" href="/" @click.prevent="ir('obras')" :title="menuCompacto ? 'Obrix' : null">
+        <img class="brand-logo" src="/assets/obrix-logo.png" alt="Obrix" width="180" height="48" />
+        <img class="brand-icon" src="/assets/obrix-icon.png" alt="Obrix" width="40" height="40" />
+      </a>
+      <nav class="nav">
+        <button type="button" :class="navActivo('obras') && 'activo'" @click="ir('obras')" title="Obras">
+          <span class="nav-marca" aria-hidden="true">O</span>
+          <span class="nav-etiqueta">Obras</span>
+        </button>
+        <button type="button" :class="navActivo('facturas') && 'activo'" @click="ir('facturas')"
+          title="Bandeja de facturas">
+          <span class="nav-marca" aria-hidden="true">F</span>
+          <span class="nav-etiqueta">Bandeja de facturas</span>
+          <span class="cuenta" x-show="navIncidencias && !menuCompacto" x-text="navIncidencias"></span>
+        </button>
+      </nav>
+      <button type="button" class="menu-toggle" @click="toggleMenu()"
+        :title="menuCompacto ? 'Expandir menú' : 'Compactar menú'" :aria-expanded="(!menuCompacto).toString()"
+        :aria-label="menuCompacto ? 'Expandir menú' : 'Compactar menú'" x-text="menuCompacto ? '›' : '‹'"></button>
+    </aside>
+
+    <main class="main">
+      <input class="oculto" type="file" x-ref="ficheroExcel" multiple
+        accept=".xlsx,.xlsm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        @change="elegirExcel($event)" />
+      <input class="oculto" type="file" x-ref="ficheroPresupuesto"
+        accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
+        @change="elegirContratoCliente($event)" />
+      <input class="oculto" type="file" x-ref="ficheroContrato"
+        accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
+        @change="elegirContrato($event)" />
+      <input class="oculto" type="file" x-ref="ficheroFactura"
+        accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
+        @change="elegirFactura($event)" />
+      <p class="estado-msg" x-show="error" x-text="error"></p>
+      <p class="sub" x-show="cargando && screen === 'obras'">Cargando obras…</p>
+
+      <template x-if="!cargando && screen === 'obras'">
+        <div class="stack">
+          <div class="fila-titulo">
+            <div>
+              <h1 class="h1 h1-lista">Obras</h1>
+              <p class="sub" x-text="resumenObras"></p>
             </div>
-            <div class="card scroll">
-              <div class="tabla-obras">
-                <div class="cabecera cols-obras">
-                  <span>Obra</span><span>Presupuesto</span><span>Facturado</span><span>Fase</span><span>Estado</span>
-                </div>
-                <template x-if="proyectos.length === 0">
-                  <p class="sub" style="padding: 16px">Todavía no hay obras. Sube un presupuesto para crear la primera.</p>
-                </template>
-                <template x-for="obra in proyectos" :key="obra.id">
-                  <div class="fila-obra cols-obras" role="button" tabindex="0" @click="abrirObra(obra)">
-                    <div class="obra-nombre">
-                      <div>
-                        <strong x-text="obra.nombre"></strong><br />
-                        <span class="meta" x-text="'#' + obra.id + ' · ' + obra.tipo"></span>
-                      </div>
-                    </div>
-                    <span class="num" x-text="euro(obra.presupuestado)"></span>
+            <button type="button" class="btn btn-primary btn-md" @click="nuevaObra()">+ Nueva obra</button>
+          </div>
+          <div class="card scroll">
+            <div class="tabla-obras">
+              <div class="cabecera cols-obras">
+                <span>Obra</span><span>Presupuesto</span><span>Facturado</span><span>Fase</span><span>Estado</span>
+              </div>
+              <template x-if="proyectos.length === 0">
+                <p class="sub" style="padding: 16px">Todavía no hay obras. Sube los presupuestos Excel para crear la
+                  primera.</p>
+              </template>
+              <template x-for="obra in proyectos" :key="obra.id">
+                <div class="fila-obra cols-obras" role="button" tabindex="0" @click="abrirObra(obra)">
+                  <div class="obra-nombre">
                     <div>
-                      <span class="num" x-text="euro(obra.facturado) + ' · ' + porcentajeObra(obra)"></span>
-                      <div class="barra-mini"><span :style="'width:' + porcentajeObra(obra)"></span></div>
-                    </div>
-                    <span class="meta" x-text="obra.tipo"></span>
-                    <div class="obra-acciones">
-                      <span class="badge" :class="'badge-' + tonoEstado(obra.estado)" x-text="etiquetaEstado(obra.estado)"></span>
-                      <button type="button" class="btn btn-secondary btn-sm" @click.stop="borrarObra(obra)">Borrar</button>
+                      <strong x-text="obra.nombre"></strong><br />
+                      <span class="meta" x-text="'#' + obra.id + ' · ' + obra.tipo"></span>
                     </div>
                   </div>
-                </template>
-              </div>
+                  <span class="num" x-text="euro(obra.presupuestado)"></span>
+                  <div>
+                    <span class="num" x-text="euro(obra.facturado) + ' · ' + porcentajeObra(obra)"></span>
+                    <div class="barra-mini"><span :style="'width:' + porcentajeObra(obra)"></span></div>
+                  </div>
+                  <span class="meta" x-text="obra.tipo"></span>
+                  <div class="obra-acciones">
+                    <span class="badge" :class="'badge-' + tonoEstado(obra.estado)"
+                      x-text="etiquetaEstado(obra.estado)"></span>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                      @click.stop="borrarObra(obra)">Borrar</button>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
-        </template>
+        </div>
+      </template>
 
-        <template x-if="screen !== 'obras'">
-          <div class="stack">
-            <div class="fila-titulo">
-              <div>
-                <div class="crumbs">
-                  <a href="#" @click.prevent="ir('obras')">Obras</a>
-                  <span>/</span>
-                  <span x-text="miga"></span>
-                </div>
-                <h1 class="h1 h1-obra" x-text="tituloObra"></h1>
-                <p class="sub" x-text="subtituloObra"></p>
+      <template x-if="screen !== 'obras'">
+        <div class="stack">
+          <div class="fila-titulo">
+            <div>
+              <div class="crumbs">
+                <a href="#" @click.prevent="ir('obras')">Obras</a>
+                <span>/</span>
+                <span x-text="miga"></span>
               </div>
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                x-show="proyecto"
-                @click="borrarObra(proyecto)"
-              >Borrar obra</button>
+              <h1 class="h1 h1-obra" x-text="tituloObra"></h1>
+              <p class="sub" x-text="subtituloObra"></p>
             </div>
-            <template x-if="vista && vista.pasos && vista.pasos.length">
+            <button type="button" class="btn btn-secondary btn-sm" x-show="proyecto"
+              @click="borrarObra(proyecto)">Borrar obra</button>
+          </div>
+          <template x-if="vista && vista.pasos && vista.pasos.length">
             <div class="pasos">
               <template x-for="(paso, i) in vista.pasos" :key="paso.id">
-                <button
-                  type="button"
-                  class="paso"
-                  :class="{ activo: screen === paso.id, hecho: paso.completo }"
-                  @click="ir(paso.id)"
-                >
+                <button type="button" class="paso" :class="{ activo: screen === paso.id, hecho: paso.completo }"
+                  @click="ir(paso.id)">
                   <span class="punto" x-text="paso.completo ? '✓' : (i + 1)"></span>
                   <span class="paso-texto">
                     <span x-text="paso.etiqueta"></span>
@@ -127,148 +125,166 @@
                 </button>
               </template>
             </div>
-            </template>
-          </div>
-        </template>
+          </template>
+        </div>
+      </template>
 
-        <template x-if="screen === 'presupuesto' && up === 'empty'">
-          <div
-            class="dropzone"
-            role="button"
-            tabindex="0"
-            :class="sobreDrop && 'sobre'"
-            @click="$refs.ficheroPresupuesto.click()"
-            @dragover.prevent="sobreDrop = true"
-            @dragleave="sobreDrop = false"
-            @drop.prevent="soltarPresupuesto($event)"
-          >
+      <template x-if="screen === 'presupuestos' && up === 'empty'">
+        <div class="stack">
+          <label class="stack" style="gap: 6px; max-width: 420px">
+            <span style="font-weight: 600">Nombre de la obra</span>
+            <input class="campo" type="text" x-model="nombreObra" placeholder="Nombre de la obra" />
+          </label>
+          <div class="dropzone" role="button" tabindex="0" :class="sobreDrop && 'sobre'"
+            @click="$refs.ficheroExcel.click()" @dragover.prevent="sobreDrop = true" @dragleave="sobreDrop = false"
+            @drop.prevent="soltarExcel($event)">
             <div class="drop-icon">↑</div>
-            <strong style="font-size: 18px; color: #6e2094">Sube el presupuesto firmado con el cliente</strong>
+            <strong style="font-size: 18px; color: var(--p800)">Sube los presupuestos Excel</strong>
             <span class="sub" style="max-width: 460px; line-height: 1.5">
-              PDF nativo, PDF escaneado o imagen (JPG, PNG, TIFF). Sonnet transcribe el PDF a markdown y Haiku extrae los apartados de ese texto. No queda confirmado hasta que los revises.
+              Uno o varios .xlsx o .xlsm de Expertis. Cada fichero es un apartado, con material y líneas de montaje.
+              Queda pendiente de revisión.
             </span>
-            <span style="color: #882cb1; font-weight: 600">Arrastra el fichero o haz clic para elegirlo</span>
+            <span style="color: var(--p800); font-weight: 600">Arrastra los ficheros o haz clic para elegirlos</span>
           </div>
-        </template>
+        </div>
+      </template>
 
-        <template x-if="screen === 'presupuesto' && up === 'reading'">
-          <div class="leyendo">
-            <div class="preview-scan">
-              <template x-for="(ancho, i) in lineasDoc" :key="i">
-                <div class="fake-line" :style="'width:' + ancho"></div>
-              </template>
-              <div class="scan"></div>
+      <template x-if="(screen === 'presupuestos' || screen === 'presupuesto') && up === 'reading'">
+        <div class="leyendo">
+          <div class="preview-scan">
+            <template x-for="(ancho, i) in lineasDoc" :key="i">
+              <div class="fake-line" :style="'width:' + ancho"></div>
+            </template>
+            <div class="scan"></div>
+          </div>
+          <div class="stack" style="justify-content: center">
+            <strong style="font-size: 18px; color: var(--p800)"
+              x-text="screen === 'presupuestos' ? 'Leyendo presupuestos…' : 'Leyendo contrato del cliente…'"></strong>
+            <span class="sub" x-text="ficheroNombre"></span>
+            <div class="stack" style="gap: 8px">
+              <span x-show="screen === 'presupuestos'">Se lee la rejilla del Excel: partidas, totales y líneas de
+                montaje.</span>
+              <span x-show="screen === 'presupuesto'">Se contrasta el importe de cada apartado del PDF con el Excel. No
+                se crean partidas nuevas.</span>
             </div>
-            <div class="stack" style="justify-content: center">
-              <strong style="font-size: 18px; color: #6e2094">Leyendo presupuesto…</strong>
-              <span class="sub" x-text="ficheroNombre"></span>
-              <div class="stack" style="gap: 8px">
-                <span>Sonnet transcribe el PDF a markdown.</span>
-                <span class="apagado">Haiku extrae los apartados de ese markdown. Si no hay precio unitario, no se inventa.</span>
-              </div>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="lectura && screen === 'presupuestos' && up === 'confirmado'">
+        <div class="card" style="padding: 28px">
+          <h2 class="h2">Presupuesto confirmado</h2>
+          <p class="sub" x-text="lectura.nombre + ' · ' + lectura.fichero"></p>
+          <p>La lectura ya está revisada. El proyecto deja de estar pendiente de esta confirmación.</p>
+          <button type="button" class="btn btn-primary btn-md" @click="abrirProyectoLeido()">Abrir el proyecto</button>
+        </div>
+      </template>
+
+      <template x-if="screen === 'presupuestos' && up === 'done' && panelPresupuesto">
+        <div class="revision">
+          <aside class="panel-doc">
+            <div class="panel-doc-cab">
+              <strong>Revisión del presupuesto</strong>
+              <span class="meta" x-text="panelPresupuesto.metaFichero"></span>
             </div>
-          </div>
-        </template>
-
-        <template x-if="lectura && screen === 'presupuesto' && up === 'confirmado'">
-          <div class="card" style="padding: 28px">
-            <h2 class="h2">Presupuesto confirmado</h2>
-            <p class="sub" x-text="lectura.nombre + ' · ' + lectura.fichero"></p>
-            <p>La lectura ya está revisada. El proyecto deja de estar pendiente de esta confirmación.</p>
-            <button type="button" class="btn btn-primary btn-md" @click="abrirProyectoLeido()">Abrir el proyecto</button>
-          </div>
-        </template>
-
-        <template x-if="screen === 'presupuesto' && up === 'done' && panelPresupuesto">
-          <div class="revision">
-            <aside class="panel-doc">
-              <div class="preview-pdf" x-text="lectura && lectura.esEscaneado ? 'OCR' : 'Documento'"></div>
+            <div class="cifras">
               <div>
-                <strong x-text="panelPresupuesto.fichero"></strong><br />
-                <span class="meta" x-text="panelPresupuesto.metaFichero"></span>
+                <strong x-text="panelPresupuesto.revisados"></strong><br />
+                <span class="meta">Apartados revisados</span>
               </div>
-              <div class="cifras">
-                <div>
-                  <strong x-text="panelPresupuesto.revisados"></strong><br />
-                  <span class="meta">Apartados revisados</span>
-                </div>
-                <div>
-                  <strong x-text="panelPresupuesto.n_partidas"></strong><br />
-                  <span class="meta">Filas leídas</span>
-                </div>
+              <div>
+                <strong x-text="panelPresupuesto.n_partidas"></strong><br />
+                <span class="meta">Filas leídas</span>
               </div>
-              <div class="barra-mini"><span :style="'width:' + panelPresupuesto.revisados_pct"></span></div>
-              <div class="aviso-ambar" x-text="panelPresupuesto.aviso"></div>
-              <div style="display: flex; justify-content: space-between">
-                <span class="sub">Total leído</span>
-                <strong x-text="panelPresupuesto.total"></strong>
+            </div>
+            <div class="barra-mini"><span :style="'width:' + panelPresupuesto.revisados_pct"></span></div>
+            <div class="aviso-ambar" x-text="panelPresupuesto.aviso"></div>
+            <div style="display: flex; justify-content: space-between">
+              <span class="sub">Total leído</span>
+              <strong x-text="panelPresupuesto.total"></strong>
+            </div>
+            <template x-if="panelPresupuesto.documentos && panelPresupuesto.documentos.length">
+              <div class="docs-obra">
+                <span class="meta">Documentos guardados</span>
+                <template x-for="doc in panelPresupuesto.documentos" :key="'doc-' + doc.id">
+                  <a class="btn-texto" :href="doc.url" :title="doc.nombre"
+                    x-text="doc.formato + ' · ' + doc.nombre"></a>
+                </template>
               </div>
-              <button
-                type="button"
-                class="btn btn-primary btn-md"
-                :disabled="panelPresupuesto.falta_revisar"
-                @click="confirmarPresupuesto()"
-                x-text="panelPresupuesto.etiquetaBoton"
-              ></button>
-              <span class="meta" style="text-align: center" x-text="panelPresupuesto.ayudaBoton"></span>
-            </aside>
-            <div class="lista-aps">
-              <div class="fila-titulo">
-                <h2 class="h2">Apartados detectados</h2>
+            </template>
+            <button type="button" class="btn btn-primary btn-md" :disabled="panelPresupuesto.falta_revisar"
+              @click="confirmarPresupuesto()" x-text="panelPresupuesto.etiquetaBoton"></button>
+            <span class="meta" style="text-align: center" x-text="panelPresupuesto.ayudaBoton"></span>
+          </aside>
+          <div class="lista-aps">
+            <div class="fila-titulo">
+              <h2 class="h2">Apartados detectados</h2>
+              <div style="display: flex; gap: 8px">
+                <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroExcel.click()">Añadir
+                  Excel</button>
                 <button type="button" class="btn btn-secondary btn-sm" @click="nuevaLinea()">Añadir línea</button>
               </div>
-              <p class="meta">Abre cada apartado y comprueba sus subapartados. Puedes corregir o borrar lo detectado.</p>
-              <template x-if="lineaForm">
-                <form class="linea-form" @submit.prevent="guardarLinea()">
-                  <label>Código
-                    <input x-model="lineaForm.codigo" maxlength="50" required />
-                  </label>
-                  <label>Descripción
-                    <input x-model="lineaForm.descripcion" required />
-                  </label>
-                  <label>Importe
-                    <input x-model="lineaForm.importe" inputmode="decimal" required />
-                  </label>
-                  <div class="linea-botones">
-                    <button type="submit" class="btn btn-primary btn-sm" :disabled="guardandoLinea" x-text="lineaForm.id ? 'Guardar' : 'Añadir'"></button>
-                    <button type="button" class="btn btn-secondary btn-sm" @click="lineaForm = null">Cancelar</button>
+            </div>
+            <p class="meta">Abre cada apartado y comprueba sus subapartados. Puedes corregir o borrar lo detectado.</p>
+            <template x-if="lineaForm">
+              <form class="linea-form" @submit.prevent="guardarLinea()">
+                <label>Código
+                  <input x-model="lineaForm.codigo" maxlength="50" required />
+                </label>
+                <label>Descripción
+                  <input x-model="lineaForm.descripcion" required />
+                </label>
+                <label>Importe
+                  <input x-model="lineaForm.importe" inputmode="decimal" required />
+                </label>
+                <div class="linea-botones">
+                  <button type="submit" class="btn btn-primary btn-sm" :disabled="guardandoLinea"
+                    x-text="lineaForm.id ? 'Guardar' : 'Añadir'"></button>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="lineaForm = null">Cancelar</button>
+                </div>
+              </form>
+            </template>
+            <template x-for="(ap, i) in panelPresupuesto.apartados" :key="(ap.id || ap.codigo) + '-' + i">
+              <article class="ap" :class="{ abierto: open === i, revisado: ap.revisado }">
+                <div class="ap-cab">
+                  <span class="codigo" @click="open = open === i ? -1 : i" x-text="ap.codigo"></span>
+                  <div class="ap-nombre" @click="open = open === i ? -1 : i">
+                    <strong>
+                      <span x-text="ap.nombre"></span>
+                      <span class="apagado" x-text="open === i ? '▾' : '▸'"></span>
+                    </strong>
+                    <div class="meta" :class="ap.hay_dudas && 'ambar'" x-text="ap.resumen"></div>
                   </div>
-                </form>
-              </template>
-              <template x-for="(ap, i) in panelPresupuesto.apartados" :key="(ap.id || ap.codigo) + '-' + i">
-                <article class="ap" :class="{ abierto: open === i, revisado: ap.revisado }">
-                  <div class="ap-cab">
-                    <span class="codigo" @click="open = open === i ? -1 : i" x-text="ap.codigo"></span>
-                    <div class="ap-nombre" @click="open = open === i ? -1 : i">
-                      <strong>
-                        <span x-text="ap.nombre"></span>
-                        <span class="apagado" x-text="open === i ? '▾' : '▸'"></span>
-                      </strong>
-                      <div class="meta" :class="ap.hay_dudas && 'ambar'" x-text="ap.resumen"></div>
-                    </div>
-                    <strong class="num" x-text="ap.importe"></strong>
-                    <div class="ap-acciones">
-                      <button type="button" class="pill-ok" x-show="ap.revisado" @click="revisar(i)">✓ Revisado</button>
-                      <button type="button" class="btn btn-secondary btn-sm" x-show="!ap.revisado" @click="revisar(i)">Revisar</button>
-                      <button type="button" class="btn-linea" @click.stop="editarLinea(ap)">Editar</button>
-                      <button type="button" class="btn-linea btn-linea-peligro" @click.stop="borrarLinea(ap)">Borrar</button>
-                    </div>
+                  <strong class="num" x-text="ap.importe"></strong>
+                  <div class="ap-acciones">
+                    <button type="button" class="pill-ok" x-show="ap.revisado" @click="revisar(i)">✓ Revisado</button>
+                    <button type="button" class="btn btn-secondary btn-sm" x-show="!ap.revisado"
+                      @click="revisar(i)">Revisar</button>
+                    <button type="button" class="btn-linea" @click.stop="editarLinea(ap)">Editar</button>
+                    <button type="button" class="btn-linea btn-linea-peligro"
+                      @click.stop="borrarLinea(ap)">Borrar</button>
                   </div>
-                  <div class="partidas" x-show="open === i">
+                </div>
+                <div class="partidas" x-show="open === i && (ap.partidas.length || (ap.grupos && ap.grupos.length))">
+                  <template x-if="ap.partidas.length">
                     <div class="partidas-inner">
                       <div class="grid-part th">
                         <span>Código</span><span>Descripción</span><span>Ud</span>
-                        <span class="der">Medición</span><span class="der">Precio</span><span class="der">Importe</span>
+                        <span class="der">Descuento</span><span class="der">Precio</span><span
+                          class="der">Importe</span>
                       </div>
                       <template x-for="p in ap.partidas" :key="p.id || p.codigo">
                         <div class="grid-part td">
                           <span class="meta" x-text="p.codigo"></span>
                           <span>
                             <span x-text="p.descripcion"></span>
+                            <span class="badge badge-warning" x-show="p.montaje">Montaje</span>
+                            <span class="meta" x-show="p.apartado" x-text="p.apartado"></span>
                             <span class="badge badge-warning" x-show="p.duda" x-text="p.duda"></span>
                             <span class="linea-mini" x-show="p.id && p.id !== ap.id">
                               <button type="button" class="btn-linea" @click.stop="editarLinea(p)">Editar</button>
-                              <button type="button" class="btn-linea btn-linea-peligro" @click.stop="borrarLinea(p)">Borrar</button>
+                              <button type="button" class="btn-linea btn-linea-peligro"
+                                @click.stop="borrarLinea(p)">Borrar</button>
                             </span>
                           </span>
                           <span x-text="p.unidad"></span>
@@ -278,317 +294,579 @@
                         </div>
                       </template>
                     </div>
-                  </div>
-                </article>
-              </template>
-              <template x-if="(panelPresupuesto.gestiones && panelPresupuesto.gestiones.length) || (panelPresupuesto.descuentos && panelPresupuesto.descuentos.length)">
-                <div class="card card-descuentos">
-                  <template x-if="panelPresupuesto.gestiones && panelPresupuesto.gestiones.length">
-                    <div>
-                      <div class="fila-titulo">
-                        <h2 class="h2">Gestión</h2>
-                        <span class="meta">Se suma al precio de los apartados.</span>
-                      </div>
-                      <template x-for="g in panelPresupuesto.gestiones" :key="g.id || g.codigo">
-                        <div class="dto-fila">
-                          <span class="codigo" x-text="g.codigo"></span>
-                          <div class="ap-nombre">
-                            <strong x-text="g.descripcion"></strong>
-                            <div class="meta" x-show="g.nota" x-text="g.nota"></div>
-                          </div>
-                          <div class="dto-acciones">
-                            <strong class="num" x-text="g.importe"></strong>
-                            <button type="button" class="btn-linea" @click="editarLinea(g)">Editar</button>
-                            <button type="button" class="btn-linea btn-linea-peligro" @click="borrarLinea(g)">Borrar</button>
-                          </div>
-                        </div>
-                      </template>
-                    </div>
                   </template>
-                  <template x-if="panelPresupuesto.descuentos && panelPresupuesto.descuentos.length">
-                    <div>
-                      <div class="fila-titulo">
-                        <h2 class="h2">Descuentos del cierre</h2>
-                        <span class="meta">Se restan del precio de los apartados. El manuscrito hay que confirmarlo.</span>
+                  <template x-for="g in (ap.grupos || [])" :key="g.clave">
+                    <div class="subap">
+                      <button type="button" class="subap-cab" @click.stop="toggleSub(g.clave)">
+                        <span class="codigo" x-text="g.codigo"></span>
+                        <span class="subap-nombre">
+                          <strong x-text="g.nombre"></strong>
+                          <span class="meta" x-text="resumenGrupo(g)"></span>
+                        </span>
+                        <span class="apagado" x-text="subAbierto(g.clave) ? '▾' : '▸'"></span>
+                        <strong class="num" x-text="g.importe"></strong>
+                      </button>
+                      <div class="subap-cuerpo" x-show="subAbierto(g.clave)">
+                        <template x-if="g.partidas.length">
+                          <div class="partidas-inner">
+                            <div class="grid-part th">
+                              <span>Código</span><span>Descripción</span><span>Ud</span>
+                              <span class="der">Descuento</span><span class="der">Precio</span><span
+                                class="der">Importe</span>
+                            </div>
+                            <template x-for="p in g.partidas" :key="(p.id || p.codigo) + '-' + g.clave">
+                              <div class="grid-part td">
+                                <span class="meta" x-text="p.codigo"></span>
+                                <span>
+                                  <span x-text="p.descripcion"></span>
+                                  <span class="badge badge-warning" x-show="p.montaje">Montaje</span>
+                                  <span class="meta" x-show="p.apartado" x-text="p.apartado"></span>
+                                  <span class="badge badge-warning" x-show="p.duda" x-text="p.duda"></span>
+                                  <span class="linea-mini" x-show="p.id">
+                                    <button type="button" class="btn-linea" @click.stop="editarLinea(p)">Editar</button>
+                                    <button type="button" class="btn-linea btn-linea-peligro"
+                                      @click.stop="borrarLinea(p)">Borrar</button>
+                                  </span>
+                                </span>
+                                <span x-text="p.unidad"></span>
+                                <span class="der" x-text="p.medicion"></span>
+                                <span class="der" x-text="p.precio"></span>
+                                <strong class="der" x-text="p.importe"></strong>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-for="h in g.grupos" :key="h.clave">
+                          <div class="subap subap-dentro">
+                            <button type="button" class="subap-cab" @click.stop="toggleSub(h.clave)">
+                              <span class="codigo" x-text="h.codigo"></span>
+                              <span class="subap-nombre">
+                                <strong x-text="h.nombre"></strong>
+                                <span class="meta" x-text="resumenGrupo(h)"></span>
+                              </span>
+                              <span class="apagado" x-text="subAbierto(h.clave) ? '▾' : '▸'"></span>
+                              <strong class="num" x-text="h.importe"></strong>
+                            </button>
+                            <div class="partidas-inner" x-show="subAbierto(h.clave) && h.partidas.length">
+                              <div class="grid-part th">
+                                <span>Código</span><span>Descripción</span><span>Ud</span>
+                                <span class="der">Descuento</span><span class="der">Precio</span><span
+                                  class="der">Importe</span>
+                              </div>
+                              <template x-for="p in h.partidas" :key="(p.id || p.codigo) + '-' + h.clave">
+                                <div class="grid-part td">
+                                  <span class="meta" x-text="p.codigo"></span>
+                                  <span>
+                                    <span x-text="p.descripcion"></span>
+                                    <span class="badge badge-warning" x-show="p.montaje">Montaje</span>
+                                    <span class="meta" x-show="p.apartado" x-text="p.apartado"></span>
+                                    <span class="badge badge-warning" x-show="p.duda" x-text="p.duda"></span>
+                                    <span class="linea-mini" x-show="p.id">
+                                      <button type="button" class="btn-linea"
+                                        @click.stop="editarLinea(p)">Editar</button>
+                                      <button type="button" class="btn-linea btn-linea-peligro"
+                                        @click.stop="borrarLinea(p)">Borrar</button>
+                                    </span>
+                                  </span>
+                                  <span x-text="p.unidad"></span>
+                                  <span class="der" x-text="p.medicion"></span>
+                                  <span class="der" x-text="p.precio"></span>
+                                  <strong class="der" x-text="p.importe"></strong>
+                                </div>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
                       </div>
-                      <template x-for="d in panelPresupuesto.descuentos" :key="d.id || d.codigo">
-                        <div class="dto-fila">
-                          <span class="codigo" x-text="d.codigo"></span>
-                          <div class="ap-nombre">
-                            <strong x-text="d.descripcion"></strong>
-                            <div class="meta" x-show="d.manuscrito">Anotación manuscrita · pendiente de revisión</div>
-                          </div>
-                          <div class="dto-acciones">
-                            <strong class="num" x-text="d.importe"></strong>
-                            <button type="button" class="btn-linea" @click="editarLinea(d)">Editar</button>
-                            <button type="button" class="btn-linea btn-linea-peligro" @click="borrarLinea(d)">Borrar</button>
-                          </div>
-                        </div>
-                      </template>
-                    </div>
-                  </template>
-                </div>
-              </template>
-            </div>
-          </div>
-        </template>
-
-        <template x-if="!vista && (screen === 'facturas' || screen === 'contratos' || screen === 'control')">
-          <div class="card" style="padding: 28px">
-            <h2 class="h2">Abre una obra</h2>
-            <p class="sub">Elige una obra en el listado para ver su presupuesto, contratos, facturas y control.</p>
-            <button type="button" class="btn btn-primary btn-md" @click="ir('obras')">Volver a obras</button>
-          </div>
-        </template>
-
-        <template x-if="vista && screen === 'contratos' && leyendoContrato">
-          <div class="leyendo">
-            <div class="preview-scan">
-              <template x-for="(ancho, i) in lineasDoc" :key="'c' + i">
-                <div class="fake-line" :style="'width:' + ancho"></div>
-              </template>
-              <div class="scan"></div>
-            </div>
-            <div class="stack" style="justify-content: center">
-              <strong style="font-size: 18px; color: #6e2094">Leyendo contrato…</strong>
-              <span class="sub" x-text="ficheroNombre"></span>
-              <div class="stack" style="gap: 8px">
-                <span>Sonnet transcribe el PDF a markdown.</span>
-                <span class="apagado">Haiku extrae el desglose y propone el apartado. Hay que asociarlo a mano.</span>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <template x-if="vista && screen === 'contratos' && !leyendoContrato">
-          <div class="stack">
-            <div class="subida">
-              <span>
-                <strong style="color: #6e2094">Arrastra aquí los contratos con los gremios.</strong>
-                <span class="sub">Sonnet pasa el PDF a markdown. Haiku lee ese texto, saca el desglose y propone el apartado. El enlace no queda confirmado hasta que lo asocies.</span>
-              </span>
-              <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir contratos</button>
-            </div>
-            <h2 class="h2" x-text="'Contratos leídos · ' + vista.contratos.pendientes + ' pendientes de validar'"></h2>
-            <template x-for="c in vista.contratos.filas" :key="c.id">
-              <article class="contrato" :class="bordeContrato(c)">
-                <div>
-                  <strong x-text="c.gremio"></strong><br />
-                  <span class="meta" x-text="c.archivo"></span>
-                  <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong></div>
-                </div>
-                <span class="flecha">→</span>
-                <div class="stack" style="gap: 6px">
-                  <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
-                    <select
-                      class="apartado"
-                      :value="c.apartado_idx"
-                      :disabled="c.asociado"
-                      @change="cambiarApartado(c.id, $event.target.value)"
-                    >
-                      <template x-for="op in vista.contratos.opciones" :key="c.id + '-' + op.valor">
-                        <option :value="op.valor" :selected="String(c.apartado_idx) === op.valor" x-text="op.etiqueta"></option>
-                      </template>
-                    </select>
-                    <span style="font-size: 12px; font-weight: 600" :style="'color:' + colorConfianza(c)" x-text="'Confianza ' + c.confianza + '%'"></span>
-                  </div>
-                  <span class="sub" x-text="c.motivo"></span>
-                  <span class="num sub">
-                    Presupuestado en el apartado: <span x-text="c.presupuestado"></span>
-                    · <strong :class="c.supera ? 'rojo' : 'verde'" x-text="c.diferencia"></strong>
-                  </span>
-                  <span class="ambar" x-show="c.hay_aviso" x-text="c.aviso"></span>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end">
-                  <button type="button" class="btn btn-primary btn-sm" x-show="!c.asociado" @click="asociar(c.id, true)">Asociar</button>
-                  <template x-if="c.asociado">
-                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
-                      <span class="badge badge-success">Asociado</span>
-                      <button type="button" class="btn-texto" @click="asociar(c.id, false)">Deshacer</button>
                     </div>
                   </template>
                 </div>
               </article>
             </template>
-            <div class="aviso-rojo" x-show="vista.contratos.hay_sin_contrato">
-              <span><strong x-text="vista.contratos.sin_contrato"></strong> sin contrato asociado.</span>
-              <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir contrato</button>
-            </div>
+            <template
+              x-if="(panelPresupuesto.gestiones && panelPresupuesto.gestiones.length) || (panelPresupuesto.descuentos && panelPresupuesto.descuentos.length)">
+              <div class="card card-descuentos">
+                <template x-if="panelPresupuesto.gestiones && panelPresupuesto.gestiones.length">
+                  <div>
+                    <div class="fila-titulo">
+                      <h2 class="h2">Gestión</h2>
+                      <span class="meta">Se suma al precio de los apartados.</span>
+                    </div>
+                    <template x-for="g in panelPresupuesto.gestiones" :key="g.id || g.codigo">
+                      <div class="dto-fila">
+                        <span class="codigo" x-text="g.codigo"></span>
+                        <div class="ap-nombre">
+                          <strong x-text="g.descripcion"></strong>
+                          <div class="meta" x-show="g.nota" x-text="g.nota"></div>
+                        </div>
+                        <div class="dto-acciones">
+                          <strong class="num" x-text="g.importe"></strong>
+                          <button type="button" class="btn-linea" @click="editarLinea(g)">Editar</button>
+                          <button type="button" class="btn-linea btn-linea-peligro"
+                            @click="borrarLinea(g)">Borrar</button>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="panelPresupuesto.descuentos && panelPresupuesto.descuentos.length">
+                  <div>
+                    <div class="fila-titulo">
+                      <h2 class="h2">Descuentos del cierre</h2>
+                      <span class="meta">Se restan del precio de los apartados. El manuscrito hay que
+                        confirmarlo.</span>
+                    </div>
+                    <template x-for="d in panelPresupuesto.descuentos" :key="d.id || d.codigo">
+                      <div class="dto-fila">
+                        <span class="codigo" x-text="d.codigo"></span>
+                        <div class="ap-nombre">
+                          <strong x-text="d.descripcion"></strong>
+                          <div class="meta" x-show="d.manuscrito">Anotación manuscrita · pendiente de revisión</div>
+                        </div>
+                        <div class="dto-acciones">
+                          <strong class="num" x-text="d.importe"></strong>
+                          <button type="button" class="btn-linea" @click="editarLinea(d)">Editar</button>
+                          <button type="button" class="btn-linea btn-linea-peligro"
+                            @click="borrarLinea(d)">Borrar</button>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
-        </template>
+        </div>
+      </template>
 
-        <template x-if="vista && screen === 'facturas'">
-          <div class="stack">
-            <div class="syncbar">
-              <span>
-                <span class="punto-sync"></span>
-                <strong x-text="tituloObra"></strong>
-                <span class="apagado">· bandeja de facturas</span>
-              </span>
-              <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroFactura.click()">Subir factura</button>
-              <div class="pills">
-                <template x-for="f in filtros" :key="f.id">
-                  <button type="button" class="pill" :class="filter === f.id && 'activo'" @click="filter = f.id" x-text="f.etiqueta + ' · ' + f.n"></button>
+      <template x-if="screen === 'presupuesto' && !proyecto">
+        <div class="card" style="padding: 28px">
+          <h2 class="h2">Primero los presupuestos</h2>
+          <p class="sub">El PDF firmado con el cliente se contrasta cuando la obra ya tiene los Excel.</p>
+          <button type="button" class="btn btn-primary btn-md" @click="nuevaObra()">Subir presupuestos</button>
+        </div>
+      </template>
+
+      <template x-if="proyecto && screen === 'presupuesto' && up !== 'reading'">
+        <div class="stack">
+          <div class="dropzone" x-show="!contraste" role="button" tabindex="0" :class="sobreDrop && 'sobre'"
+            @click="$refs.ficheroPresupuesto.click()" @dragover.prevent="sobreDrop = true"
+            @dragleave="sobreDrop = false" @drop.prevent="soltarContratoCliente($event)"
+            @keydown.enter.prevent="$refs.ficheroPresupuesto.click()">
+            <div class="drop-icon">↑</div>
+            <strong style="font-size: 18px; color: var(--p800)">Sube el PDF firmado con el cliente</strong>
+            <span class="sub" style="max-width: 460px; line-height: 1.5">
+              Después eliges, importe a importe, el bloque del Excel que le corresponde. No crea partidas.
+            </span>
+            <span style="color: var(--p800); font-weight: 600">Arrastra el PDF o haz clic para elegirlo</span>
+          </div>
+          <template x-if="contraste && contraste.sugerencias">
+            <div class="stack">
+              <div class="subida" :class="sobreDrop && 'sobre'" @dragover.prevent="sobreDrop = true"
+                @dragleave="sobreDrop = false" @drop.prevent="soltarContratoCliente($event)">
+                <span>
+                  <strong style="color: var(--p800)">Asigna cada importe del PDF a un bloque del Excel.</strong>
+                  <span class="sub">El bloque ya incluye lo que cuelga de él. Despliega el árbol si el PDF solo cubre una parte.</span>
+                </span>
+                <button type="button" class="btn btn-secondary btn-sm"
+                  @click="$refs.ficheroPresupuesto.click()">Cambiar PDF</button>
+              </div>
+              <p class="sub" x-show="!contraste.sugerencias.length">El PDF no trae importes para contrastar.</p>
+              <div class="cruce" x-show="contraste.sugerencias.length">
+                <section class="cruce-lista" aria-label="Importes del PDF">
+                  <div class="cruce-cab">
+                    <h2 class="h2">Importes del PDF</h2>
+                    <span class="meta" x-text="progresoContraste()"></span>
+                  </div>
+                  <template x-for="(fila, i) in contraste.sugerencias" :key="fila.codigo_pdf + '-' + i">
+                    <button type="button" class="cruce-linea"
+                      :class="{ activa: contrasteIndice === i, hecha: fila.confirmada }"
+                      :aria-current="contrasteIndice === i ? 'true' : null" @click="contrasteIndice = i">
+                      <span class="cruce-punto" :class="estadoContraste(fila)" aria-hidden="true"></span>
+                      <span class="cruce-linea-texto">
+                        <strong x-text="fila.descripcion_pdf"></strong>
+                        <span class="meta" x-text="fila.codigo_pdf + ' · ' + etiquetaEstadoContraste(fila)"></span>
+                      </span>
+                      <span class="num" x-text="euro(fila.importe_pdf)"></span>
+                    </button>
+                  </template>
+                </section>
+                <template x-if="filaContraste()">
+                  <section class="cruce-destino" aria-label="Bloques del Excel">
+                    <header class="cruce-dest-cab">
+                      <p class="meta">Bloque del Excel para este importe</p>
+                      <h2 class="h2" x-text="filaContraste().descripcion_pdf"></h2>
+                      <p class="cruce-cifra num" x-text="euro(filaContraste().importe_pdf)"></p>
+                      <p class="meta" x-show="filaContraste().sugerida && !filaContraste().confirmada">
+                        Propuesta del modelo. Confírmala o cambia el bloque.
+                      </p>
+                      <p class="meta"
+                        x-show="filaContraste().importe_bruto != null && Number(filaContraste().importe_bruto) !== Number(filaContraste().importe_pdf)">
+                        En el PDF la línea era <span class="num" x-text="euro(filaContraste().importe_bruto)"></span>.
+                        Este importe ya resta el descuento de cierre.
+                      </p>
+                    </header>
+                    <div class="cruce-bloques">
+                      <div class="cruce-arbol" role="tree">
+                        <template x-for="sec in gruposContraste(filaContraste())" :key="filaContraste().codigo_pdf + '-' + sec.clave">
+                          <div class="cruce-rama-wrap">
+                            <div class="cruce-nodo" role="treeitem" :aria-expanded="sec.abierto ? 'true' : 'false'"
+                              style="--nivel:0">
+                              <button type="button" class="cruce-flecha"
+                                :aria-label="sec.abierto ? 'Cerrar' : 'Abrir'"
+                                @click="toggleArbol(filaContraste(), sec.clave)">
+                                <span class="cruce-tri" :class="sec.abierto && 'abierto'" aria-hidden="true"></span>
+                              </button>
+                              <button type="button" class="cruce-rama"
+                                @click="toggleArbol(filaContraste(), sec.clave)">
+                                <span class="nombre">
+                                  <strong x-text="(sec.codigo ? sec.codigo + ' · ' : '') + sec.etiqueta"></strong>
+                                  <span class="meta" x-show="sec.pista">El nombre se parece a esta línea</span>
+                                  <span class="meta" x-show="sec.marcados" x-text="etiquetaMarcados(sec.marcados)"></span>
+                                </span>
+                              </button>
+                            </div>
+                            <div x-show="sec.abierto">
+                              <template x-for="nodo in sec.nodos" :key="nodo.valor + '-' + nodo.nivel">
+                                <div class="cruce-nodo" role="treeitem"
+                                  :aria-expanded="nodo.tieneHijos ? (nodo.abierto ? 'true' : 'false') : null"
+                                  :style="`--nivel:${nodo.nivel}`">
+                                  <button type="button" class="cruce-flecha" :class="!nodo.tieneHijos && 'hueco'"
+                                    :disabled="!nodo.tieneHijos"
+                                    :aria-label="nodo.tieneHijos ? (nodo.abierto ? 'Cerrar' : 'Abrir') : null"
+                                    @click="nodo.tieneHijos && toggleArbol(filaContraste(), nodo.valor)">
+                                    <span class="cruce-tri" x-show="nodo.tieneHijos" :class="nodo.abierto && 'abierto'"
+                                      aria-hidden="true"></span>
+                                  </button>
+                                  <button type="button" class="cruce-bloque"
+                                    :class="{ on: nodo.elegido, parcial: nodo.parcial }"
+                                    :disabled="filaContraste().confirmada"
+                                    :aria-pressed="nodo.elegido ? 'true' : 'false'"
+                                    @click="alternarContraste(filaContraste(), nodo.valor, !nodo.elegido)">
+                                    <span class="marca" :class="nodo.elegido && 'on'" aria-hidden="true"></span>
+                                    <span class="nombre">
+                                      <span x-text="nodo.etiqueta"></span>
+                                      <span class="meta" x-show="nodo.elegido && nodo.tieneHijos">Incluye lo que cuelga</span>
+                                      <span class="meta" x-show="!nodo.elegido && nodo.parcial">Hay partes marcadas</span>
+                                    </span>
+                                    <span class="num cuantia" x-text="nodo.cuantia"></span>
+                                  </button>
+                                </div>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                      <p class="sub cruce-vacio" x-show="!gruposContraste(filaContraste()).length">
+                        Esta obra no tiene bloques de Excel para contrastar.
+                      </p>
+                    </div>
+                    <footer class="cruce-pie">
+                      <div>
+                        <p class="num sub" x-show="filaContraste().hay_cruce">
+                          Excel <span x-text="filaContraste().excel"></span>
+                          · diferencia
+                          <strong :class="filaContraste().supera ? 'rojo' : 'verde'"
+                            x-text="filaContraste().diferencia"></strong>
+                        </p>
+                        <p class="sub" x-show="!filaContraste().hay_cruce && !filaContraste().confirmada">
+                          Marca el bloque que cubre este importe.
+                        </p>
+                        <p class="sub" x-show="filaContraste().confirmada">Importe guardado en el Excel.</p>
+                      </div>
+                      <span class="badge badge-success" x-show="filaContraste().confirmada">Confirmado</span>
+                      <button type="button" class="btn btn-primary btn-sm" x-show="!filaContraste().confirmada"
+                        :disabled="!(filaContraste().elegidos || []).length"
+                        @click="confirmarImporteCliente(filaContraste())">Confirmar importe</button>
+                    </footer>
+                  </section>
+                </template>
+              </div>
+              <div class="card" style="padding: 16px 18px" x-show="contraste.descuentos && contraste.descuentos.length">
+                <h2 class="h2" style="font-size: 17px">Descuentos del cierre</h2>
+                <template x-for="(descuento, i) in contraste.descuentos" :key="'dto-' + i">
+                  <div class="fila-titulo" style="margin-top: 8px">
+                    <span>
+                      <span x-text="descuento.descripcion"></span>
+                      <span class="badge badge-warning" x-show="descuento.es_manuscrito">Manuscrito</span>
+                    </span>
+                    <strong class="num" x-text="euro(-descuento.importe)"></strong>
+                  </div>
                 </template>
               </div>
             </div>
-            <div class="banda">
-              <div class="card scroll crece">
-                <div style="min-width: 640px">
-                  <div class="cabecera cols-facturas">
-                    <span>Factura</span><span>Apartado</span><span class="der">Importe</span><span>Resultado</span>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="!vista && (screen === 'facturas' || screen === 'contratos' || screen === 'control')">
+        <div class="card" style="padding: 28px">
+          <h2 class="h2">Abre una obra</h2>
+          <p class="sub">Elige una obra en el listado para ver su presupuesto, contratos, facturas y control.</p>
+          <button type="button" class="btn btn-primary btn-md" @click="ir('obras')">Volver a obras</button>
+        </div>
+      </template>
+
+      <template x-if="vista && screen === 'contratos' && leyendoContrato">
+        <div class="leyendo">
+          <div class="preview-scan">
+            <template x-for="(ancho, i) in lineasDoc" :key="'c' + i">
+              <div class="fake-line" :style="'width:' + ancho"></div>
+            </template>
+            <div class="scan"></div>
+          </div>
+          <div class="stack" style="justify-content: center">
+            <strong style="font-size: 18px; color: var(--p800)">Leyendo contrato…</strong>
+            <span class="sub" x-text="ficheroNombre"></span>
+            <div class="stack" style="gap: 8px">
+              <span>Sonnet transcribe el PDF a markdown.</span>
+              <span class="apagado">Haiku extrae el desglose y propone el apartado. Hay que asociarlo a mano.</span>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="vista && screen === 'contratos' && !leyendoContrato">
+        <div class="stack">
+          <div class="subida">
+            <span>
+              <strong style="color: var(--p800)">Arrastra aquí los contratos con los gremios.</strong>
+              <span class="sub">Sonnet pasa el PDF a markdown. Haiku lee ese texto, saca el desglose y propone el
+                apartado. El enlace no queda confirmado hasta que lo asocies.</span>
+            </span>
+            <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir
+              contratos</button>
+          </div>
+          <h2 class="h2" x-text="'Contratos leídos · ' + vista.contratos.pendientes + ' pendientes de validar'"></h2>
+          <template x-for="c in vista.contratos.filas" :key="c.id">
+            <article class="contrato" :class="bordeContrato(c)">
+              <div>
+                <strong x-text="c.gremio"></strong><br />
+                <span class="meta" x-text="c.archivo"></span>
+                <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong></div>
+                <a class="btn-texto" x-show="c.tiene_fichero" :href="c.url_fichero">Descargar</a>
+              </div>
+              <span class="flecha">→</span>
+              <div class="stack" style="gap: 6px">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+                  <select class="apartado" :value="c.apartado_idx" :disabled="c.asociado"
+                    @change="cambiarApartado(c.id, $event.target.value)">
+                    <template x-for="op in vista.contratos.opciones" :key="c.id + '-' + op.valor">
+                      <option :value="op.valor" :selected="String(c.apartado_idx) === op.valor" x-text="op.etiqueta">
+                      </option>
+                    </template>
+                  </select>
+                  <span style="font-size: 12px; font-weight: 600" :style="'color:' + colorConfianza(c)"
+                    x-text="'Confianza ' + c.confianza + '%'"></span>
+                </div>
+                <span class="sub" x-text="c.motivo"></span>
+                <span class="num sub">
+                  <span x-text="c.etiqueta_base || 'Presupuestado en el apartado'"></span>: <span
+                    x-text="c.presupuestado"></span>
+                  · <strong :class="c.supera ? 'rojo' : 'verde'" x-text="c.diferencia"></strong>
+                </span>
+                <span class="ambar" x-show="c.hay_aviso" x-text="c.aviso"></span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end">
+                <button type="button" class="btn btn-primary btn-sm" x-show="!c.asociado"
+                  @click="asociar(c.id, true)">Asociar</button>
+                <template x-if="c.asociado">
+                  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+                    <span class="badge badge-success">Asociado</span>
+                    <button type="button" class="btn-texto" @click="asociar(c.id, false)">Deshacer</button>
                   </div>
-                  <template x-for="f in facturasVisibles" :key="f.id">
-                    <div class="fila-factura cols-facturas" role="button" tabindex="0" :class="sel === f.id && 'sel'" @click="seleccionarFactura(f.id)">
-                      <div>
-                        <strong x-text="f.proveedor"></strong><br />
-                        <span class="meta" x-text="f.numero + ' · ' + f.fecha"></span>
-                      </div>
-                      <span class="meta" x-text="f.apartado"></span>
-                      <span class="der num" x-text="f.importe"></span>
-                      <div>
-                        <span class="badge" :class="'badge-' + f.tono" x-text="f.estado"></span>
-                        <div class="rojo" style="font-size: 12px; font-weight: 600" x-text="f.diferencia"></div>
-                      </div>
+                </template>
+              </div>
+            </article>
+          </template>
+          <div class="aviso-rojo" x-show="vista.contratos.hay_sin_contrato">
+            <span><strong x-text="vista.contratos.sin_contrato"></strong> sin contrato asociado.</span>
+            <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir
+              contrato</button>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="vista && screen === 'facturas'">
+        <div class="stack">
+          <div class="syncbar">
+            <span>
+              <span class="punto-sync"></span>
+              <strong x-text="tituloObra"></strong>
+              <span class="apagado">· bandeja de facturas</span>
+            </span>
+            <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroFactura.click()">Subir
+              factura</button>
+            <div class="pills">
+              <template x-for="f in filtros" :key="f.id">
+                <button type="button" class="pill" :class="filter === f.id && 'activo'" @click="filter = f.id"
+                  x-text="f.etiqueta + ' · ' + f.n"></button>
+              </template>
+            </div>
+          </div>
+          <div class="banda">
+            <div class="card scroll crece">
+              <div style="min-width: 640px">
+                <div class="cabecera cols-facturas">
+                  <span>Factura</span><span>Apartado</span><span class="der">Importe</span><span>Resultado</span>
+                </div>
+                <template x-for="f in facturasVisibles" :key="f.id">
+                  <div class="fila-factura cols-facturas" role="button" tabindex="0" :class="sel === f.id && 'sel'"
+                    @click="seleccionarFactura(f.id)">
+                    <div>
+                      <strong x-text="f.proveedor"></strong><br />
+                      <span class="meta" x-text="f.numero + ' · ' + f.fecha"></span>
                     </div>
-                  </template>
+                    <span class="meta" x-text="f.apartado"></span>
+                    <span class="der num" x-text="f.importe"></span>
+                    <div>
+                      <span class="badge" :class="'badge-' + f.tono" x-text="f.estado"></span>
+                      <div class="rojo" style="font-size: 12px; font-weight: 600" x-text="f.diferencia"></div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <aside class="detalle" x-show="seleccion">
+              <template x-if="seleccion">
+                <div>
+                  <div class="detalle-cab">
+                    <div>
+                      <span class="meta" x-text="seleccion.numero + ' · ' + seleccion.fecha"></span>
+                      <div style="font-size: 17px; font-weight: 700; color: var(--p800)" x-text="seleccion.proveedor">
+                      </div>
+                      <span class="meta" x-text="seleccion.apartado"></span>
+                      <a class="btn-texto" x-show="seleccion.tiene_fichero" :href="seleccion.url_fichero">Descargar
+                        factura</a>
+                    </div>
+                    <button type="button" class="cerrar" @click="sel = null">×</button>
+                  </div>
+                  <div class="aviso-ambar" style="margin: 16px 20px 0" x-show="seleccion.es_duplicado"
+                    x-text="seleccion.aviso_duplicado"></div>
+                  <div style="padding: 16px 20px" class="stack">
+                    <span class="meta" style="font-weight: 600">Partida a partida frente al presupuesto</span>
+                    <template x-for="ln in seleccion.lineas" :key="ln.codigo">
+                      <div class="linea-cmp" :class="ln.mala && 'mala'">
+                        <div style="display: flex; justify-content: space-between; gap: 10px">
+                          <strong><span style="color: var(--p800)" x-text="ln.codigo"></span> <span
+                              x-text="ln.descripcion"></span></strong>
+                          <strong class="num" x-text="ln.importe"></strong>
+                        </div>
+                        <div class="meta num" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px">
+                          <span x-text="'Facturado: ' + ln.facturado"></span>
+                          <span x-text="'Presupuesto: ' + ln.presupuesto"></span>
+                          <span x-text="'Acumulado: ' + ln.acumulado"></span>
+                        </div>
+                        <span class="nota-err" x-show="ln.nota" x-text="ln.nota"></span>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="detalle-pie">
+                    <div style="display: flex; justify-content: space-between">
+                      <span>Desviación de la factura</span>
+                      <strong :class="seleccion.desviacion_negativa ? 'rojo' : 'verde'"
+                        x-text="seleccion.desviacion"></strong>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                      <template x-for="accion in seleccion.acciones" :key="accion.resolucion">
+                        <button type="button" class="btn btn-sm"
+                          :class="accion.variante === 'primary' ? 'btn-primary' : 'btn-secondary'"
+                          @click="resolver(seleccion.id, accion.resolucion)" x-text="accion.etiqueta"></button>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </aside>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="vista && screen === 'control'">
+        <div class="stack">
+          <div class="kpis">
+            <template x-for="kpi in vista.control.kpis" :key="kpi.etiqueta">
+              <div class="kpi">
+                <span class="meta" x-text="kpi.etiqueta"></span>
+                <strong :style="'color:' + kpi.color" x-text="kpi.valor"></strong>
+                <small x-text="kpi.detalle"></small>
+              </div>
+            </template>
+          </div>
+          <div class="banda">
+            <div class="card crece" style="padding: 6px 20px 14px; flex: 999 1 520px">
+              <div class="fila-titulo" style="padding: 14px 0 10px">
+                <h2 class="h2" style="font-size: 17px">Presupuestado, contratado y facturado</h2>
+                <div class="leyenda">
+                  <span><i class="muestra" style="background: var(--p200)"></i> Contratado</span>
+                  <span><i class="muestra" style="background: var(--degradado)"></i> Facturado</span>
+                  <span><i class="muestra-pres"></i> Presupuestado</span>
                 </div>
               </div>
-              <aside class="detalle" x-show="seleccion">
-                <template x-if="seleccion">
-                  <div>
-                    <div class="detalle-cab">
-                      <div>
-                        <span class="meta" x-text="seleccion.numero + ' · ' + seleccion.fecha"></span>
-                        <div style="font-size: 17px; font-weight: 700; color: #6e2094" x-text="seleccion.proveedor"></div>
-                        <span class="meta" x-text="seleccion.apartado"></span>
-                      </div>
-                      <button type="button" class="cerrar" @click="sel = null">×</button>
+              <template x-for="(fila, i) in vista.control.filas" :key="fila.codigo">
+                <div>
+                  <div class="fila-ctrl" @click="ctrlOpen = ctrlOpen === i ? -1 : i">
+                    <div>
+                      <strong>
+                        <span x-text="fila.codigo + ' · ' + fila.nombre"></span>
+                        <span class="apagado" x-text="ctrlOpen === i ? '▾' : '▸'"></span>
+                      </strong>
+                      <div class="meta num" x-text="fila.detalle"></div>
                     </div>
-                    <div class="aviso-ambar" style="margin: 16px 20px 0" x-show="seleccion.es_duplicado" x-text="seleccion.aviso_duplicado"></div>
-                    <div style="padding: 16px 20px" class="stack">
-                      <span class="meta" style="font-weight: 600">Partida a partida frente al presupuesto</span>
-                      <template x-for="ln in seleccion.lineas" :key="ln.codigo">
-                        <div class="linea-cmp" :class="ln.mala && 'mala'">
-                          <div style="display: flex; justify-content: space-between; gap: 10px">
-                            <strong><span style="color: #882cb1" x-text="ln.codigo"></span> <span x-text="ln.descripcion"></span></strong>
-                            <strong class="num" x-text="ln.importe"></strong>
-                          </div>
-                          <div class="meta num" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px">
-                            <span x-text="'Facturado: ' + ln.facturado"></span>
-                            <span x-text="'Presupuesto: ' + ln.presupuesto"></span>
-                            <span x-text="'Acumulado: ' + ln.acumulado"></span>
-                          </div>
-                          <span class="nota-err" x-show="ln.nota" x-text="ln.nota"></span>
+                    <div class="track">
+                      <div class="contratado" :style="'width:' + fila.ancho_contratado"></div>
+                      <div class="facturado" :style="'width:' + fila.ancho_facturado"></div>
+                      <div class="marca" :style="'left:' + fila.ancho_presupuesto"></div>
+                    </div>
+                    <strong class="der num" :class="fila.alerta ? 'rojo' : 'apagado'" x-text="fila.desviacion"></strong>
+                  </div>
+                  <div x-show="ctrlOpen === i"
+                    style="background: #f0f0f0; border-radius: 6px; padding: 4px 14px 8px; margin-bottom: 10px; overflow-x: auto">
+                    <div style="min-width: 520px">
+                      <div class="grid-ctrl-p th">
+                        <span>Partida</span><span>Descripción</span>
+                        <span class="der">Presupuesto</span><span class="der">Facturado</span><span
+                          class="der">Desviación</span>
+                      </div>
+                      <template x-for="(p, j) in fila.partidas" :key="fila.codigo + '-' + j">
+                        <div class="grid-ctrl-p td">
+                          <span class="meta" x-text="p.codigo"></span>
+                          <span x-text="p.descripcion"></span>
+                          <span class="der">
+                            <span x-text="p.presupuesto"></span><br />
+                            <span class="meta" x-text="p.medicion"></span>
+                          </span>
+                          <span class="der">
+                            <span x-text="p.facturado"></span><br />
+                            <span class="meta" x-text="p.medicion_facturada"></span>
+                          </span>
+                          <strong class="der" :class="p.alerta ? 'rojo' : 'apagado'" x-text="p.desviacion"></strong>
                         </div>
                       </template>
                     </div>
-                    <div class="detalle-pie">
-                      <div style="display: flex; justify-content: space-between">
-                        <span>Desviación de la factura</span>
-                        <strong :class="seleccion.desviacion_negativa ? 'rojo' : 'verde'" x-text="seleccion.desviacion"></strong>
-                      </div>
-                      <div style="display: flex; gap: 8px; flex-wrap: wrap">
-                        <template x-for="accion in seleccion.acciones" :key="accion.resolucion">
-                          <button
-                            type="button"
-                            class="btn btn-sm"
-                            :class="accion.variante === 'primary' ? 'btn-primary' : 'btn-secondary'"
-                            @click="resolver(seleccion.id, accion.resolucion)"
-                            x-text="accion.etiqueta"
-                          ></button>
-                        </template>
-                      </div>
-                    </div>
                   </div>
-                </template>
-              </aside>
-            </div>
-          </div>
-        </template>
-
-        <template x-if="vista && screen === 'control'">
-          <div class="stack">
-            <div class="kpis">
-              <template x-for="kpi in vista.control.kpis" :key="kpi.etiqueta">
-                <div class="kpi">
-                  <span class="meta" x-text="kpi.etiqueta"></span>
-                  <strong :style="'color:' + kpi.color" x-text="kpi.valor"></strong>
-                  <small x-text="kpi.detalle"></small>
                 </div>
               </template>
             </div>
-            <div class="banda">
-              <div class="card crece" style="padding: 6px 20px 14px; flex: 999 1 520px">
-                <div class="fila-titulo" style="padding: 14px 0 10px">
-                  <h2 class="h2" style="font-size: 17px">Presupuestado, contratado y facturado</h2>
-                  <div class="leyenda">
-                    <span><i class="muestra" style="background: #e0c4ee"></i> Contratado</span>
-                    <span><i class="muestra" style="background: #882cb1"></i> Facturado</span>
-                    <span><i class="muestra-pres"></i> Presupuestado</span>
+            <div class="stack" style="flex: 1 1 300px">
+              <h2 class="h2" style="font-size: 17px">Descuadres abiertos</h2>
+              <template x-for="al in vista.control.alertas" :key="al.id + al.tipo">
+                <button type="button" class="alerta" @click="irAlerta(al)">
+                  <div style="display: flex; justify-content: space-between; gap: 10px; align-items: center">
+                    <span class="badge" :class="'badge-' + al.tono" x-text="al.tipo"></span>
+                    <strong :class="al.tono === 'warning' ? 'ambar' : 'rojo'" x-text="al.importe"></strong>
                   </div>
-                </div>
-                <template x-for="(fila, i) in vista.control.filas" :key="fila.codigo">
-                  <div>
-                    <div class="fila-ctrl" @click="ctrlOpen = ctrlOpen === i ? -1 : i">
-                      <div>
-                        <strong>
-                          <span x-text="fila.codigo + ' · ' + fila.nombre"></span>
-                          <span class="apagado" x-text="ctrlOpen === i ? '▾' : '▸'"></span>
-                        </strong>
-                        <div class="meta num" x-text="fila.facturado + ' de ' + fila.presupuestado"></div>
-                      </div>
-                      <div class="track">
-                        <div class="contratado" :style="'width:' + fila.ancho_contratado"></div>
-                        <div class="facturado" :style="'width:' + fila.ancho_facturado"></div>
-                        <div class="marca" :style="'left:' + fila.ancho_presupuesto"></div>
-                      </div>
-                      <strong class="der num" :class="fila.alerta ? 'rojo' : 'apagado'" x-text="fila.desviacion"></strong>
-                    </div>
-                    <div x-show="ctrlOpen === i" style="background: #f8f8f8; border-radius: 6px; padding: 4px 14px 8px; margin-bottom: 10px; overflow-x: auto">
-                      <div style="min-width: 520px">
-                        <div class="grid-ctrl-p th">
-                          <span>Partida</span><span>Descripción</span>
-                          <span class="der">Presupuesto</span><span class="der">Facturado</span><span class="der">Desviación</span>
-                        </div>
-                        <template x-for="p in fila.partidas" :key="p.codigo">
-                          <div class="grid-ctrl-p td">
-                            <span class="meta" x-text="p.codigo"></span>
-                            <span x-text="p.descripcion"></span>
-                            <span class="der">
-                              <span x-text="p.presupuesto"></span><br />
-                              <span class="meta" x-text="p.medicion"></span>
-                            </span>
-                            <span class="der">
-                              <span x-text="p.facturado"></span><br />
-                              <span class="meta" x-text="p.medicion_facturada"></span>
-                            </span>
-                            <strong class="der" :class="p.alerta ? 'rojo' : 'apagado'" x-text="p.desviacion"></strong>
-                          </div>
-                        </template>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-              <div class="stack" style="flex: 1 1 300px">
-                <h2 class="h2" style="font-size: 17px">Descuadres abiertos</h2>
-                <template x-for="al in vista.control.alertas" :key="al.id + al.tipo">
-                  <button type="button" class="alerta" @click="irAlerta(al)">
-                    <div style="display: flex; justify-content: space-between; gap: 10px; align-items: center">
-                      <span class="badge" :class="'badge-' + al.tono" x-text="al.tipo"></span>
-                      <strong :class="al.tono === 'warning' ? 'ambar' : 'rojo'" x-text="al.importe"></strong>
-                    </div>
-                    <strong x-text="al.titulo"></strong>
-                    <span class="sub" x-text="al.texto"></span>
-                  </button>
-                </template>
-                <span class="sub" x-show="vista.control.alertas.length === 0">Sin descuadres abiertos.</span>
-              </div>
+                  <strong x-text="al.titulo"></strong>
+                  <span class="sub" x-text="al.texto"></span>
+                </button>
+              </template>
+              <span class="sub" x-show="vista.control.alertas.length === 0">Sin descuadres abiertos.</span>
             </div>
           </div>
-        </template>
-      </main>
-    </div>
-  </body>
+        </div>
+      </template>
+    </main>
+  </div>
+</body>
+
 </html>

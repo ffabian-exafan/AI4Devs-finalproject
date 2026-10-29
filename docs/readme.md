@@ -269,6 +269,7 @@ erDiagram
         int proyecto_id FK
         int version
         string fichero_origen
+        string ruta_almacen "nullable, ruta relativa en uploads/"
         date fecha
         string estado_extraccion
         bool es_escaneado "true si OCR (imagen o PDF sin texto)"
@@ -299,6 +300,7 @@ erDiagram
         date plazo_ejecucion
         string condiciones_facturacion
         string fichero_origen
+        string ruta_almacen "nullable, ruta relativa en uploads/"
         string estado_extraccion
     }
     TAREA {
@@ -335,6 +337,7 @@ erDiagram
         decimal total
         string tipo "ordinaria|anticipo|certificacion"
         string fichero_origen
+        string ruta_almacen "nullable, ruta relativa en uploads/"
         bool es_escaneada
         string estado_revision "pendiente|revisada|confirmada"
     }
@@ -362,12 +365,12 @@ erDiagram
 
 - **USUARIO.** Quien usa la app. `rol` define permisos (jefe de obra, administración, dirección). `email` único, contraseña con hash.
 - **PROYECTO.** Una obra. Cabecera de todo. `tipo` distingue llave en mano de reforma.
-- **PRESUPUESTO.** El fichero de origen (PDF nativo, PDF escaneado o imagen) y su versión. `es_escaneado` marca baja fiabilidad por OCR. Permite gestionar revisiones sin perder el histórico (los presupuestos reales llevan sufijo de versión, ej. "V2"). Enlaza con el proyecto.
+- **PRESUPUESTO.** El fichero de origen y su versión. `formato` vale `excel_expertis` (origen de la obra, plantilla Expertis) o `pdf_cliente` (PDF de contraste o presupuestos anteriores). `es_escaneado` marca baja fiabilidad por OCR en el PDF. `ruta_almacen` apunta al fichero en `uploads/` (null en obras antiguas). Permite gestionar revisiones sin perder el histórico (los presupuestos reales llevan sufijo de versión, ej. "V2"). Enlaza con el proyecto.
 - **NAVE.** Unidad de desglose del presupuesto. Guarda su importe presupuestado.
 - **CONTRATISTA.** Equipo interno o subcontrata externa. `nif` único: es la clave del enlace fiable con las facturas.
-- **CONTRATO.** El acuerdo de ejecución firmado con un subcontratista: precio cerrado, plazo y condiciones de medición/facturación. Distinto de `PRESUPUESTO` (lo que se ofertó al cliente) y de `FACTURA` (lo que se cobra mes a mes). Puede aportar un desglose de `TAREA` más fino del que trae el presupuesto — en el ejemplo visto, por Sala con precio unitario. `referencia_presupuesto` es texto libre al nº de presupuesto. `tarea_apartado_id` enlaza el contrato con el apartado de presupuesto correspondiente tras sugerencia automática y **confirmación humana** (ver `docs/flujo_ui_proyecto.md`).
-- **TAREA.** Partida del presupuesto o del contrato, colgada de una nave. **Es jerárquica** (`tarea_padre_id`): un presupuesto suele generar filas de `nivel = "apartado"` con `importe_presupuestado` pero sin `unidad`/`cantidad`/`precio_unitario`; un contrato puede generar filas hijas de `nivel = "partida"` con esos campos rellenos. `presupuesto_id` y `contrato_id` (ambos nullable) registran de qué documento vino cada fila, para poder citar la fuente de cualquier cifra. `tiene_anotacion_manual` marca cuándo el valor impreso fue corregido a mano — fuerza `estado_revision = "pendiente"` sin excepción. `estado` (económico/administrativo) y `avance_fisico_pct` (ejecución real) van separados a propósito: pagado no es ejecutado.
-- **FACTURA.** Documento del contratista. Siempre enlaza con un contratista (por NIF) y, cuando existe, con el `CONTRATO` que certifica — esto permite comparar contratado vs. facturado con precisión, no solo por contratista en bloque. Guarda base, IVA, IRPF, retención de garantía y `tipo` (ordinaria, anticipo, certificación). `estado_revision` controla la revisión humana; `es_escaneada` avisa de baja fiabilidad.
+- **CONTRATO.** El acuerdo de ejecución firmado con un subcontratista: precio cerrado, plazo y condiciones de medición/facturación. Distinto de `PRESUPUESTO` (lo que se ofertó al cliente) y de `FACTURA` (lo que se cobra mes a mes). Puede aportar un desglose de `TAREA` más fino del que trae el presupuesto — en el ejemplo visto, por Sala con precio unitario. `referencia_presupuesto` es texto libre al nº de presupuesto. `tarea_apartado_id` enlaza el contrato con el apartado de presupuesto correspondiente tras sugerencia automática y **confirmación humana** (ver `docs/flujo_ui_proyecto.md`). `ruta_almacen` guarda el PDF/imagen en disco.
+- **TAREA.** Partida del presupuesto o del contrato, colgada de una nave. **Es jerárquica** (`tarea_padre_id`): un presupuesto suele generar filas de `nivel = "apartado"` con `importe_presupuestado` pero sin `unidad`/`cantidad`/`precio_unitario`; un contrato puede generar filas hijas de `nivel = "partida"` con esos campos rellenos. `presupuesto_id` y `contrato_id` (ambos nullable) registran de qué documento vino cada fila, para poder citar la fuente de cualquier cifra. `tiene_anotacion_manual` marca cuándo el valor impreso fue corregido a mano — fuerza `estado_revision = "pendiente"` sin excepción. En el Excel, `es_montaje` marca la línea que la subcontrata presupuesta y factura. Si está dentro de un producto, se agrupa en «Montaje {producto}». Si viene en un bloque GENERAL o sin producto, se relaciona por LLM (sin LLM, por el nombre). Lo que no es de un solo producto queda en «Montaje general». `descuento_pct`, `referencia` y `referencia_alt` guardan `Dto. %`, `Ref. (1)` y `Ref. (2)`. `importe_contrato_cliente` (solo en el apartado) es el importe del PDF del cliente tras confirmación humana. Las líneas `ELEMENTOS DE MONTAJE` no son montaje: se quedan en su bloque. `estado` (económico/administrativo) y `avance_fisico_pct` (ejecución real) van separados a propósito: pagado no es ejecutado.
+- **FACTURA.** Documento del contratista. Siempre enlaza con un contratista (por NIF) y, cuando existe, con el `CONTRATO` que certifica — esto permite comparar contratado vs. facturado con precisión, no solo por contratista en bloque. Guarda base, IVA, IRPF, retención de garantía y `tipo` (ordinaria, anticipo, certificación). `estado_revision` controla la revisión humana; `es_escaneada` avisa de baja fiabilidad. `ruta_almacen` guarda el fichero subido.
 - **LINEA_FACTURA.** Detalle de la factura, si lo hay. `embedding` alimenta el casado semántico con `pgvector`.
 - **ASIGNACION.** Tabla puente del casado. Reparte el importe de una factura a nave o tarea/partida. `es_estimacion` marca cuándo el reparto es proporcional al presupuesto (no medido). `metodo` y `confianza` registran cómo se hizo el enlace y `revisado_por` quién lo confirmó.
 
@@ -385,6 +388,21 @@ info:
   title: Gestor de presupuestos y facturas de obra
   version: 0.2.0
 paths:
+  /proyectos/importar-presupuestos-excel:
+    post:
+      summary: Crea la obra desde uno o varios Excel Expertis (material y montaje)
+  /proyectos/{id}/presupuestos-excel:
+    post:
+      summary: Añade otro Excel a una obra ya creada
+  /proyectos/{id}/contrastar-presupuesto-cliente:
+    post:
+      summary: Sugiere el contraste de importes del PDF del cliente, sin crear partidas, y guarda las líneas
+  /proyectos/{id}/contraste-cliente:
+    get:
+      summary: Devuelve las líneas guardadas del PDF del cliente. Si faltan, las lee del fichero. Si no hay relación, propone una y la deja sin confirmar
+  /proyectos/{id}/apartados/{tarea_id}/importe-cliente:
+    post:
+      summary: Confirma el importe del contrato cliente en un apartado Excel
   /proyectos/importar-presupuesto:
     post:
       summary: Sube un presupuesto (PDF nativo, escaneado o imagen) y crea el proyecto con sus naves y partidas

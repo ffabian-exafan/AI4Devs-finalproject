@@ -549,7 +549,13 @@ def _presentar(
             ),
         ),
         pasos=[
-            PasoOut(id="presupuesto", etiqueta="Presupuesto", detalle=detalle_rev, completo=n_rev == n),
+            PasoOut(
+                id="presupuestos",
+                etiqueta="Presupuestos",
+                detalle="Excel de origen",
+                completo=n_rev == n,
+            ),
+            PasoOut(id="presupuesto", etiqueta="Contrato cliente", detalle=detalle_rev, completo=n_rev == n),
             PasoOut(
                 id="contratos",
                 etiqueta="Contratos",

@@ -205,7 +205,14 @@ def test_obtener_proyecto_con_naves(client: TestClient, db: Session):
     assert body["contratos"] == []
 
 
-def test_borrar_proyecto_quita_la_obra_y_sus_filas(client: TestClient, db: Session):
+def test_borrar_proyecto_quita_la_obra_y_sus_filas(
+    client: TestClient, db: Session, tmp_path, monkeypatch
+):
+    from app.config import get_settings
+    from app.services import almacen as almacen_svc
+
+    monkeypatch.setenv("UPLOADS_DIR", str(tmp_path))
+    get_settings.cache_clear()
     proyecto = Proyecto(
         nombre="Proyecto test borrar obra",
         tipo="reforma",
@@ -249,6 +256,15 @@ def test_borrar_proyecto_quita_la_obra_y_sus_filas(client: TestClient, db: Sessi
     proyecto_id = proyecto.id
     nave_id = nave.id
     presupuesto_id = presupuesto.id
+    almacen_svc.guardar(
+        proyecto_id,
+        "presupuesto",
+        presupuesto_id,
+        "presupuesto_borrar.md",
+        b"contenido-ficticio",
+    )
+    carpeta = tmp_path / str(proyecto_id)
+    assert carpeta.is_dir()
 
     response = client.delete(f"/proyectos/{proyecto_id}")
     assert response.status_code == 204, response.text
@@ -261,6 +277,8 @@ def test_borrar_proyecto_quita_la_obra_y_sus_filas(client: TestClient, db: Sessi
     db.expire_all()
     assert db.get(Nave, nave_id) is None
     assert db.get(Presupuesto, presupuesto_id) is None
+    assert not carpeta.exists()
+    get_settings.cache_clear()
 
 
 def test_borrar_proyecto_inexistente(client: TestClient):

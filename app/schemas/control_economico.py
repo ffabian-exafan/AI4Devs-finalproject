@@ -20,6 +20,17 @@ class DesvioContratoOut(BaseModel):
     desvio: Money
 
 
+class DesvioApartadoOut(BaseModel):
+    tarea_id: int
+    codigo: str
+    descripcion: str
+    presupuestado: Money
+    montaje: Money
+    contrato_cliente: Money | None = None
+    contratado: Money
+    facturado: Money
+
+
 class DesvioNaveOut(BaseModel):
     nave: str
     presupuestado: Money
@@ -31,3 +42,4 @@ class ControlEconomicoOut(BaseModel):
     por_contratista: list[DesvioContratistaOut] = Field(default_factory=list)
     por_contrato: list[DesvioContratoOut] = Field(default_factory=list)
     por_nave: list[DesvioNaveOut] = Field(default_factory=list)
+    por_apartado: list[DesvioApartadoOut] = Field(default_factory=list)

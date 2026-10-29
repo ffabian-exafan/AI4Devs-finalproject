@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.models import Contrato, Contratista, Presupuesto, Proyecto, Tarea
 from app.services.jerarquia import asegurar_apartados_padre, mapa_padres
+from app.services.presupuesto_excel import (
+    devolver_elementos_de_montaje,
+    rellenar_origen_montaje,
+    repartir_montaje_por_subapartado,
+)
 from app.schemas.revision import (
     ConfirmarRevisionIn,
     ConfirmarRevisionOut,
@@ -82,6 +87,9 @@ def obtener_documento(
         proyecto = db.get(Proyecto, doc.proyecto_id)
         if proyecto is None:
             raise ValueError(f"Proyecto {doc.proyecto_id} no encontrado")
+        rellenar_origen_montaje(db, doc)
+        devolver_elementos_de_montaje(db, doc.id)
+        repartir_montaje_por_subapartado(db, doc.id)
         tareas = db.query(Tarea).filter(Tarea.presupuesto_id == doc.id).all()
         asegurar_apartados_padre(db, tareas)
         return DocumentoRevisionOut(
@@ -226,8 +234,10 @@ def _construir_arbol(tareas: list[Tarea]) -> list[TareaRevisionNodo]:
             unidad=t.unidad,
             cantidad=t.cantidad,
             precio_unitario=t.precio_unitario,
+            descuento_pct=t.descuento_pct,
             importe_presupuestado=t.importe_presupuestado,
             tiene_anotacion_manual=t.tiene_anotacion_manual,
+            es_montaje=t.es_montaje,
             estado_revision=t.estado_revision,
             hijos=[_nodo(h) for h in hijos],
         )

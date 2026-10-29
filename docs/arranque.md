@@ -97,6 +97,8 @@ El driver es `postgresql+psycopg` (no `postgresql://` a secas). Si la contraseñ
 
 Si no existe `.env`, la app usa el valor por defecto de `app/config.py`: mismo usuario y base, pero puerto **5432**. El ejemplo del repo y ese defecto no coinciden a propósito: el 5433 es el del contenedor.
 
+Los Excel, PDF y facturas se guardan en `uploads/` (ignorada por git). Se puede cambiar con `UPLOADS_DIR`.
+
 Las claves `LLM_*` y `OCR_*` pueden quedarse vacías para arrancar.
 
 ## 5. Migraciones

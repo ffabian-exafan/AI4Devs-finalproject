@@ -58,6 +58,8 @@ class Factura(Base):
     # ordinaria | anticipo | certificacion
     tipo: Mapped[str] = mapped_column(String(50), nullable=False)
     fichero_origen: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Ruta relativa bajo UPLOADS_DIR. Null en filas anteriores a guardar el fichero.
+    ruta_almacen: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     es_escaneada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # pendiente | revisada | confirmada
     estado_revision: Mapped[str] = mapped_column(String(50), nullable=False)

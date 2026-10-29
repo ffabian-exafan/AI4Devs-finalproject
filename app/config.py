@@ -1,8 +1,11 @@
 """Variables de entorno y ajustes de la aplicación."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_RAIZ = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -13,6 +16,8 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+psycopg://usuario:password@localhost:5432/gestor_obra"
+    # Carpeta de documentos subidos (Excel, PDF, facturas). Relativa a la raíz del repo.
+    uploads_dir: str = str(_RAIZ / "uploads")
 
     # Opcionales: solo si Seguridad autoriza proveedores cloud [NO-ENTRENAR]
     # Claude: basta LLM_API_KEY. LLM_API_BASE vacío usa https://api.anthropic.com

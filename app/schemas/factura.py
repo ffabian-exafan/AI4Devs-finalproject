@@ -93,6 +93,8 @@ class FacturaResumenOut(BaseModel):
     tipo: str
     es_escaneada: bool
     estado_revision: str
+    tiene_fichero: bool = False
+    fichero_origen: str = ""
 
 
 class FacturaRevisionOut(FacturaResumenOut):
@@ -100,7 +102,6 @@ class FacturaRevisionOut(FacturaResumenOut):
     iva: Money
     irpf: Money
     retencion_garantia: Money
-    fichero_origen: str
     lineas: list[LineaFacturaRead] = Field(default_factory=list)
     contratos_candidatos: list[ContratoCandidatoFacturaOut] = Field(
         default_factory=list

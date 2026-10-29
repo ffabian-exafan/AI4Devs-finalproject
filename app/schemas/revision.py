@@ -31,8 +31,10 @@ class TareaRevisionNodo(BaseModel):
     unidad: str | None = None
     cantidad: Money | None = None
     precio_unitario: Money | None = None
+    descuento_pct: Money | None = None
     importe_presupuestado: Money
     tiene_anotacion_manual: bool
+    es_montaje: bool = False
     estado_revision: str
     hijos: list["TareaRevisionNodo"] = Field(default_factory=list)
 

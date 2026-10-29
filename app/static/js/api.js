@@ -8,8 +8,36 @@ window.GestorApi = {
     return res.json();
   },
 
+  async copiarFichero(fichero) {
+    // Hay que leer los bytes antes de vaciar el <input type="file">.
+    // Si no, Chrome invalida el File y el fetch falla con "Failed to fetch".
+    try {
+      const datos = await fichero.arrayBuffer();
+      return new File([datos], fichero.name, {
+        type: fichero.type || "application/octet-stream",
+      });
+    } catch {
+      const nombre = fichero && fichero.name ? fichero.name : "el fichero";
+      throw new Error(
+        "No se ha podido leer «" +
+          nombre +
+          "». Si lo tienes abierto, ciérralo y vuelve a elegirlo."
+      );
+    }
+  },
+
   async postForm(url, formData) {
-    const res = await fetch(url, { method: "POST", body: formData });
+    let res;
+    try {
+      res = await fetch(url, { method: "POST", body: formData });
+    } catch (err) {
+      if (err && err.message === "Failed to fetch") {
+        throw new Error(
+          "El navegador no ha podido enviar el fichero. Ciérralo si lo tienes abierto y vuelve a elegirlo."
+        );
+      }
+      throw err;
+    }
     if (!res.ok) {
       throw new Error(await this._detalleError(res));
     }
@@ -64,11 +92,13 @@ window.GestorApi = {
 
   euro(valor) {
     const n = Number(valor);
-    if (Number.isNaN(n)) return "—";
+    if (!Number.isFinite(n)) return "—";
     return n.toLocaleString("es-ES", {
       style: "currency",
       currency: "EUR",
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
+      useGrouping: "always",
     });
   },
 };

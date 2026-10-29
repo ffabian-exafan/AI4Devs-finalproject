@@ -61,6 +61,19 @@ class Tarea(Base):
     cantidad: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     precio_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     importe_presupuestado: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    # Línea de montaje del Excel Expertis: es lo que la subcontrata presupuesta y factura.
+    # ELEMENTOS DE MONTAJE se queda en su bloque; no entra en esta partida.
+    es_montaje: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    descuento_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    # Ref. (1) y Ref. (2) de la plantilla Expertis
+    referencia: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    referencia_alt: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Importe del PDF firmado con el cliente, tras confirmación humana. Solo en el apartado.
+    importe_contrato_cliente: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
     # Fuerza estado_revision = pendiente cuando es true
     tiene_anotacion_manual: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
