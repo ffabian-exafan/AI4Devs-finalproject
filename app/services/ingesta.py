@@ -322,7 +322,7 @@ def importar_contrato(
     apartados = [
         (tarea.codigo, tarea.descripcion)
         for tarea in casado_svc.apartados_de_presupuesto(db, proyecto.id)
-        if not _es_gestion(tarea.descripcion)
+        if tarea.solo_gestion or not _es_gestion(tarea.descripcion)
     ]
     extraido = extraccion_contrato_svc.extraer_contrato(leido.texto, apartados)
     if leido.es_escaneado:

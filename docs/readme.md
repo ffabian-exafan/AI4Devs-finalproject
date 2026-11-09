@@ -319,6 +319,7 @@ erDiagram
         decimal precio_unitario "nullable"
         decimal importe_presupuestado
         bool tiene_anotacion_manual
+        bool solo_gestion "true si el apartado nace de una línea del PDF que no suministramos"
         string estado_revision "pendiente|revisada|confirmada"
         string estado "no_iniciada|en_curso|finalizada"
         decimal avance_fisico_pct
@@ -369,7 +370,7 @@ erDiagram
 - **NAVE.** Unidad de desglose del presupuesto. Guarda su importe presupuestado.
 - **CONTRATISTA.** Equipo interno o subcontrata externa. `nif` único: es la clave del enlace fiable con las facturas.
 - **CONTRATO.** El acuerdo de ejecución firmado con un subcontratista: precio cerrado, plazo y condiciones de medición/facturación. Distinto de `PRESUPUESTO` (lo que se ofertó al cliente) y de `FACTURA` (lo que se cobra mes a mes). Puede aportar un desglose de `TAREA` más fino del que trae el presupuesto — en el ejemplo visto, por Sala con precio unitario. `referencia_presupuesto` es texto libre al nº de presupuesto. `tarea_apartado_id` enlaza el contrato con el apartado de presupuesto correspondiente tras sugerencia automática y **confirmación humana** (ver `docs/flujo_ui_proyecto.md`). `ruta_almacen` guarda el PDF/imagen en disco.
-- **TAREA.** Partida del presupuesto o del contrato, colgada de una nave. **Es jerárquica** (`tarea_padre_id`): un presupuesto suele generar filas de `nivel = "apartado"` con `importe_presupuestado` pero sin `unidad`/`cantidad`/`precio_unitario`; un contrato puede generar filas hijas de `nivel = "partida"` con esos campos rellenos. `presupuesto_id` y `contrato_id` (ambos nullable) registran de qué documento vino cada fila, para poder citar la fuente de cualquier cifra. `tiene_anotacion_manual` marca cuándo el valor impreso fue corregido a mano — fuerza `estado_revision = "pendiente"` sin excepción. En el Excel, `es_montaje` marca la línea que la subcontrata presupuesta y factura. Si está dentro de un producto, se agrupa en «Montaje {producto}». Si viene en un bloque GENERAL o sin producto, se relaciona por LLM (sin LLM, por el nombre). Lo que no es de un solo producto queda en «Montaje general». `descuento_pct`, `referencia` y `referencia_alt` guardan `Dto. %`, `Ref. (1)` y `Ref. (2)`. `importe_contrato_cliente` (solo en el apartado) es el importe del PDF del cliente tras confirmación humana. Las líneas `ELEMENTOS DE MONTAJE` no son montaje: se quedan en su bloque. `estado` (económico/administrativo) y `avance_fisico_pct` (ejecución real) van separados a propósito: pagado no es ejecutado.
+- **TAREA.** Partida del presupuesto o del contrato, colgada de una nave. **Es jerárquica** (`tarea_padre_id`): un presupuesto suele generar filas de `nivel = "apartado"` con `importe_presupuestado` pero sin `unidad`/`cantidad`/`precio_unitario`; un contrato puede generar filas hijas de `nivel = "partida"` con esos campos rellenos. `presupuesto_id` y `contrato_id` (ambos nullable) registran de qué documento vino cada fila, para poder citar la fuente de cualquier cifra. `tiene_anotacion_manual` marca cuándo el valor impreso fue corregido a mano — fuerza `estado_revision = "pendiente"` sin excepción. En el Excel, `es_montaje` marca la línea que la subcontrata presupuesta y factura. Si está dentro de su subapartado, se agrupa en «Montaje {producto}». Si el montaje está en otra parte del Excel, se asocia al subapartado cuyo nombre aparece en la línea o en el bloque. Lo que no casa y sigue en GENERAL lo propone el LLM (solo nombres). Lo que no es de un solo subapartado queda en «Montaje general». `descuento_pct`, `referencia` y `referencia_alt` guardan `Dto. %`, `Ref. (1)` y `Ref. (2)`. `importe_contrato_cliente` (solo en el apartado) es el importe del PDF del cliente tras confirmación humana. Las líneas `ELEMENTOS DE MONTAJE` no son montaje: se quedan en su bloque. `estado` (económico/administrativo) y `avance_fisico_pct` (ejecución real) van separados a propósito: pagado no es ejecutado. `solo_gestion` marca un apartado creado desde una línea de importe del PDF del cliente: Exafan lo gestiona y no lo suministra. No tiene partidas ni montaje. El importe de la línea es `importe_presupuestado` e `importe_contrato_cliente`. Si el importe es manuscrito, nace pendiente y no admite contrato hasta confirmarlo. Varios contratos pueden enlazarse a ese apartado; lo contratado es la suma, comparada con el importe de la línea.
 - **FACTURA.** Documento del contratista. Siempre enlaza con un contratista (por NIF) y, cuando existe, con el `CONTRATO` que certifica — esto permite comparar contratado vs. facturado con precisión, no solo por contratista en bloque. Guarda base, IVA, IRPF, retención de garantía y `tipo` (ordinaria, anticipo, certificación). `estado_revision` controla la revisión humana; `es_escaneada` avisa de baja fiabilidad. `ruta_almacen` guarda el fichero subido.
 - **LINEA_FACTURA.** Detalle de la factura, si lo hay. `embedding` alimenta el casado semántico con `pgvector`.
 - **ASIGNACION.** Tabla puente del casado. Reparte el importe de una factura a nave o tarea/partida. `es_estimacion` marca cuándo el reparto es proporcional al presupuesto (no medido). `metodo` y `confianza` registran cómo se hizo el enlace y `revisado_por` quién lo confirmó.
@@ -400,6 +401,17 @@ paths:
   /proyectos/{id}/contraste-cliente:
     get:
       summary: Devuelve las líneas guardadas del PDF del cliente. Si faltan, las lee del fichero. Si no hay relación, propone una y la deja sin confirmar
+  /proyectos/{id}/lineas-pdf/{linea_id}/solo-gestion:
+    post:
+      summary: Crea un apartado de solo gestión desde una línea de importe del PDF del cliente
+    delete:
+      summary: Quita la marca y borra el apartado si ningún contrato lo enlaza
+  /proyectos/{id}/apartados/{tarea_id}/confirmar-gestion:
+    post:
+      summary: Confirma el importe manuscrito de un apartado de solo gestión
+  /proyectos/{id}/contratos/{contrato_id}/desenlazar-apartado:
+    post:
+      summary: Quita el enlace del contrato con su apartado
   /proyectos/{id}/apartados/{tarea_id}/importe-cliente:
     post:
       summary: Confirma el importe del contrato cliente en un apartado Excel

@@ -33,8 +33,13 @@ from app.services.excel_expertis import (
     _titulo_montaje,
     aplicar_relacion_montaje,
     asignar_montaje_por_nombre,
+    asociar_montaje_por_apartado,
     leer_excel_expertis,
     lineas_y_productos_montaje,
+    sumar_dietas_a_apartados,
+    _es_cajon_general,
+    _es_dietas,
+    _repartir_pesos,
 )
 from app.services.ingesta import leer_presupuesto
 from app.services.jerarquia import mapa_padres
@@ -273,9 +278,14 @@ def confirmar_importes_cliente(
             vistos.append(tarea_id)
     tareas = [_exigir_subapartado(db, proyecto_id, tarea_id) for tarea_id in vistos]
     _rechazar_solape(db, tareas)
+    presupuesto_ids = {tarea.presupuesto_id for tarea in tareas if tarea.presupuesto_id}
+    por_id = {
+        fila.id: fila
+        for fila in db.query(Tarea).filter(Tarea.presupuesto_id.in_(presupuesto_ids)).all()
+    }
     partes = _repartir_importe(
         Decimal(importe),
-        [Decimal(tarea.importe_presupuestado or 0) for tarea in tareas],
+        [_importe_con_montaje(tarea, por_id) for tarea in tareas],
     )
     for tarea, parte in zip(tareas, partes):
         tarea.importe_contrato_cliente = parte
@@ -352,7 +362,7 @@ def _construir_sugerencias(extraido) -> tuple[list[SugerenciaContrasteOut], list
         )
         for apartado in lineas
     ]
-    sugerencias = _repartir_cierre(lineas_pdf, extraido)
+    sugerencias = lineas_pdf
     descuentos = [
         DescuentoContrasteOut(
             descripcion=descuento.descripcion,
@@ -467,6 +477,8 @@ def _salida_contraste(db: Session, presupuesto: Presupuesto) -> ContrastarClient
                 tarea_ids=tareas,
                 confirmada=confirmada,
                 sugerida=sugerida,
+                solo_gestion=fila.apartado_gestion_id is not None,
+                apartado_gestion_id=fila.apartado_gestion_id,
             )
         )
     return ContrastarClienteOut(
@@ -524,6 +536,7 @@ _PROMPT_CONTRASTE = (
     "linea y bloques son índices de las listas. "
     "Un bloque solo puede ir en una línea. "
     "No marques un bloque y lo que cuelga de él: el bloque ya incluye a los hijos. "
+    "El montaje de un apartado va sumado en ese apartado: no lo marques aparte. "
     "Si la línea habla del conjunto, marca el padre. Si habla de una parte, marca solo esa parte. "
     "Varios hermanos sí, cuando la línea cubre esas partes y no el padre. "
     "Guíate por el nombre. El importe no tiene que coincidir. "
@@ -616,7 +629,53 @@ def _bloques_contraste(db: Session, proyecto_id: int) -> list[_BloqueContraste]:
     return [
         _BloqueContraste(id=nodo.id, padre_id=nodo.tarea_padre_id, ruta=ruta(nodo))
         for nodo in nodos
+        if not _montaje_ya_en_apartado(nodo, por_id)
     ]
+
+
+def _resto_montaje(descripcion: str) -> str:
+    nombre = _normalizar(descripcion)
+    if nombre.startswith("montaje "):
+        return nombre[len("montaje ") :].strip()
+    return ""
+
+
+def _montaje_ya_en_apartado(nodo: Tarea, por_id: dict[int, Tarea]) -> bool:
+    """El bloque de montaje no se contrasta solo: su importe va con el apartado."""
+    if nodo.nivel != "subapartado" or not _es_bloque_montaje(nodo.descripcion):
+        return False
+    padre = por_id.get(nodo.tarea_padre_id or 0)
+    if padre is None:
+        return False
+    if padre.nivel == "subapartado" and not _es_bloque_montaje(padre.descripcion):
+        return True
+    resto = _resto_montaje(nodo.descripcion)
+    if not resto or resto == "general":
+        return False
+    return any(
+        hermano.nivel == "subapartado"
+        and hermano.id != nodo.id
+        and hermano.tarea_padre_id == nodo.tarea_padre_id
+        and not _es_bloque_montaje(hermano.descripcion)
+        and _normalizar(hermano.descripcion) == resto
+        for hermano in por_id.values()
+    )
+
+
+def _importe_con_montaje(tarea: Tarea, por_id: dict[int, Tarea]) -> Decimal:
+    """Presupuesto del apartado. Si el montaje está al lado y no dentro, se suma."""
+    base = Decimal(tarea.importe_presupuestado or 0)
+    if _es_bloque_montaje(tarea.descripcion):
+        return base
+    buscado = _normalizar(tarea.descripcion)
+    for otro in por_id.values():
+        if otro.id == tarea.id or otro.tarea_padre_id != tarea.tarea_padre_id:
+            continue
+        if not _es_bloque_montaje(otro.descripcion):
+            continue
+        if _resto_montaje(otro.descripcion) == buscado:
+            base += Decimal(otro.importe_presupuestado or 0)
+    return base
 
 
 def _relacionar_pdf_llm(
@@ -837,49 +896,6 @@ def _repartir_importe(importe: Decimal, bases: list[Decimal]) -> list[Decimal]:
     return partes
 
 
-def _repartir_cierre(
-    sugerencias: list[SugerenciaContrasteOut],
-    extraido,
-) -> list[SugerenciaContrasteOut]:
-    """Reparte el descuento de cierre. El importe manuscrito, si existe, es el que vale."""
-    if not sugerencias:
-        return sugerencias
-    suma = sum((fila.importe_pdf for fila in sugerencias), Decimal("0"))
-    if suma <= 0:
-        return sugerencias
-    neto = _neto_firmado(extraido, suma)
-    if neto >= suma - Decimal("0.01"):
-        return sugerencias
-
-    factor = neto / suma
-    acumulado = Decimal("0")
-    salida: list[SugerenciaContrasteOut] = []
-    for indice, fila in enumerate(sugerencias):
-        bruto = fila.importe_pdf
-        if indice == len(sugerencias) - 1:
-            neto_linea = (neto - acumulado).quantize(Decimal("0.01"))
-        else:
-            neto_linea = (bruto * factor).quantize(Decimal("0.01"))
-            acumulado += neto_linea
-        salida.append(fila.model_copy(update={"importe_pdf": neto_linea, "importe_bruto": bruto}))
-    return salida
-
-
-def _neto_firmado(extraido, suma: Decimal) -> Decimal:
-    manuscritos = sum(
-        (descuento.importe for descuento in extraido.descuentos if descuento.es_manuscrito),
-        Decimal("0"),
-    )
-    if extraido.total_manuscrito is not None:
-        return Decimal(extraido.total_manuscrito)
-    if extraido.total_impreso is not None and manuscritos == 0:
-        return Decimal(extraido.total_impreso)
-    if extraido.total_impreso is not None:
-        return Decimal(extraido.total_impreso) - manuscritos
-    resta = sum((descuento.importe for descuento in extraido.descuentos), Decimal("0"))
-    return suma - resta
-
-
 def _subapartados_excel(db: Session, proyecto_id: int) -> list[Tarea]:
     """Bloques del Excel (negrita o cursiva), no el fichero entero."""
     raices = [
@@ -919,27 +935,33 @@ _PROMPT_MONTAJE = (
     "Relaciona cada línea de montaje con un solo producto del presupuesto. "
     'Responde solo JSON: {"asignaciones": [{"linea": 0, "producto": 1}]}. '
     "producto es el índice de la lista, o null si la línea es general "
-    "(dietas, transporte, puesta en marcha, varios productos o ninguno). "
+    "(transporte, puesta en marcha, varios productos o ninguno). "
+    "No asignes dietas ni desplazamientos: se reparten entre los apartados. "
     "No inventes productos ni incluyas importes."
 )
 
 
 def relacionar_montaje_general(leido: ExcelLeido) -> None:
-    """Reparte el montaje del bloque GENERAL entre los productos.
+    """Después de leer, cuelga en cada subapartado el montaje que estaba en otro bloque.
 
-    Con LLM se mandan solo los nombres. Si no hay modelo, o no responde,
-    se usa el nombre del producto cuando aparece en la línea. El documento
+    Primero por el nombre del subapartado, en la línea o en el bloque de origen.
+    Lo que sigue en GENERAL y no ha casado lo propone el LLM, solo con nombres.
+    Si no hay modelo, o no responde, se vuelve a mirar el nombre. El documento
     sigue pendiente de revisión.
     """
+    leido.importe = asociar_montaje_por_apartado(leido.nodos)
     lineas, productos = lineas_y_productos_montaje(leido.nodos)
-    if not lineas or not productos:
-        return
-    desc_lineas = [nodo.descripcion for nodo in lineas]
-    desc_productos = [nodo.descripcion for nodo in productos]
-    asignaciones = _asignar_montaje_llm(desc_lineas, desc_productos)
-    if asignaciones is None:
-        asignaciones = asignar_montaje_por_nombre(desc_lineas, desc_productos)
-    leido.importe = aplicar_relacion_montaje(leido.nodos, asignaciones)
+    if lineas and productos:
+        desc_lineas = [nodo.descripcion for nodo in lineas]
+        desc_productos = [nodo.descripcion for nodo in productos]
+        asignaciones = _asignar_montaje_llm(desc_lineas, desc_productos)
+        if asignaciones is None:
+            asignaciones = asignar_montaje_por_nombre(desc_lineas, desc_productos)
+        for indice, linea in enumerate(lineas):
+            if _es_dietas(linea.descripcion):
+                asignaciones[indice] = None
+        leido.importe = aplicar_relacion_montaje(leido.nodos, asignaciones)
+    leido.importe = sumar_dietas_a_apartados(leido.nodos)
 
 
 def _asignar_montaje_llm(lineas: list[str], productos: list[str]) -> list[int | None] | None:
@@ -1169,6 +1191,152 @@ def _es_bloque_montaje(descripcion: str) -> bool:
     """Bloque generado: «Montaje», «Montaje general» o «Montaje {subapartado}»."""
     nombre = _normalizar(descripcion)
     return nombre == "montaje" or nombre.startswith("montaje ")
+
+
+def sumar_dietas_guardadas(db: Session, presupuesto_id: int) -> None:
+    """Pasa a los subapartados las dietas que seguían fuera, en una obra ya importada."""
+    tareas = (
+        db.query(Tarea)
+        .filter(Tarea.presupuesto_id == presupuesto_id)
+        .order_by(Tarea.id)
+        .all()
+    )
+    if not tareas:
+        return
+    por_id = {tarea.id: tarea for tarea in tareas}
+    productos = [
+        tarea
+        for tarea in tareas
+        if _es_apartado_de_reparto(tarea, por_id)
+    ]
+    pesos = {producto.id: Decimal(producto.importe_presupuestado or 0) for producto in productos}
+    cambio = False
+    for linea in list(tareas):
+        if linea.nivel != "partida" or not _es_dietas(linea.descripcion):
+            continue
+        if _dietas_ya_en_apartado(linea, por_id):
+            if not linea.es_montaje:
+                linea.es_montaje = True
+                cambio = True
+            continue
+        if not productos or _linea_enlazada(db, linea.id):
+            continue
+        raiz = _raiz_id(linea, por_id)
+        destinos = [producto for producto in productos if _raiz_id(producto, por_id) == raiz]
+        if not destinos:
+            continue
+        partes = _repartir_pesos(
+            Decimal(linea.importe_presupuestado or 0),
+            [pesos[producto.id] for producto in destinos],
+        )
+        padre = por_id.get(linea.tarea_padre_id or 0)
+        importe = Decimal(linea.importe_presupuestado or 0)
+        for nodo in _hasta_la_raiz(padre, por_id) if padre is not None else []:
+            nodo.importe_presupuestado = _dinero(Decimal(nodo.importe_presupuestado) - importe)
+        for destino, parte in zip(destinos, partes, strict=True):
+            if parte <= 0:
+                continue
+            _crear_dietas(db, linea, destino, parte, por_id, tareas)
+        if linea in tareas:
+            tareas.remove(linea)
+        db.delete(linea)
+        if (
+            padre is not None
+            and (_es_bloque_montaje(padre.descripcion) or _es_cajon_general(padre.descripcion))
+            and _montaje_vacio(db, padre, tareas)
+        ):
+            if padre in tareas:
+                tareas.remove(padre)
+            db.delete(padre)
+        cambio = True
+    if cambio:
+        db.commit()
+
+
+def _es_apartado_de_reparto(tarea: Tarea, por_id: dict[int, Tarea]) -> bool:
+    if tarea.nivel != "subapartado":
+        return False
+    if _es_bloque_montaje(tarea.descripcion) or _es_cajon_general(tarea.descripcion):
+        return False
+    padre = por_id.get(tarea.tarea_padre_id or 0)
+    return padre is None or padre.nivel == "apartado"
+
+
+def _dietas_ya_en_apartado(linea: Tarea, por_id: dict[int, Tarea]) -> bool:
+    actual = por_id.get(linea.tarea_padre_id or 0)
+    while actual is not None:
+        if _es_apartado_de_reparto(actual, por_id) or (
+            actual.nivel == "subapartado"
+            and not _es_bloque_montaje(actual.descripcion)
+            and not _es_cajon_general(actual.descripcion)
+        ):
+            return True
+        actual = por_id.get(actual.tarea_padre_id or 0)
+    return False
+
+
+def _linea_enlazada(db: Session, tarea_id: int) -> bool:
+    from app.models import Asignacion, LineaFactura
+
+    if db.query(Asignacion.id).filter(Asignacion.tarea_id == tarea_id).first():
+        return True
+    return db.query(LineaFactura.id).filter(LineaFactura.tarea_id == tarea_id).first() is not None
+
+
+def _crear_dietas(
+    db: Session,
+    linea: Tarea,
+    destino: Tarea,
+    parte: Decimal,
+    por_id: dict[int, Tarea],
+    tareas: list[Tarea],
+) -> None:
+    titulo = _titulo_montaje(destino.descripcion)
+    receptor = _bloque_hijo(destino.id, titulo, por_id)
+    if receptor is None:
+        receptor = Tarea(
+            nave_id=linea.nave_id,
+            presupuesto_id=linea.presupuesto_id,
+            tarea_padre_id=destino.id,
+            codigo="0",
+            nivel="subapartado",
+            descripcion=titulo[:255],
+            importe_presupuestado=Decimal("0"),
+            tiene_anotacion_manual=False,
+            es_montaje=False,
+            estado_revision="pendiente",
+            estado="no_iniciada",
+            avance_fisico_pct=Decimal("0"),
+        )
+        db.add(receptor)
+        db.flush()
+        por_id[receptor.id] = receptor
+        tareas.append(receptor)
+    nueva = Tarea(
+        nave_id=linea.nave_id,
+        presupuesto_id=linea.presupuesto_id,
+        tarea_padre_id=receptor.id,
+        codigo=(linea.codigo or "s/c")[:50],
+        nivel="partida",
+        descripcion=linea.descripcion,
+        cantidad=Decimal("1"),
+        precio_unitario=parte,
+        importe_presupuestado=parte,
+        capitulo=(destino.descripcion or "")[:255] or None,
+        referencia=linea.referencia,
+        referencia_alt=linea.referencia_alt,
+        tiene_anotacion_manual=False,
+        es_montaje=True,
+        estado_revision="pendiente",
+        estado="no_iniciada",
+        avance_fisico_pct=Decimal("0"),
+    )
+    db.add(nueva)
+    db.flush()
+    por_id[nueva.id] = nueva
+    tareas.append(nueva)
+    for nodo in _hasta_la_raiz(receptor, por_id):
+        nodo.importe_presupuestado = _dinero(Decimal(nodo.importe_presupuestado) + parte)
 
 
 def repartir_montaje_por_subapartado(db: Session, presupuesto_id: int) -> None:

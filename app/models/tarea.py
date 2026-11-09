@@ -66,6 +66,10 @@ class Tarea(Base):
     es_montaje: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # True si el apartado nace de una línea del PDF que Exafan gestiona y no suministra.
+    solo_gestion: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     descuento_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     # Ref. (1) y Ref. (2) de la plantilla Expertis
     referencia: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Obrix</title>
   <link rel="icon" type="image/png" href="/assets/obrix-icon.png" />
-  <link rel="stylesheet" href="/css/exafan.css" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261109f" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js"></script>
-  <script src="/js/obras.js"></script>
+  <script src="/js/obras.js?v=20261109h"></script>
 </head>
 
 <body>
@@ -251,6 +251,7 @@
                   <div class="ap-nombre" @click="open = open === i ? -1 : i">
                     <strong>
                       <span x-text="ap.nombre"></span>
+                      <span class="badge badge-warning" x-show="ap.solo_gestion">Solo gestión</span>
                       <span class="apagado" x-text="open === i ? '▾' : '▸'"></span>
                     </strong>
                     <div class="meta" :class="ap.hay_dudas && 'ambar'" x-text="ap.resumen"></div>
@@ -260,8 +261,9 @@
                     <button type="button" class="pill-ok" x-show="ap.revisado" @click="revisar(i)">✓ Revisado</button>
                     <button type="button" class="btn btn-secondary btn-sm" x-show="!ap.revisado"
                       @click="revisar(i)">Revisar</button>
-                    <button type="button" class="btn-linea" @click.stop="editarLinea(ap)">Editar</button>
-                    <button type="button" class="btn-linea btn-linea-peligro"
+                    <button type="button" class="btn-linea" x-show="!ap.solo_gestion"
+                      @click.stop="editarLinea(ap)">Editar</button>
+                    <button type="button" class="btn-linea btn-linea-peligro" x-show="!ap.solo_gestion"
                       @click.stop="borrarLinea(ap)">Borrar</button>
                   </div>
                 </div>
@@ -480,7 +482,7 @@
                   </div>
                   <template x-for="(fila, i) in contraste.sugerencias" :key="fila.codigo_pdf + '-' + i">
                     <button type="button" class="cruce-linea"
-                      :class="{ activa: contrasteIndice === i, hecha: fila.confirmada }"
+                      :class="{ activa: contrasteIndice === i, hecha: fila.confirmada || fila.solo_gestion }"
                       :aria-current="contrasteIndice === i ? 'true' : null" @click="contrasteIndice = i">
                       <span class="cruce-punto" :class="estadoContraste(fila)" aria-hidden="true"></span>
                       <span class="cruce-linea-texto">
@@ -494,19 +496,22 @@
                 <template x-if="filaContraste()">
                   <section class="cruce-destino" aria-label="Bloques del Excel">
                     <header class="cruce-dest-cab">
-                      <p class="meta">Bloque del Excel para este importe</p>
-                      <h2 class="h2" x-text="filaContraste().descripcion_pdf"></h2>
-                      <p class="cruce-cifra num" x-text="euro(filaContraste().importe_pdf)"></p>
+                      <div class="cruce-dest-top">
+                        <div>
+                          <p class="meta">Bloque del Excel para este importe</p>
+                          <h2 class="h2" x-text="filaContraste().descripcion_pdf"></h2>
+                        </div>
+                        <p class="cruce-cifra num" x-text="euro(filaContraste().importe_pdf)"></p>
+                      </div>
                       <p class="meta" x-show="filaContraste().sugerida && !filaContraste().confirmada">
                         Propuesta del modelo. Confírmala o cambia el bloque.
                       </p>
                       <p class="meta"
                         x-show="filaContraste().importe_bruto != null && Number(filaContraste().importe_bruto) !== Number(filaContraste().importe_pdf)">
                         En el PDF la línea era <span class="num" x-text="euro(filaContraste().importe_bruto)"></span>.
-                        Este importe ya resta el descuento de cierre.
                       </p>
                     </header>
-                    <div class="cruce-bloques">
+                    <div class="cruce-bloques" x-show="!filaContraste().solo_gestion">
                       <div class="cruce-arbol" role="tree">
                         <template x-for="sec in gruposContraste(filaContraste())" :key="filaContraste().codigo_pdf + '-' + sec.clave">
                           <div class="cruce-rama-wrap">
@@ -546,6 +551,7 @@
                                     <span class="marca" :class="nodo.elegido && 'on'" aria-hidden="true"></span>
                                     <span class="nombre">
                                       <span x-text="nodo.etiqueta"></span>
+                                      <span class="meta" x-show="nodo.incluyeMontaje">Incluye el montaje</span>
                                       <span class="meta" x-show="nodo.elegido && nodo.tieneHijos">Incluye lo que cuelga</span>
                                       <span class="meta" x-show="!nodo.elegido && nodo.parcial">Hay partes marcadas</span>
                                     </span>
@@ -561,23 +567,43 @@
                         Esta obra no tiene bloques de Excel para contrastar.
                       </p>
                     </div>
+                    <div class="cruce-bloques" x-show="filaContraste().solo_gestion">
+                      <p class="sub">Este importe es un apartado de solo gestión. No hay suministro nuestro.</p>
+                      <p class="sub ambar" x-show="gestionPendiente(filaContraste())">
+                        Anotación manuscrita. Confirma el importe antes de enlazar un contrato.
+                      </p>
+                    </div>
                     <footer class="cruce-pie">
                       <div>
-                        <p class="num sub" x-show="filaContraste().hay_cruce">
+                        <p class="num sub" x-show="filaContraste().hay_cruce && !filaContraste().solo_gestion">
                           Excel <span x-text="filaContraste().excel"></span>
                           · diferencia
                           <strong :class="filaContraste().supera ? 'rojo' : 'verde'"
                             x-text="filaContraste().diferencia"></strong>
                         </p>
-                        <p class="sub" x-show="!filaContraste().hay_cruce && !filaContraste().confirmada">
-                          Marca el bloque que cubre este importe.
+                        <p class="sub"
+                          x-show="!filaContraste().solo_gestion && !filaContraste().hay_cruce && !filaContraste().confirmada">
+                          Marca el bloque que cubre este importe, o márcalo como solo gestión.
                         </p>
                         <p class="sub" x-show="filaContraste().confirmada">Importe guardado en el Excel.</p>
+                        <p class="sub" x-show="filaContraste().solo_gestion && !gestionPendiente(filaContraste())">
+                          Importe del PDF, listo para enlazar contratos.
+                        </p>
                       </div>
                       <span class="badge badge-success" x-show="filaContraste().confirmada">Confirmado</span>
-                      <button type="button" class="btn btn-primary btn-sm" x-show="!filaContraste().confirmada"
+                      <span class="badge badge-warning" x-show="filaContraste().solo_gestion">Solo gestión</span>
+                      <button type="button" class="btn btn-secondary btn-sm"
+                        x-show="!filaContraste().confirmada && !filaContraste().solo_gestion"
+                        @click="marcarSoloGestion(filaContraste())">Solo gestión</button>
+                      <button type="button" class="btn btn-primary btn-sm"
+                        x-show="!filaContraste().confirmada && !filaContraste().solo_gestion"
                         :disabled="!(filaContraste().elegidos || []).length"
                         @click="confirmarImporteCliente(filaContraste())">Confirmar importe</button>
+                      <button type="button" class="btn btn-primary btn-sm"
+                        x-show="filaContraste().solo_gestion && gestionPendiente(filaContraste())"
+                        @click="confirmarGestion(filaContraste())">Confirmar importe</button>
+                      <button type="button" class="btn btn-secondary btn-sm" x-show="filaContraste().solo_gestion"
+                        @click="desmarcarSoloGestion(filaContraste())">Desmarcar</button>
                     </footer>
                   </section>
                 </template>
@@ -593,6 +619,45 @@
                     <strong class="num" x-text="euro(-descuento.importe)"></strong>
                   </div>
                 </template>
+              </div>
+              <div class="card resumen-contraste">
+                <h2 class="h2" style="font-size: 15px">Resumen por apartado</h2>
+                <div class="grid-resumen th">
+                  <span>Apartado</span>
+                  <span class="der">Excel</span>
+                  <span class="der">PDF</span>
+                  <span class="der">Diferencia</span>
+                </div>
+                <template x-for="fila in resumenContraste().filas" :key="'res-' + fila.id">
+                  <div class="grid-resumen td">
+                    <span x-text="fila.nombre"></span>
+                    <span class="der num" x-text="fila.excel"></span>
+                    <span class="der num" x-text="fila.pdf"></span>
+                    <strong class="der num" :class="fila.negativo ? 'rojo' : 'verde'" x-text="fila.diferencia"></strong>
+                  </div>
+                </template>
+                <div class="grid-resumen td" :class="!pdfSinBloque && 'apagado'" x-show="resumenContraste().sinAsignar">
+                  <label class="sin-bloque">
+                    <input type="checkbox" :checked="pdfSinBloque" @change="alternarPdfSinBloque()">
+                    <span>PDF sin bloque</span>
+                  </label>
+                  <span class="der num">—</span>
+                  <span class="der num" x-text="resumenContraste().pdfSinAsignar"></span>
+                  <span class="der num">—</span>
+                </div>
+                <div class="grid-resumen td" x-show="resumenContraste().hayDescuento">
+                  <span>Descuentos del cierre</span>
+                  <span class="der num">—</span>
+                  <span class="der num" x-text="resumenContraste().descuento"></span>
+                  <span class="der num">—</span>
+                </div>
+                <div class="grid-resumen td resumen-total">
+                  <strong>Total</strong>
+                  <strong class="der num" x-text="resumenContraste().excel"></strong>
+                  <strong class="der num" x-text="resumenContraste().pdf"></strong>
+                  <strong class="der num" :class="resumenContraste().negativo ? 'rojo' : 'verde'"
+                    x-text="resumenContraste().diferencia"></strong>
+                </div>
               </div>
             </div>
           </template>
@@ -673,7 +738,7 @@
                 <template x-if="c.asociado">
                   <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
                     <span class="badge badge-success">Asociado</span>
-                    <button type="button" class="btn-texto" @click="asociar(c.id, false)">Deshacer</button>
+                    <button type="button" class="btn-texto" @click="asociar(c.id, false)">Quitar enlace</button>
                   </div>
                 </template>
               </div>

@@ -26,12 +26,14 @@ function gestionObras() {
     nombreObra: "",
     contraste: null,
     contrasteIndice: 0,
+    pdfSinBloque: true,
     menuCompacto: false,
     lineasDoc: ["60%", "90%", "85%", "40%", "95%", "70%", "88%", "55%", "92%", "80%", "35%", "75%"],
 
     async init() {
       try {
         this.menuCompacto = localStorage.getItem("obrix-menu") === "1";
+        this.pdfSinBloque = localStorage.getItem("obrix-pdf-sin-bloque") !== "0";
       } catch (_) {
         this.menuCompacto = false;
       }
@@ -448,27 +450,83 @@ function gestionObras() {
       };
     },
 
+    _nombrePlano(texto) {
+      return String(texto || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    },
+
+    _esBloqueMontaje(nodo) {
+      const nombre = this._nombrePlano(nodo && nodo.descripcion);
+      return nombre === "montaje" || nombre.startsWith("montaje ");
+    },
+
+    _restoMontaje(nodo) {
+      const nombre = this._nombrePlano(nodo && nodo.descripcion);
+      return nombre.startsWith("montaje ") ? nombre.slice("montaje ".length).trim() : "";
+    },
+
+    _montajeSuelto(nodo, hermanos) {
+      const buscado = this._nombrePlano(nodo && nodo.descripcion);
+      if (!buscado || this._esBloqueMontaje(nodo)) return null;
+      return (
+        (hermanos || []).find(
+          (otro) => otro.id !== nodo.id && this._restoMontaje(otro) === buscado
+        ) || null
+      );
+    },
+
+    _cuantiaContraste(nodo, hermanos) {
+      let base = Number(nodo.importe_presupuestado) || 0;
+      const suelto = this._montajeSuelto(nodo, hermanos);
+      if (suelto) base += Number(suelto.importe_presupuestado) || 0;
+      return base;
+    },
+
+    _incluyeMontaje(nodo, hermanos) {
+      if (!nodo || this._esBloqueMontaje(nodo)) return false;
+      if ((Number(nodo.importe_montaje) || 0) > 0) return true;
+      return Boolean(this._montajeSuelto(nodo, hermanos));
+    },
+
     seccionesContraste() {
       const apartados = ((this.proyecto && this.proyecto.apartados) || []).filter(
-        (apartado) => !this._esDescuento(apartado) && !this._esGestion(apartado)
+        (apartado) =>
+          !this._esDescuento(apartado) && !apartado.solo_gestion && !this._esRecargo(apartado)
       );
-      const rama = (nodo) => ({
+      const rama = (nodo, hermanos) => ({
         valor: String(nodo.id),
         etiqueta: nodo.descripcion,
-        cuantia: GestorApi.euro(nodo.importe_presupuestado),
+        cuantia: GestorApi.euro(this._cuantiaContraste(nodo, hermanos)),
+        incluyeMontaje: this._incluyeMontaje(nodo, hermanos),
         hijos: (nodo.subapartados || [])
-          .filter((hijo) => hijo.nivel === "subapartado")
-          .map(rama),
+          .filter((hijo) => hijo.nivel === "subapartado" && !this._esBloqueMontaje(hijo))
+          .map((hijo, _indice, lista) => rama(hijo, lista)),
       });
       return apartados
-        .map((apartado) => ({
-          clave: String(apartado.id),
-          codigo: apartado.codigo || "Apartado",
-          etiqueta: apartado.descripcion,
-          hijos: (apartado.subapartados || [])
-            .filter((hijo) => hijo.nivel === "subapartado")
-            .map(rama),
-        }))
+        .map((apartado) => {
+          const hijos = (apartado.subapartados || []).filter(
+            (hijo) => hijo.nivel === "subapartado"
+          );
+          const visibles = hijos.filter((hijo) => {
+            if (!this._esBloqueMontaje(hijo)) return true;
+            const resto = this._restoMontaje(hijo);
+            if (!resto || resto === "general") return true;
+            return !hijos.some(
+              (otro) =>
+                !this._esBloqueMontaje(otro) && this._nombrePlano(otro.descripcion) === resto
+            );
+          });
+          return {
+            clave: String(apartado.id),
+            codigo: apartado.codigo || "Apartado",
+            etiqueta: apartado.descripcion,
+            hijos: visibles.map((hijo) => rama(hijo, hijos)),
+          };
+        })
         .filter((sec) => sec.hijos.length);
     },
 
@@ -494,9 +552,13 @@ function gestionObras() {
           elegidos: (fila.tarea_ids || []).map(String),
           confirmada: Boolean(fila.confirmada),
           sugerida: Boolean(fila.sugerida) && !fila.confirmada,
+          solo_gestion: Boolean(fila.solo_gestion),
+          apartado_gestion_id: fila.apartado_gestion_id || null,
         })
       );
-      const pendiente = sugerencias.findIndex((fila) => !fila.confirmada);
+      const pendiente = sugerencias.findIndex(
+        (fila) => !fila.confirmada && !fila.solo_gestion
+      );
       return {
         presupuesto_id: contraste.presupuesto_id,
         descuentos: contraste.descuentos || [],
@@ -516,7 +578,10 @@ function gestionObras() {
         const porId = new Map((guardado.sugerencias || []).map((fila) => [fila.id, fila]));
         this.contraste.sugerencias.forEach((fila) => {
           const remoto = porId.get(fila.id);
-          if (!remoto || !remoto.confirmada) return;
+          if (!remoto) return;
+          fila.solo_gestion = Boolean(remoto.solo_gestion);
+          fila.apartado_gestion_id = remoto.apartado_gestion_id || null;
+          if (!remoto.confirmada) return;
           fila.elegidos = (remoto.tarea_ids || []).map(String);
           fila.confirmada = true;
           fila.sugerida = false;
@@ -557,22 +622,82 @@ function gestionObras() {
 
     progresoContraste() {
       const filas = (this.contraste && this.contraste.sugerencias) || [];
-      const hechas = filas.filter((fila) => fila.confirmada).length;
+      const hechas = filas.filter((fila) => fila.confirmada || fila.solo_gestion).length;
       if (!filas.length) return "Sin importes";
       return hechas + " de " + filas.length + " confirmados";
     },
 
     estadoContraste(fila) {
-      if (fila.confirmada) return "hecho";
+      if (fila.confirmada || fila.solo_gestion) return "hecho";
       if ((fila.elegidos || []).length) return "listo";
       return "sin";
     },
 
     etiquetaEstadoContraste(fila) {
+      if (fila.solo_gestion) {
+        return this.gestionPendiente(fila) ? "Pendiente de confirmar" : "Solo gestión";
+      }
       if (fila.confirmada) return "Confirmado";
       if (fila.sugerida && (fila.elegidos || []).length) return "Propuesta";
       if ((fila.elegidos || []).length) return "Por confirmar";
       return "Sin bloque";
+    },
+
+    apartadoDeGestion(fila) {
+      if (!fila || !fila.apartado_gestion_id || !this.proyecto) return null;
+      return (
+        (this.proyecto.apartados || []).find((ap) => ap.id === fila.apartado_gestion_id) || null
+      );
+    },
+
+    gestionPendiente(fila) {
+      const apartado = this.apartadoDeGestion(fila);
+      return Boolean(apartado && apartado.estado_revision === "pendiente");
+    },
+
+    async marcarSoloGestion(fila) {
+      if (!fila || !fila.id || !this.proyectoId) return;
+      this.error = "";
+      try {
+        await GestorApi.postJson(
+          "/proyectos/" + this.proyectoId + "/lineas-pdf/" + fila.id + "/solo-gestion",
+          {}
+        );
+        this.contraste = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+      } catch (err) {
+        this.error = err.message || "No se ha podido marcar la línea como solo gestión";
+      }
+    },
+
+    async desmarcarSoloGestion(fila) {
+      if (!fila || !fila.id || !this.proyectoId) return;
+      this.error = "";
+      try {
+        await GestorApi.borrar(
+          "/proyectos/" + this.proyectoId + "/lineas-pdf/" + fila.id + "/solo-gestion"
+        );
+        this.contraste = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+      } catch (err) {
+        this.error = err.message || "No se ha podido quitar la marca de solo gestión";
+      }
+    },
+
+    async confirmarGestion(fila) {
+      const apartado = this.apartadoDeGestion(fila);
+      if (!apartado || !this.proyectoId) return;
+      this.error = "";
+      try {
+        await GestorApi.postJson(
+          "/proyectos/" + this.proyectoId + "/apartados/" + apartado.id + "/confirmar-gestion",
+          {}
+        );
+        this.contraste = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+      } catch (err) {
+        this.error = err.message || "No se ha podido confirmar el importe";
+      }
     },
 
     etiquetaMarcados(n) {
@@ -655,6 +780,7 @@ function gestionObras() {
           valor: nodo.valor,
           etiqueta: nodo.etiqueta,
           cuantia: nodo.cuantia,
+          incluyeMontaje: Boolean(nodo.incluyeMontaje),
           nivel,
           abierto,
           tieneHijos: nodo.hijos.length > 0,
@@ -684,6 +810,22 @@ function gestionObras() {
     marcaParcial(fila, nodo) {
       if (nodo.tipo === "nodo" && this.contrasteElegido(fila, nodo.valor)) return false;
       return this.ramaMarcada(fila, nodo.valor);
+    },
+
+    _padreTarea(id) {
+      let hallado = null;
+      const buscar = (nodos) => {
+        for (const nodo of nodos || []) {
+          if ((nodo.subapartados || []).some((hijo) => String(hijo.id) === String(id))) {
+            hallado = nodo;
+            return true;
+          }
+          if (buscar(nodo.subapartados)) return true;
+        }
+        return false;
+      };
+      buscar((this.proyecto && this.proyecto.apartados) || []);
+      return hallado;
     },
 
     _buscarTarea(id, nodos) {
@@ -756,17 +898,148 @@ function gestionObras() {
         fila.hay_cruce = false;
         return fila;
       }
-      const base = elegidos.reduce(
-        (suma, apartado) => suma + (Number(apartado.importe_presupuestado) || 0),
-        0
-      );
+      const base = elegidos.reduce((suma, apartado) => {
+        const padre = this._padreTarea(apartado.id);
+        const hermanos = (padre && padre.subapartados) || [];
+        return suma + this._cuantiaContraste(apartado, hermanos);
+      }, 0);
       const cliente = Number(fila.importe_pdf) || 0;
+      // PDF menos Excel. Si el Excel es mayor, la diferencia queda negativa.
       const diff = cliente - base;
       fila.excel = GestorApi.euro(base);
       fila.diferencia = GestorApi.euro(diff);
-      fila.supera = diff > 0.5;
+      fila.supera = diff < -0.005;
       fila.hay_cruce = true;
       return fila;
+    },
+
+    _repartirCentesimas(importe, pesos) {
+      const totalCents = Math.round((Number(importe) || 0) * 100);
+      if (!pesos.length) return [];
+      const suma = pesos.reduce((acum, peso) => acum + (Number(peso) || 0), 0);
+      const bases = suma > 0 ? pesos.map((peso) => Number(peso) || 0) : pesos.map(() => 1);
+      const total = bases.reduce((acum, peso) => acum + peso, 0);
+      let acumulado = 0;
+      return bases.map((peso, indice) => {
+        if (indice === bases.length - 1) return (totalCents - acumulado) / 100;
+        const parte = Math.round((totalCents * peso) / total);
+        acumulado += parte;
+        return parte / 100;
+      });
+    },
+
+    _raizApartado(id) {
+      let raiz = this._buscarTarea(id, (this.proyecto && this.proyecto.apartados) || []);
+      let padre = raiz ? this._padreTarea(raiz.id) : null;
+      while (padre) {
+        raiz = padre;
+        padre = this._padreTarea(raiz.id);
+      }
+      return raiz;
+    },
+
+    resumenContraste() {
+      const vacio = {
+        filas: [],
+        sinAsignar: false,
+        pdfSinAsignar: "—",
+        excel: "—",
+        pdf: "—",
+        diferencia: "—",
+      };
+      const apartados = ((this.proyecto && this.proyecto.apartados) || []).filter(
+        (apartado) =>
+          !this._esDescuento(apartado) && !apartado.solo_gestion && !this._esRecargo(apartado)
+      );
+      const filasPdf = (this.contraste && this.contraste.sugerencias) || [];
+      if (!apartados.length && !filasPdf.length) return vacio;
+      const pdfPorApartado = new Map(apartados.map((apartado) => [String(apartado.id), 0]));
+      let sinAsignar = 0;
+      filasPdf.forEach((fila) => {
+        if (fila.solo_gestion) return;
+        const importe = Number(fila.importe_pdf) || 0;
+        const elegidos = (fila.elegidos || [])
+          .map((id) => this._buscarTarea(id, apartados))
+          .filter(Boolean);
+        if (!elegidos.length) {
+          sinAsignar += importe;
+          return;
+        }
+        const pesos = elegidos.map((nodo) => {
+          const padre = this._padreTarea(nodo.id);
+          const hermanos = (padre && padre.subapartados) || [];
+          return this._cuantiaContraste(nodo, hermanos);
+        });
+        const partes = this._repartirCentesimas(importe, pesos);
+        elegidos.forEach((nodo, indice) => {
+          const raiz = this._raizApartado(nodo.id);
+          if (!raiz || !pdfPorApartado.has(String(raiz.id))) return;
+          pdfPorApartado.set(
+            String(raiz.id),
+            pdfPorApartado.get(String(raiz.id)) + (partes[indice] || 0)
+          );
+        });
+      });
+      const filasExcel = apartados.map((apartado) => {
+        const excel = Number(apartado.importe_presupuestado) || 0;
+        const pdf = Math.round((pdfPorApartado.get(String(apartado.id)) || 0) * 100) / 100;
+        const hayPdf = Math.abs(pdf) >= 0.005;
+        const diff = pdf - excel;
+        return {
+          id: apartado.id,
+          nombre: (apartado.codigo ? apartado.codigo + " · " : "") + (apartado.descripcion || "Apartado"),
+          excel: GestorApi.euro(excel),
+          pdf: hayPdf ? GestorApi.euro(pdf) : "—",
+          diferencia: hayPdf ? GestorApi.euro(diff) : "—",
+          negativo: hayPdf && diff < -0.005,
+        };
+      });
+      const filasGestion = filasPdf
+        .filter((fila) => fila.solo_gestion)
+        .map((fila) => ({
+          id: "gestion-" + fila.id,
+          nombre:
+            (fila.codigo_pdf ? fila.codigo_pdf + " · " : "") +
+            (fila.descripcion_pdf || "Solo gestión"),
+          excel: "—",
+          pdf: GestorApi.euro(fila.importe_pdf),
+          diferencia: "—",
+          negativo: false,
+        }));
+      const filas = filasExcel.concat(filasGestion);
+      const totalExcel = apartados.reduce(
+        (suma, apartado) => suma + (Number(apartado.importe_presupuestado) || 0),
+        0
+      );
+      const totalLineas = filasPdf.reduce((suma, fila) => suma + (Number(fila.importe_pdf) || 0), 0);
+      const descuentos = (this.contraste && this.contraste.descuentos) || [];
+      const sumaDescuentos = descuentos.reduce(
+        (suma, descuento) => suma + (Number(descuento.importe) || 0),
+        0
+      );
+      const basePdf = this.pdfSinBloque ? totalLineas : totalLineas - sinAsignar;
+      const totalPdf = basePdf - sumaDescuentos;
+      const diffTotal = totalPdf - totalExcel;
+      return {
+        filas,
+        sinAsignar: Math.abs(sinAsignar) >= 0.005,
+        pdfSinAsignar: GestorApi.euro(sinAsignar),
+        hayDescuento: Math.abs(sumaDescuentos) >= 0.005,
+        descuento: GestorApi.euro(-sumaDescuentos),
+        excel: GestorApi.euro(totalExcel),
+        pdf: GestorApi.euro(totalPdf),
+        diferencia: GestorApi.euro(diffTotal),
+        negativo: diffTotal < -0.005,
+      };
+    },
+
+    alternarPdfSinBloque() {
+      this.pdfSinBloque = !this.pdfSinBloque;
+      try {
+        localStorage.setItem("obrix-pdf-sin-bloque", this.pdfSinBloque ? "1" : "0");
+      } catch (_) {
+        /* la preferencia se pierde al cerrar el navegador */
+      }
     },
 
     async confirmarImporteCliente(fila) {
@@ -818,10 +1091,11 @@ function gestionObras() {
       const euro = (valor) => GestorApi.euro(valor);
       const todos = proyecto.apartados || [];
       const descuentos = todos.filter((ap) => this._esDescuento(ap));
-      const gestiones = todos.filter((ap) => !this._esDescuento(ap) && this._esGestion(ap));
-      const apartados = todos.filter((ap) => !this._esDescuento(ap) && !this._esGestion(ap));
+      const gestiones = todos.filter((ap) => !this._esDescuento(ap) && this._esRecargo(ap));
+      const apartados = todos.filter((ap) => !this._esDescuento(ap) && !this._esRecargo(ap));
+      const contratables = apartados.filter((ap) => !this._gestionPendiente(ap));
       const opciones = [{ valor: "", etiqueta: "Elige apartado" }].concat(
-        apartados.map((ap) => ({
+        contratables.map((ap) => ({
           valor: String(ap.id),
           etiqueta: ap.codigo + " · " + ap.descripcion,
         }))
@@ -860,7 +1134,11 @@ function gestionObras() {
               : "Sin sugerencia automática",
           aviso: null,
           hay_aviso: false,
-          etiqueta_base: montaje > 0 ? "Montaje del apartado" : "Presupuestado en el apartado",
+          etiqueta_base: apartado && apartado.solo_gestion
+            ? "Importe del PDF"
+            : montaje > 0
+              ? "Montaje del apartado"
+              : "Presupuestado en el apartado",
           presupuestado: apartado ? euro(base) : "—",
           diferencia: apartado ? euro(diff) : "—",
           supera: apartado ? diff > 0 : false,
@@ -868,7 +1146,7 @@ function gestionObras() {
         };
       });
       const pendientesContrato = filas.filter((fila) => !fila.asociado).length;
-      const sinApartado = apartados.filter((ap) => !(ap.contratos || []).length).length;
+      const sinApartado = contratables.filter((ap) => !(ap.contratos || []).length).length;
       const facturasVista = (facturas || []).map((factura) => ({
         id: factura.id,
         proveedor: factura.contratista_nombre,
@@ -907,7 +1185,10 @@ function gestionObras() {
         0
       );
       let desvioTotal = 0;
-      const filasControl = apartados.concat(gestiones).map((ap) => {
+      const filasControl = apartados
+        .concat(gestiones)
+        .filter((ap) => !this._gestionPendiente(ap))
+        .map((ap) => {
         const contratado = (ap.contratos || []).reduce(
           (suma, contrato) => suma + (Number(contrato.contratado) || 0),
           0
@@ -1022,13 +1303,21 @@ function gestionObras() {
           n_partidas: apartados.reduce((suma, ap) => suma + this._filasPartida(ap).length, 0),
           total: euro(presTotal),
           falta_revisar: false,
-          apartados: apartados.map((ap) =>
-            this._vistaApartado(ap, {
+          apartados: apartados.map((ap) => {
+            const extra = {
               importe: euro(ap.importe_presupuestado),
               hay_dudas: ap.estado_revision === "pendiente",
               revisado: ap.estado_revision !== "pendiente",
-            })
-          ),
+              solo_gestion: Boolean(ap.solo_gestion),
+            };
+            if (ap.solo_gestion) {
+              extra.resumen =
+                ap.estado_revision === "pendiente"
+                  ? "Solo gestión · pendiente de revisión"
+                  : "Solo gestión";
+            }
+            return this._vistaApartado(ap, extra);
+          }),
           gestiones: gestiones.map((ap) => this._filaGestion(ap)),
           descuentos: descuentos.map((ap) => ({
             id: ap.id,
@@ -1170,6 +1459,14 @@ function gestionObras() {
     _esGestion(nodo) {
       const texto = ((nodo.descripcion || "") + " " + (nodo.nombre || "")).toLowerCase();
       return texto.includes("gestión") || texto.includes("gestion");
+    },
+
+    _esRecargo(nodo) {
+      return !nodo.solo_gestion && this._esGestion(nodo);
+    },
+
+    _gestionPendiente(nodo) {
+      return Boolean(nodo.solo_gestion && nodo.estado_revision !== "confirmada");
     },
 
     _filaGestion(nodo) {
@@ -1610,7 +1907,16 @@ function gestionObras() {
         const fila = this.vista.contratos.filas.find((c) => c.id === id);
         if (!fila) return;
         if (!asociado) {
-          this.error = "El enlace confirmado se mantiene. Elige el apartado antes de asociar.";
+          this.error = "";
+          try {
+            await GestorApi.postJson(
+              "/proyectos/" + this.proyectoId + "/contratos/" + id + "/desenlazar-apartado",
+              {}
+            );
+            await this._cargarVistaProyecto(this.proyectoId);
+          } catch (err) {
+            this.error = err.message || "No se ha podido quitar el enlace";
+          }
           return;
         }
         const tareaId = Number(fila.apartado_idx);

@@ -29,6 +29,7 @@ class DesvioApartadoOut(BaseModel):
     contrato_cliente: Money | None = None
     contratado: Money
     facturado: Money
+    solo_gestion: bool = False
 
 
 class DesvioNaveOut(BaseModel):

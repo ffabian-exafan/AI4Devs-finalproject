@@ -444,6 +444,176 @@ def _titulo_montaje(nombre: str) -> str:
     return f"Montaje {limpio}"[:255]
 
 
+def asociar_montaje_por_apartado(nodos: list[NodoExcel]) -> Decimal:
+    """Lleva al subapartado el montaje que el Excel dejó en otro bloque.
+
+    Casa por el nombre: si el del subapartado aparece en la línea, o si no
+    en el bloque donde estaba, la línea pasa a «Montaje {subapartado}».
+    Si ya cuelga de ese subapartado, se queda. Lo que no nombra a uno solo
+    no se mueve.
+    """
+    productos = _productos_montaje(nodos)
+    if not productos:
+        return _cerrar_importes(nodos)
+    nombres = [nodo.descripcion for nodo in productos]
+    grupos: dict[int, list[NodoExcel]] = {}
+
+    def visitar(lista: list[NodoExcel], pila: list[NodoExcel]) -> None:
+        for nodo in lista:
+            if nodo.nivel == "partida" and nodo.es_montaje:
+                destino = _destino_montaje(nodo, pila, nombres)
+                if destino is not None and not any(padre is productos[destino] for padre in pila):
+                    grupos.setdefault(destino, []).append(nodo)
+            visitar(nodo.hijos, [*pila, nodo])
+
+    visitar(nodos, [])
+    if not grupos:
+        return _cerrar_importes(nodos)
+    quitar = {id(linea) for grupo in grupos.values() for linea in grupo}
+    nodos[:] = _filtrar_nodos(nodos, quitar)
+    for indice, grupo in grupos.items():
+        destino = productos[indice]
+        titulo = _titulo_montaje(destino.descripcion)
+        etiqueta = (destino.descripcion or "").strip()[:255] or None
+        for linea in grupo:
+            linea.capitulo = etiqueta
+        bloque = _bloque_por_titulo(destino.hijos, titulo)
+        if bloque is None:
+            destino.hijos = [_bloque_montaje(grupo, titulo), *destino.hijos]
+        else:
+            bloque.hijos.extend(grupo)
+    nodos[:] = _podar_vacios(nodos, set())
+    return _cerrar_importes(nodos)
+
+
+def sumar_dietas_a_apartados(nodos: list[NodoExcel]) -> Decimal:
+    """Reparte dietas y desplazamientos que no están dentro de un subapartado.
+
+    Si la línea ya cuelga de uno, se queda entera. Si está en GENERAL o en
+    Montaje general, se parte entre los subapartados de ese nivel según su
+    importe y entra en el montaje de cada uno.
+    """
+    _cerrar_importes(nodos)
+    productos = [
+        nodo
+        for nodo in nodos
+        if nodo.nivel == "subapartado"
+        and not _es_nombre_montaje(nodo.descripcion)
+        and not _es_cajon_general(nodo.descripcion)
+    ]
+    if not productos:
+        return _cerrar_importes(nodos)
+    dentro = {id(producto) for producto in productos}
+    sueltas: list[NodoExcel] = []
+
+    def visitar(lista: list[NodoExcel], pila: list[NodoExcel]) -> None:
+        for nodo in lista:
+            if (
+                nodo.nivel == "partida"
+                and _es_dietas(nodo.descripcion)
+                and not any(id(padre) in dentro for padre in pila)
+            ):
+                sueltas.append(nodo)
+            visitar(nodo.hijos, [*pila, nodo])
+
+    visitar(nodos, [])
+    if not sueltas:
+        return _cerrar_importes(nodos)
+    pesos = [producto.importe for producto in productos]
+    for linea in sueltas:
+        partes = _repartir_pesos(linea.importe, pesos)
+        for producto, parte in zip(productos, partes, strict=True):
+            if parte <= 0:
+                continue
+            _anexar_linea_montaje(producto, _copia_dietas(linea, parte))
+    nodos[:] = _filtrar_nodos(nodos, {id(linea) for linea in sueltas})
+    nodos[:] = _podar_vacios(nodos, set())
+    return _cerrar_importes(nodos)
+
+
+def _anexar_linea_montaje(destino: NodoExcel, linea: NodoExcel) -> None:
+    linea.capitulo = (destino.descripcion or "").strip()[:255] or None
+    linea.es_montaje = True
+    titulo = _titulo_montaje(destino.descripcion)
+    bloque = _bloque_por_titulo(destino.hijos, titulo)
+    if bloque is None:
+        destino.hijos = [_bloque_montaje([linea], titulo), *destino.hijos]
+    else:
+        bloque.hijos.append(linea)
+
+
+def _copia_dietas(linea: NodoExcel, parte: Decimal) -> NodoExcel:
+    return NodoExcel(
+        codigo=linea.codigo,
+        nivel="partida",
+        descripcion=linea.descripcion,
+        cantidad=Decimal("1"),
+        precio_unitario=parte,
+        referencia=linea.referencia,
+        referencia_alt=linea.referencia_alt,
+        importe=parte,
+        es_montaje=True,
+    )
+
+
+def _repartir_pesos(importe: Decimal, pesos: list[Decimal]) -> list[Decimal]:
+    """Reparte un importe. El último tramo ajusta los céntimos."""
+    importe = _dinero(importe)
+    if not pesos:
+        return []
+    base = pesos if sum(pesos, Decimal("0")) > 0 else [Decimal("1")] * len(pesos)
+    total = sum(base, Decimal("0"))
+    acumulado = Decimal("0")
+    partes: list[Decimal] = []
+    for indice, peso in enumerate(base):
+        if indice == len(base) - 1:
+            partes.append(_dinero(importe - acumulado))
+        else:
+            parte = _dinero(importe * peso / total)
+            acumulado += parte
+            partes.append(parte)
+    return partes
+
+
+def _es_dietas(descripcion: str) -> bool:
+    """Línea de dietas y desplazamientos, con o sin el prefijo MONTAJE."""
+    nombre = _normalizar(descripcion)
+    if nombre.startswith("montaje "):
+        nombre = nombre[len("montaje ") :]
+    return "dieta" in nombre and "desplaz" in nombre
+
+
+def _productos_montaje(nodos: list[NodoExcel]) -> list[NodoExcel]:
+    """Subapartados a los que se puede colgar un montaje."""
+    productos: list[NodoExcel] = []
+
+    def visitar(lista: list[NodoExcel]) -> None:
+        for nodo in lista:
+            if (
+                nodo.nivel == "subapartado"
+                and not _es_nombre_montaje(nodo.descripcion)
+                and not _es_cajon_general(nodo.descripcion)
+            ):
+                productos.append(nodo)
+            visitar(nodo.hijos)
+
+    visitar(nodos)
+    return productos
+
+
+def _destino_montaje(linea: NodoExcel, pila: list[NodoExcel], productos: list[str]) -> int | None:
+    """Índice del subapartado que nombra la línea, o el bloque donde estaba."""
+    textos = [linea.descripcion]
+    textos.extend(
+        padre.descripcion for padre in reversed(pila) if padre.nivel == "subapartado" and padre.descripcion
+    )
+    for texto in textos:
+        indice = asignar_montaje_por_nombre([texto], productos)[0]
+        if indice is not None:
+            return indice
+    return None
+
+
 def lineas_y_productos_montaje(
     nodos: list[NodoExcel],
 ) -> tuple[list[NodoExcel], list[NodoExcel]]:
@@ -597,6 +767,8 @@ def _es_montaje(descripcion: str) -> bool:
     n = _normalizar(descripcion)
     if n.startswith("elementos de montaje"):
         return False
+    if _es_dietas(descripcion):
+        return True
     return n.startswith("montaje")
 
 

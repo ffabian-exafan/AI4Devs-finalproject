@@ -414,29 +414,207 @@ def test_la_relacion_de_montaje_usa_el_llm(monkeypatch):
     from app.services.presupuesto_excel import relacionar_montaje_general
 
     leido = leer_excel_expertis(_libro_montaje_al_final())
+    vistos: dict[str, str] = {}
 
     def hay_llm(_settings):
         return True
 
-    def completar_texto(**_kwargs):
-        return (
-            '{"asignaciones": ['
-            '{"linea": 0, "producto": 0},'
-            '{"linea": 1, "producto": "CHIMENEAS FICTICIAS"},'
-            '{"linea": 2, "producto": 2},'
-            '{"linea": 3, "producto": null}'
-            "]}"
-        )
+    def completar_texto(**kwargs):
+        vistos["user"] = kwargs["user"]
+        return '{"asignaciones": [{"linea": 0, "producto": null}]}'
 
     monkeypatch.setattr("app.services.presupuesto_excel.llm_svc.hay_llm", hay_llm)
     monkeypatch.setattr("app.services.presupuesto_excel.llm_svc.completar_texto", completar_texto)
     relacionar_montaje_general(leido)
+
+    assert "MONTAJE DIETAS FICTICIAS" in vistos["user"]
+    assert "MONTAJE CIKKIS" not in vistos["user"]
 
     assert leido.nodos[0].hijos[0].descripcion == "Montaje VENTANAS FICTICIAS"
     assert leido.nodos[1].hijos[0].descripcion == "Montaje CHIMENEAS FICTICIAS"
     assert leido.nodos[2].hijos[0].descripcion == "Montaje CIKKIS"
     assert leido.nodos[-1].descripcion == "Montaje general"
     assert leido.nodos[-1].hijos[0].descripcion == "MONTAJE DIETAS FICTICIAS"
+
+
+def _libro_montaje_en_otro_bloque() -> bytes:
+    """El montaje de un subapartado está en otro bloque del mismo Excel. Importes ficticios."""
+    wb = Workbook()
+    hoja = wb.active
+    hoja.title = "VENTILACION"
+    for col, texto in {
+        "B": "Cant.",
+        "C": "Cod.",
+        "D": "Descripción",
+        "J": "Euros",
+        "L": "TOTAL",
+    }.items():
+        hoja[f"{col}1"] = texto
+    negrita = Font(bold=True)
+    filas = [
+        (2, "07", "VENTANAS FICTICIAS", None, None),
+        (3, "07", "PIEZA DE VENTANA", 2, 2),
+        (4, "07", "MONTAJE PROPIO VENTANAS FICTICIAS", 4, 4),
+        (5, "08", "CHIMENEAS FICTICIAS", None, None),
+        (6, "08", "PIEZA DE CHIMENEA", 3, 3),
+        (7, "90", "MONTAJE VENTANAS FICTICIAS", None, None),
+        (8, "90", "MONTAJE ESTRUCTURA", 5, 5),
+        (9, "90", "MONTAJE ANCLAJES", 6, 6),
+        (10, "50", "GENERAL", None, None),
+        (11, "50", "MONTAJE CHIMENEAS FICTICIAS", 7, 7),
+        (12, "50", "MONTAJE DIETAS FICTICIAS", 8, 8),
+    ]
+    for fila, codigo, descripcion, euros, total in filas:
+        hoja[f"C{fila}"] = codigo
+        hoja[f"D{fila}"] = descripcion
+        if euros is None:
+            hoja[f"C{fila}"].font = negrita
+            hoja[f"D{fila}"].font = negrita
+            continue
+        hoja[f"B{fila}"] = 1
+        hoja[f"J{fila}"] = euros
+        hoja[f"L{fila}"] = total
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_el_montaje_de_otro_bloque_se_asocia_al_apartado(monkeypatch):
+    from app.services.presupuesto_excel import relacionar_montaje_general
+
+    monkeypatch.setattr("app.services.presupuesto_excel.llm_svc.hay_llm", lambda _settings: False)
+    leido = leer_excel_expertis(_libro_montaje_en_otro_bloque())
+    relacionar_montaje_general(leido)
+
+    assert [nodo.descripcion for nodo in leido.nodos] == [
+        "VENTANAS FICTICIAS",
+        "CHIMENEAS FICTICIAS",
+        "Montaje general",
+    ]
+    ventanas, chimeneas, general = leido.nodos
+    assert ventanas.hijos[0].descripcion == "Montaje VENTANAS FICTICIAS"
+    assert [hijo.descripcion for hijo in ventanas.hijos[0].hijos] == [
+        "MONTAJE PROPIO VENTANAS FICTICIAS",
+        "MONTAJE ESTRUCTURA",
+        "MONTAJE ANCLAJES",
+    ]
+    assert [hijo.capitulo for hijo in ventanas.hijos[0].hijos] == ["VENTANAS FICTICIAS"] * 3
+    assert ventanas.importe == Decimal("17.00")
+    assert chimeneas.hijos[0].descripcion == "Montaje CHIMENEAS FICTICIAS"
+    assert [hijo.descripcion for hijo in chimeneas.hijos[0].hijos] == ["MONTAJE CHIMENEAS FICTICIAS"]
+    assert chimeneas.importe == Decimal("10.00")
+    assert [hijo.descripcion for hijo in general.hijos] == ["MONTAJE DIETAS FICTICIAS"]
+    assert leido.importe == Decimal("35.00")
+
+
+def _libro_dietas_sueltas() -> bytes:
+    """Dietas en GENERAL, no dentro de un subapartado. Importes ficticios."""
+    wb = Workbook()
+    hoja = wb.active
+    hoja.title = "VENTILACION"
+    for col, texto in {
+        "B": "Cant.",
+        "C": "Cod.",
+        "D": "Descripción",
+        "J": "Euros",
+        "L": "TOTAL",
+    }.items():
+        hoja[f"{col}1"] = texto
+    negrita = Font(bold=True)
+    filas = [
+        (2, "07", "VENTANAS FICTICIAS", None, None),
+        (3, "07", "PIEZA DE VENTANA", 10, 10),
+        (4, "08", "CHIMENEAS FICTICIAS", None, None),
+        (5, "08", "PIEZA DE CHIMENEA", 30, 30),
+        (6, "50", "GENERAL", None, None),
+        (7, "50", "MONTAJE DIETAS Y DESPLAZAMIENTO", 8, 8),
+        (8, "50", "DIETAS Y DESPLAZAMIENTO", 4, 4),
+    ]
+    for fila, codigo, descripcion, euros, total in filas:
+        hoja[f"C{fila}"] = codigo
+        hoja[f"D{fila}"] = descripcion
+        if euros is None:
+            hoja[f"C{fila}"].font = negrita
+            hoja[f"D{fila}"].font = negrita
+            continue
+        hoja[f"B{fila}"] = 1
+        hoja[f"J{fila}"] = euros
+        hoja[f"L{fila}"] = total
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_las_dietas_sueltas_se_reparten_entre_los_apartados(monkeypatch):
+    from app.services.presupuesto_excel import relacionar_montaje_general
+
+    monkeypatch.setattr("app.services.presupuesto_excel.llm_svc.hay_llm", lambda _settings: False)
+    leido = leer_excel_expertis(_libro_dietas_sueltas())
+    relacionar_montaje_general(leido)
+
+    assert [nodo.descripcion for nodo in leido.nodos] == [
+        "VENTANAS FICTICIAS",
+        "CHIMENEAS FICTICIAS",
+    ]
+    ventanas, chimeneas = leido.nodos
+    assert [hijo.descripcion for hijo in ventanas.hijos[0].hijos] == [
+        "MONTAJE DIETAS Y DESPLAZAMIENTO",
+        "DIETAS Y DESPLAZAMIENTO",
+    ]
+    assert [hijo.importe for hijo in ventanas.hijos[0].hijos] == [Decimal("2.00"), Decimal("1.00")]
+    assert all(hijo.es_montaje for hijo in ventanas.hijos[0].hijos)
+    assert [hijo.importe for hijo in chimeneas.hijos[0].hijos] == [Decimal("6.00"), Decimal("3.00")]
+    assert ventanas.importe == Decimal("13.00")
+    assert chimeneas.importe == Decimal("39.00")
+    assert leido.importe == Decimal("52.00")
+
+
+def test_las_dietas_dentro_del_apartado_no_se_reparten(monkeypatch):
+    from app.services.presupuesto_excel import relacionar_montaje_general
+
+    monkeypatch.setattr("app.services.presupuesto_excel.llm_svc.hay_llm", lambda _settings: False)
+    wb = Workbook()
+    hoja = wb.active
+    hoja.title = "ALIMENTACION"
+    for col, texto in {"B": "Cant.", "C": "Cod.", "D": "Descripción", "J": "Euros", "L": "TOTAL"}.items():
+        hoja[f"{col}1"] = texto
+    negrita = Font(bold=True)
+    hoja["C2"] = "07"
+    hoja["D2"] = "EXAFEED FICTICIO"
+    hoja["C2"].font = negrita
+    hoja["D2"].font = negrita
+    hoja["B3"] = 1
+    hoja["C3"] = "07"
+    hoja["D3"] = "PIEZA FICTICIA"
+    hoja["J3"] = 10
+    hoja["L3"] = 10
+    hoja["B4"] = 1
+    hoja["C4"] = "07"
+    hoja["D4"] = "MONTAJE DIETAS Y DESPLAZAMIENTO"
+    hoja["J4"] = 8
+    hoja["L4"] = 8
+    hoja["C5"] = "08"
+    hoja["D5"] = "TOLVA FICTICIA"
+    hoja["C5"].font = negrita
+    hoja["D5"].font = negrita
+    hoja["B6"] = 1
+    hoja["C6"] = "08"
+    hoja["D6"] = "PIEZA TOLVA"
+    hoja["J6"] = 30
+    hoja["L6"] = 30
+    buf = BytesIO()
+    wb.save(buf)
+    leido = leer_excel_expertis(buf.getvalue())
+    relacionar_montaje_general(leido)
+
+    exafeed, tolva = leido.nodos
+    assert [hijo.descripcion for hijo in exafeed.hijos[0].hijos] == ["MONTAJE DIETAS Y DESPLAZAMIENTO"]
+    assert exafeed.hijos[0].hijos[0].importe == Decimal("8.00")
+    assert tolva.hijos == [] or all(
+        hijo.descripcion != "MONTAJE DIETAS Y DESPLAZAMIENTO" for hijo in tolva.hijos
+    )
+    assert exafeed.importe == Decimal("18.00")
+    assert tolva.importe == Decimal("30.00")
 
 
 def test_el_titulo_del_apartado_es_el_nombre_del_fichero():
@@ -707,27 +885,29 @@ def test_no_guarda_dos_veces_el_mismo_excel(client: TestClient, db: Session, mon
         get_settings.cache_clear()
 
 
-def test_el_descuento_de_cierre_se_reparte_y_el_manuscrito_manda():
-    from app.schemas.extraccion import DescuentoExtraido, PresupuestoExtraido
-    from app.schemas.presupuesto import SugerenciaContrasteOut
-    from app.services.presupuesto_excel import _repartir_cierre
+def test_el_descuento_de_cierre_no_resta_cada_linea():
+    from app.schemas.extraccion import (
+        ApartadoExtraido,
+        DescuentoExtraido,
+        NaveExtraida,
+        PresupuestoExtraido,
+    )
+    from app.services.presupuesto_excel import _construir_sugerencias
 
-    lineas = [
-        SugerenciaContrasteOut(
-            descripcion_pdf="Silos ficticios",
-            codigo_pdf="S",
-            importe_pdf=Decimal("80.00"),
-        ),
-        SugerenciaContrasteOut(
-            descripcion_pdf="Montaje ficticio",
-            codigo_pdf="M",
-            importe_pdf=Decimal("20.00"),
-        ),
-    ]
     extraido = PresupuestoExtraido(
         nombre_proyecto="Obra ficticia",
         total_impreso=Decimal("95.00"),
         total_manuscrito=Decimal("90.00"),
+        naves=[
+            NaveExtraida(
+                codigo="N1",
+                descripcion="Nave ficticia",
+                apartados=[
+                    ApartadoExtraido(codigo="S", descripcion="Silos ficticios", importe=Decimal("80.00")),
+                    ApartadoExtraido(codigo="M", descripcion="Montaje ficticio", importe=Decimal("20.00")),
+                ],
+            )
+        ],
         descuentos=[
             DescuentoExtraido(descripcion="Descuento impreso", importe=Decimal("5.00")),
             DescuentoExtraido(
@@ -738,12 +918,11 @@ def test_el_descuento_de_cierre_se_reparte_y_el_manuscrito_manda():
         ],
     )
 
-    nuevas = _repartir_cierre(lineas, extraido)
+    lineas, descuentos = _construir_sugerencias(extraido)
 
-    assert nuevas[0].importe_bruto == Decimal("80.00")
-    assert nuevas[0].importe_pdf == Decimal("72.00")
-    assert nuevas[1].importe_pdf == Decimal("18.00")
-    assert sum(fila.importe_pdf for fila in nuevas) == Decimal("90.00")
+    assert [linea.importe_pdf for linea in lineas] == [Decimal("80.00"), Decimal("20.00")]
+    assert all(linea.importe_bruto is None for linea in lineas)
+    assert [descuento.importe for descuento in descuentos] == [Decimal("5.00"), Decimal("5.00")]
 
 
 def test_elementos_de_montaje_vuelve_a_su_subbloque(db: Session):
@@ -1096,6 +1275,113 @@ def test_la_propuesta_marca_el_bloque_sin_confirmar(db: Session, monkeypatch):
         assert cerrada.confirmada is True
         assert cerrada.sugerida is False
         assert cerrada.tarea_ids == [hojas.id]
+    finally:
+        borrar_proyecto(db, proyecto.id)
+
+
+def test_el_contraste_suma_el_montaje_en_el_apartado(db: Session):
+    from app.services.presupuesto_excel import (
+        _bloques_contraste,
+        _importe_con_montaje,
+        confirmar_importes_cliente,
+    )
+    from app.services.proyectos import borrar_proyecto
+
+    proyecto = Proyecto(nombre="Obra ficticia montaje cliente", tipo="llave_en_mano", estado="borrador")
+    db.add(proyecto)
+    db.flush()
+    nave = Nave(
+        proyecto_id=proyecto.id,
+        codigo="N1",
+        descripcion="Nave ficticia",
+        importe_presupuestado=Decimal("31.00"),
+    )
+    db.add(nave)
+    db.flush()
+    presupuesto = Presupuesto(
+        proyecto_id=proyecto.id,
+        version=1,
+        fichero_origen="ventilacion-ficticia.xlsx",
+        estado_extraccion="pendiente",
+        es_escaneado=False,
+        formato="excel_expertis",
+    )
+    db.add(presupuesto)
+    db.flush()
+
+    def tarea(**datos) -> Tarea:
+        fila = Tarea(
+            nave_id=nave.id,
+            presupuesto_id=presupuesto.id,
+            tiene_anotacion_manual=False,
+            estado_revision="pendiente",
+            estado="no_iniciada",
+            avance_fisico_pct=Decimal("0"),
+            **datos,
+        )
+        db.add(fila)
+        db.flush()
+        return fila
+
+    raiz = tarea(
+        codigo="01",
+        nivel="apartado",
+        descripcion="VENTILACION FICTICIA",
+        importe_presupuestado=Decimal("31.00"),
+    )
+    ventanas = tarea(
+        tarea_padre_id=raiz.id,
+        codigo="07",
+        nivel="subapartado",
+        descripcion="VENTANAS FICTICIAS",
+        importe_presupuestado=Decimal("12.00"),
+    )
+    tarea(
+        tarea_padre_id=raiz.id,
+        codigo="0",
+        nivel="subapartado",
+        descripcion="Montaje VENTANAS FICTICIAS",
+        importe_presupuestado=Decimal("4.00"),
+    )
+    chimeneas = tarea(
+        tarea_padre_id=raiz.id,
+        codigo="08",
+        nivel="subapartado",
+        descripcion="CHIMENEAS FICTICIAS",
+        importe_presupuestado=Decimal("15.00"),
+    )
+    tarea(
+        tarea_padre_id=chimeneas.id,
+        codigo="0",
+        nivel="subapartado",
+        descripcion="Montaje CHIMENEAS FICTICIAS",
+        importe_presupuestado=Decimal("5.00"),
+    )
+    tarea(
+        tarea_padre_id=raiz.id,
+        codigo="0",
+        nivel="subapartado",
+        descripcion="Montaje general",
+        importe_presupuestado=Decimal("8.00"),
+    )
+    db.commit()
+    try:
+        rutas = {bloque.ruta for bloque in _bloques_contraste(db, proyecto.id)}
+        assert rutas == {
+            "VENTILACION FICTICIA / VENTANAS FICTICIAS",
+            "VENTILACION FICTICIA / CHIMENEAS FICTICIAS",
+            "VENTILACION FICTICIA / Montaje general",
+        }
+        por_id = {fila.id: fila for fila in db.query(Tarea).filter(Tarea.presupuesto_id == presupuesto.id)}
+        assert _importe_con_montaje(ventanas, por_id) == Decimal("16.00")
+        assert _importe_con_montaje(chimeneas, por_id) == Decimal("15.00")
+
+        salida = confirmar_importes_cliente(
+            db, proyecto.id, [ventanas.id, chimeneas.id], Decimal("31.00")
+        )
+        asignado = {fila.tarea_id: fila.importe_contrato_cliente for fila in salida.asignaciones}
+        assert asignado[ventanas.id] == Decimal("16.00")
+        assert asignado[chimeneas.id] == Decimal("15.00")
     finally:
         borrar_proyecto(db, proyecto.id)
 

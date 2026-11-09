@@ -947,6 +947,30 @@ a:focus-visible {
   grid-template-columns: 54px minmax(0, 1fr) 130px 130px 90px;
 }
 
+.resumen-contraste {
+  padding: 16px 18px;
+}
+
+.grid-resumen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px 130px 130px;
+  gap: 12px;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.resumen-total {
+  border-top: 1px solid var(--line-soft);
+  margin-top: 4px;
+}
+
+.sin-bloque {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
 .th {
   padding: 8px 0;
   font-size: 12px;
@@ -1000,8 +1024,11 @@ a:focus-visible {
 .cruce {
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-rows: minmax(420px, 1fr);
+  gap: 12px;
   align-items: stretch;
+  height: calc(100dvh - 230px);
+  min-height: 560px;
 }
 
 .cruce-lista,
@@ -1010,7 +1037,9 @@ a:focus-visible {
   border: 1px solid var(--line);
   border-radius: 8px;
   min-width: 0;
-  height: min(640px, calc(100dvh - 300px));
+  height: auto;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .cruce-lista {
@@ -1030,9 +1059,8 @@ a:focus-visible {
 }
 
 .cruce-cab,
-.cruce-dest-cab,
 .cruce-pie {
-  padding: 14px 16px;
+  padding: 10px 16px;
 }
 
 .cruce-cab {
@@ -1113,6 +1141,14 @@ a:focus-visible {
 
 .cruce-dest-cab {
   border-bottom: 1px solid var(--line-soft);
+  padding: 8px 16px;
+}
+
+.cruce-dest-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
 }
 
 .cruce-dest-cab .h2 {
@@ -1124,9 +1160,10 @@ a:focus-visible {
 }
 
 .cruce-cifra {
-  margin: 6px 0 0;
-  font-size: 22px;
+  margin: 0;
+  font-size: 20px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .cruce-bloques {
@@ -1816,10 +1853,20 @@ select.apartado {
     grid-template-columns: 1fr;
   }
 
+  .cruce {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: auto;
+  }
+
   .cruce-lista,
   .cruce-destino {
     height: auto;
     max-height: 70dvh;
+  }
+
+  .resumen-contraste {
+    max-height: none;
   }
 
   .main {

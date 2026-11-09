@@ -206,6 +206,8 @@ def _por_apartado(db: Session, proyecto_id: int) -> list[DesvioApartadoOut]:
     for tarea in tareas:
         if padres.get(tarea.id) is not None or tarea.codigo.startswith("descuento."):
             continue
+        if tarea.solo_gestion and tarea.estado_revision != "confirmada":
+            continue
         enlazados = [c for c in contratos if c.tarea_apartado_id == tarea.id]
         contratado = sum((Decimal(c.precio_total) for c in enlazados), Decimal("0"))
         facturado = sum(
@@ -222,6 +224,7 @@ def _por_apartado(db: Session, proyecto_id: int) -> list[DesvioApartadoOut]:
                 contrato_cliente=cliente_de(tarea),
                 contratado=contratado,
                 facturado=facturado,
+                solo_gestion=bool(tarea.solo_gestion),
             )
         )
     salida.sort(key=lambda fila: fila.codigo)

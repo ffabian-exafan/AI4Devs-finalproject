@@ -26,3 +26,8 @@ class EnlazarApartadoOut(BaseModel):
     tarea_apartado_id: int
     codigo_apartado: str
     descripcion_apartado: str
+
+
+class DesenlazarApartadoOut(BaseModel):
+    contrato_id: int
+    tarea_apartado_id: int | None = None

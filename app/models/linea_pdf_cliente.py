@@ -29,6 +29,12 @@ class LineaPdfCliente(Base):
     es_manuscrito: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # True cuando ya se pidió una propuesta de bloques, aunque no hubiera ninguna clara.
     relacion_intentada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Apartado creado al marcar la línea como solo gestión. Una línea, un apartado.
+    apartado_gestion_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tarea.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+    )
 
 
 class LineaPdfClienteTarea(Base):

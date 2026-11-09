@@ -138,6 +138,8 @@ def enlazar_contrato_apartado(
         raise ValueError("Solo se puede enlazar a un apartado, no a un subapartado")
     if apartado.codigo.startswith("descuento."):
         raise ValueError("Un descuento de cierre no es un apartado contratable")
+    if apartado.solo_gestion and apartado.estado_revision != "confirmada":
+        raise ValueError("El apartado de solo gestión sigue pendiente de revisión")
 
     nave = db.get(Nave, apartado.nave_id)
     if nave is None or nave.proyecto_id != proyecto_id:
@@ -173,8 +175,19 @@ def _apartados_presupuesto(db: Session, proyecto_id: int) -> list[Tarea]:
     return [
         t
         for t in tareas
-        if padres.get(t.id) is None and not t.codigo.startswith("descuento.")
+        if padres.get(t.id) is None
+        and not t.codigo.startswith("descuento.")
+        and not (t.solo_gestion and t.estado_revision != "confirmada")
+        and not _es_recargo(t)
     ]
+
+
+def _es_recargo(tarea: Tarea) -> bool:
+    """El recargo «Gestión» del Excel no es un apartado de contratista."""
+    if tarea.solo_gestion:
+        return False
+    texto = (tarea.descripcion or "").lower()
+    return "gestión" in texto or "gestion" in texto
 
 
 def _texto_consulta_contrato(db: Session, contrato: Contrato) -> str:

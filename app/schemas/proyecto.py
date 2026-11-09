@@ -68,6 +68,7 @@ class ApartadoResumenOut(BaseModel):
     precio_unitario: Money | None = None
     descuento_pct: Money | None = None
     es_montaje: bool = False
+    solo_gestion: bool = False
     importe_montaje: Money = Decimal("0")
     capitulo: str | None = None
     importe_contrato_cliente: Money | None = None

@@ -1,12 +1,12 @@
 """Endpoints de proyectos (ingesta de presupuesto y contrato)."""
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Contrato, Factura, Presupuesto
-from app.schemas.casado import EnlazarApartadoIn, EnlazarApartadoOut
+from app.schemas.casado import DesenlazarApartadoOut, EnlazarApartadoIn, EnlazarApartadoOut
 from app.schemas.contrato import ImportarContratoOut
 from app.schemas.control_economico import ControlEconomicoOut
 from app.schemas.presupuesto import (
@@ -17,6 +17,7 @@ from app.schemas.presupuesto import (
     ImportarPresupuestoOut,
     ImportesClienteIn,
     ImportesClienteOut,
+    SoloGestionOut,
 )
 from app.schemas.proyecto import ProyectoDetalleOut, ProyectoRead
 from app.schemas.tarea import LineaPresupuestoIn, LineaPresupuestoOut
@@ -27,6 +28,7 @@ from app.services import ingesta as ingesta_svc
 from app.services import lineas as lineas_svc
 from app.services import presupuesto_excel as presupuesto_excel_svc
 from app.services import proyectos as proyectos_svc
+from app.services import solo_gestion as solo_gestion_svc
 
 router = APIRouter(tags=["proyectos"])
 
@@ -309,6 +311,79 @@ def confirmar_importes_cliente(
             else status.HTTP_422_UNPROCESSABLE_ENTITY
         )
         raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+def _error_valor(exc: ValueError) -> HTTPException:
+    detail = str(exc)
+    bajo = detail.lower()
+    codigo = (
+        status.HTTP_404_NOT_FOUND
+        if "no encontrado" in bajo or "no encontrada" in bajo
+        else status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
+    return HTTPException(status_code=codigo, detail=detail)
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/lineas-pdf/{linea_id}/solo-gestion",
+    response_model=SoloGestionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def marcar_solo_gestion(
+    proyecto_id: int,
+    linea_id: int,
+    db: Session = Depends(get_db),
+) -> SoloGestionOut:
+    try:
+        return solo_gestion_svc.marcar(db, proyecto_id, linea_id)
+    except ValueError as exc:
+        raise _error_valor(exc) from exc
+
+
+@router.delete(
+    "/proyectos/{proyecto_id}/lineas-pdf/{linea_id}/solo-gestion",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def desmarcar_solo_gestion(
+    proyecto_id: int,
+    linea_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        solo_gestion_svc.desmarcar(db, proyecto_id, linea_id)
+    except ValueError as exc:
+        raise _error_valor(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/apartados/{tarea_id}/confirmar-gestion",
+    response_model=SoloGestionOut,
+)
+def confirmar_solo_gestion(
+    proyecto_id: int,
+    tarea_id: int,
+    db: Session = Depends(get_db),
+) -> SoloGestionOut:
+    try:
+        return solo_gestion_svc.confirmar(db, proyecto_id, tarea_id)
+    except ValueError as exc:
+        raise _error_valor(exc) from exc
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/contratos/{contrato_id}/desenlazar-apartado",
+    response_model=DesenlazarApartadoOut,
+)
+def desenlazar_apartado(
+    proyecto_id: int,
+    contrato_id: int,
+    db: Session = Depends(get_db),
+) -> DesenlazarApartadoOut:
+    try:
+        return solo_gestion_svc.desenlazar(db, proyecto_id, contrato_id)
+    except ValueError as exc:
+        raise _error_valor(exc) from exc
 
 
 async def _leer_excels(ficheros: list[UploadFile]) -> list[tuple[str, bytes]]:

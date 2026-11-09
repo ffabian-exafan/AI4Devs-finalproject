@@ -23,6 +23,7 @@ from app.services.presupuesto_excel import (
     devolver_elementos_de_montaje,
     rellenar_origen_montaje,
     repartir_montaje_por_subapartado,
+    sumar_dietas_guardadas,
 )
 
 
@@ -125,6 +126,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             rellenar_origen_montaje(db, presupuesto)
             devolver_elementos_de_montaje(db, presupuesto.id)
             repartir_montaje_por_subapartado(db, presupuesto.id)
+            sumar_dietas_guardadas(db, presupuesto.id)
 
     contratos_db = (
         db.query(Contrato)
@@ -211,6 +213,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             precio_unitario=ap.precio_unitario,
             descuento_pct=ap.descuento_pct,
             es_montaje=bool(ap.es_montaje),
+            solo_gestion=bool(ap.solo_gestion),
             importe_montaje=montaje_hijos if hijos else montaje_propio,
             capitulo=ap.capitulo,
             importe_contrato_cliente=ap.importe_contrato_cliente,

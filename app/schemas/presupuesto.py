@@ -75,6 +75,9 @@ class SugerenciaContrasteOut(BaseModel):
     confirmada: bool = False
     # True si los bloques los marcó el modelo y una persona aún no ha confirmado.
     sugerida: bool = False
+    # La línea es un apartado de solo gestión. confirmada sigue siendo el bloque de Excel.
+    solo_gestion: bool = False
+    apartado_gestion_id: int | None = None
 
 
 class DescuentoContrasteOut(BaseModel):
@@ -109,6 +112,19 @@ class ImportesClienteIn(BaseModel):
 
 class ImportesClienteOut(BaseModel):
     asignaciones: list[ImporteClienteOut]
+
+
+class SoloGestionOut(BaseModel):
+    """Apartado creado o confirmado desde una línea del PDF del cliente."""
+
+    tarea_id: int
+    linea_id: int
+    codigo: str
+    descripcion: str
+    importe: Money
+    estado_revision: str
+    tiene_anotacion_manual: bool
+    solo_gestion: bool = True
 
 
 class ImportarPresupuestoOut(BaseModel):
