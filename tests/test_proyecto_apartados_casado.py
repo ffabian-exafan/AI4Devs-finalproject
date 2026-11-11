@@ -112,6 +112,94 @@ def test_sugerencia_y_enlace_contrato_electricidad(
     assert c_ui["sugerencias"] == []
 
 
+def test_importe_montaje_no_incluye_material(client: TestClient, db: Session):
+    """La base del contrato es la suma es_montaje, no el total del Excel."""
+    from app.models import Presupuesto
+    from app.services.proyectos import borrar_proyecto
+
+    proyecto = Proyecto(
+        nombre="Obra ficticia montaje vs material",
+        tipo="llave_en_mano",
+        estado="borrador",
+    )
+    db.add(proyecto)
+    db.flush()
+    nave = Nave(
+        proyecto_id=proyecto.id,
+        codigo="N1",
+        descripcion="Nave ficticia",
+        importe_presupuestado=Decimal("1500.00"),
+    )
+    db.add(nave)
+    db.flush()
+    excel = Presupuesto(
+        proyecto_id=proyecto.id,
+        version=1,
+        fichero_origen="electricidad-ficticia.xlsx",
+        estado_extraccion="pendiente",
+        es_escaneado=False,
+        formato="excel_expertis",
+    )
+    db.add(excel)
+    db.flush()
+    apartado = Tarea(
+        nave_id=nave.id,
+        presupuesto_id=excel.id,
+        codigo="8.2",
+        nivel="apartado",
+        descripcion="Electricidad ficticia",
+        importe_presupuestado=Decimal("1500.00"),
+        es_montaje=False,
+        tiene_anotacion_manual=False,
+        estado_revision="confirmada",
+        estado="no_iniciada",
+        avance_fisico_pct=Decimal("0"),
+    )
+    db.add(apartado)
+    db.flush()
+    material = Tarea(
+        nave_id=nave.id,
+        presupuesto_id=excel.id,
+        tarea_padre_id=apartado.id,
+        codigo="8.2.1",
+        nivel="partida",
+        descripcion="Cable ficticio",
+        importe_presupuestado=Decimal("1000.00"),
+        es_montaje=False,
+        tiene_anotacion_manual=False,
+        estado_revision="confirmada",
+        estado="no_iniciada",
+        avance_fisico_pct=Decimal("0"),
+    )
+    montaje = Tarea(
+        nave_id=nave.id,
+        presupuesto_id=excel.id,
+        tarea_padre_id=apartado.id,
+        codigo="8.2.2",
+        nivel="partida",
+        descripcion="MONTAJE electricidad ficticia",
+        importe_presupuestado=Decimal("500.00"),
+        es_montaje=True,
+        tiene_anotacion_manual=False,
+        estado_revision="confirmada",
+        estado="no_iniciada",
+        avance_fisico_pct=Decimal("0"),
+    )
+    db.add_all([material, montaje])
+    db.commit()
+    try:
+        detalle = client.get(f"/proyectos/{proyecto.id}")
+        assert detalle.status_code == 200, detalle.text
+        fila = next(a for a in detalle.json()["apartados"] if a["id"] == apartado.id)
+        assert Decimal(str(fila["importe_presupuestado"])) == Decimal("1500.00")
+        assert Decimal(str(fila["importe_montaje"])) == Decimal("500.00")
+        assert Decimal(str(fila["importe_montaje"])) < Decimal(
+            str(fila["importe_presupuestado"])
+        )
+    finally:
+        borrar_proyecto(db, proyecto.id)
+
+
 def test_enlazar_apartado_rechaza_tarea_de_contrato(client: TestClient, db: Session):
     proyecto = Proyecto(
         nombre="Proyecto enlace inválido",

@@ -4,20 +4,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Obrix</title>
-  <link rel="icon" type="image/png" href="/assets/obrix-icon.png" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261109f" />
+  <title>Cuadra</title>
+  <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261111h" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js"></script>
-  <script src="/js/obras.js?v=20261109h"></script>
+  <script src="/js/obras.js?v=20261111b"></script>
 </head>
 
 <body>
   <div class="shell" :class="{ 'menu-compacto': menuCompacto }" x-data="gestionObras()" x-init="init()" x-cloak>
     <aside class="sidebar">
-      <a class="brand" href="/" @click.prevent="ir('obras')" :title="menuCompacto ? 'Obrix' : null">
-        <img class="brand-logo" src="/assets/obrix-logo.png" alt="Obrix" width="180" height="48" />
-        <img class="brand-icon" src="/assets/obrix-icon.png" alt="Obrix" width="40" height="40" />
+      <a class="brand" href="/" @click.prevent="ir('obras')" :title="menuCompacto ? 'Cuadra' : null">
+        <img class="brand-logo" src="/assets/cuadra-logo.png?v=20261111g" alt="Cuadra" width="196" height="58" />
+        <img class="brand-icon" src="/assets/cuadra-mark.png?v=20261111g" alt="Cuadra" width="40" height="40" />
       </a>
       <nav class="nav">
         <button type="button" :class="navActivo('obras') && 'activo'" @click="ir('obras')" title="Obras">
@@ -726,7 +726,7 @@
                 </div>
                 <span class="sub" x-text="c.motivo"></span>
                 <span class="num sub">
-                  <span x-text="c.etiqueta_base || 'Presupuestado en el apartado'"></span>: <span
+                  <span x-text="c.etiqueta_base || 'Montaje del apartado'"></span>: <span
                     x-text="c.presupuestado"></span>
                   · <strong :class="c.supera ? 'rojo' : 'verde'" x-text="c.diferencia"></strong>
                 </span>
@@ -886,7 +886,7 @@
                     <strong class="der num" :class="fila.alerta ? 'rojo' : 'apagado'" x-text="fila.desviacion"></strong>
                   </div>
                   <div x-show="ctrlOpen === i"
-                    style="background: #f0f0f0; border-radius: 6px; padding: 4px 14px 8px; margin-bottom: 10px; overflow-x: auto">
+                    style="background: var(--bg); border-radius: 8px; padding: 4px 14px 8px; margin-bottom: 10px; overflow-x: auto">
                     <div style="min-width: 520px">
                       <div class="grid-ctrl-p th">
                         <span>Partida</span><span>Descripción</span>

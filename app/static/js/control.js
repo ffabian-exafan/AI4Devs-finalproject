@@ -63,12 +63,12 @@ function controlApp() {
             {
               label: "Presupuestado",
               data: porC.map((r) => Number(r.presupuestado)),
-              backgroundColor: "#96a78d",
+              backgroundColor: "#2a2724",
             },
             {
               label: "Facturado",
               data: porC.map((r) => Number(r.facturado)),
-              backgroundColor: "#5f6f58",
+              backgroundColor: "#c4a06a",
             },
           ],
         },
@@ -87,12 +87,12 @@ function controlApp() {
             {
               label: "Contratado",
               data: porContrato.map((r) => Number(r.contratado)),
-              backgroundColor: "#96a78d",
+              backgroundColor: "#2a2724",
             },
             {
               label: "Facturado confirmado",
               data: porContrato.map((r) => Number(r.facturado)),
-              backgroundColor: "#5f6f58",
+              backgroundColor: "#c4a06a",
             },
           ],
         },
@@ -111,12 +111,12 @@ function controlApp() {
             {
               label: "Presupuestado",
               data: porN.map((r) => Number(r.presupuestado)),
-              backgroundColor: "#96a78d",
+              backgroundColor: "#2a2724",
             },
             {
               label: "Gasto (estim.)",
               data: porN.map((r) => Number(r.gasto_estimado)),
-              backgroundColor: "#d35400",
+              backgroundColor: "#b5813a",
             },
           ],
         },

@@ -122,7 +122,7 @@ function revisionApp() {
             {
               label: "Importe por apartado",
               data,
-              backgroundColor: "#96a78d",
+              backgroundColor: "#a67c45",
             },
           ],
         },

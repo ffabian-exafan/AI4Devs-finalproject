@@ -192,6 +192,19 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         else:
             hijos_por_id.setdefault(padre_id, []).append(tarea)
 
+    def importe_montaje_de(tarea: Tarea) -> Decimal:
+        """Suma de líneas es_montaje bajo el nodo (y el propio si lo es)."""
+        total = (
+            Decimal(tarea.importe_presupuestado) if tarea.es_montaje else Decimal("0")
+        )
+        pila = list(hijos_por_id.get(tarea.id, []))
+        while pila:
+            nodo = pila.pop()
+            if nodo.es_montaje:
+                total += Decimal(nodo.importe_presupuestado)
+            pila.extend(hijos_por_id.get(nodo.id, []))
+        return total
+
     def resumen_apartado(ap: Tarea, *, con_contratos: bool) -> ApartadoResumenOut:
         nivel = ap.nivel
         if padres.get(ap.id) is not None and nivel == "apartado":
@@ -200,8 +213,6 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             resumen_apartado(hijo, con_contratos=False)
             for hijo in hijos_por_id.get(ap.id, [])
         ]
-        montaje_hijos = sum((hijo.importe_montaje for hijo in hijos), Decimal("0"))
-        montaje_propio = ap.importe_presupuestado if ap.es_montaje else Decimal("0")
         return ApartadoResumenOut(
             id=ap.id,
             codigo=ap.codigo,
@@ -214,7 +225,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             descuento_pct=ap.descuento_pct,
             es_montaje=bool(ap.es_montaje),
             solo_gestion=bool(ap.solo_gestion),
-            importe_montaje=montaje_hijos if hijos else montaje_propio,
+            importe_montaje=importe_montaje_de(ap),
             capitulo=ap.capitulo,
             importe_contrato_cliente=ap.importe_contrato_cliente,
             nave_id=ap.nave_id,

@@ -1097,19 +1097,14 @@ function gestionObras() {
       const opciones = [{ valor: "", etiqueta: "Elige apartado" }].concat(
         contratables.map((ap) => ({
           valor: String(ap.id),
-          etiqueta: ap.codigo + " · " + ap.descripcion,
+          etiqueta: this._etiquetaOpcionContrato(ap),
         }))
       );
       const filas = (proyecto.contratos || []).map((contrato) => {
         const sugerencia = (contrato.sugerencias || [])[0];
         const apartadoId = contrato.tarea_apartado_id || (sugerencia && sugerencia.tarea_id) || "";
         const apartado = apartados.find((ap) => ap.id === Number(apartadoId));
-        const montaje = apartado ? Number(apartado.importe_montaje) || 0 : 0;
-        const base = apartado
-          ? montaje > 0
-            ? montaje
-            : Number(apartado.importe_presupuestado) || 0
-          : 0;
+        const base = apartado ? this._baseContrato(apartado) : 0;
         const contratado = Number(contrato.precio_total) || 0;
         const diff = contratado - base;
         return {
@@ -1121,6 +1116,7 @@ function gestionObras() {
             ? "/proyectos/" + proyecto.id + "/contratos/" + contrato.id + "/fichero"
             : null,
           importe: euro(contrato.precio_total),
+          precio_total: contratado,
           apartado_idx: apartadoId === "" ? "" : String(apartadoId),
           confianza: contrato.tarea_apartado_id
             ? 100
@@ -1134,11 +1130,11 @@ function gestionObras() {
               : "Sin sugerencia automática",
           aviso: null,
           hay_aviso: false,
-          etiqueta_base: apartado && apartado.solo_gestion
-            ? "Importe del PDF"
-            : montaje > 0
-              ? "Montaje del apartado"
-              : "Presupuestado en el apartado",
+          etiqueta_base: apartado
+            ? apartado.solo_gestion
+              ? "Importe del PDF"
+              : "Montaje del apartado"
+            : null,
           presupuestado: apartado ? euro(base) : "—",
           diferencia: apartado ? euro(diff) : "—",
           supera: apartado ? diff > 0 : false,
@@ -1202,7 +1198,8 @@ function gestionObras() {
         const cliente = this._sumaCliente(ap);
         const escala = Math.max(pres, montaje, contratado, facturado, 1);
         const pct = (valor) => Math.round((valor / escala) * 100) + "%";
-        const base = montaje > 0 ? montaje : pres;
+        // Excel: desvío contra montaje. Solo gestión: contra el importe del PDF.
+        const base = this._baseContrato(ap);
         const hayCifra = contratado > 0 || facturado > 0;
         const desvio = hayCifra ? Math.max(contratado, facturado) - base : 0;
         if (hayCifra) desvioTotal += desvio;
@@ -1346,6 +1343,7 @@ function gestionObras() {
           hay_sin_contrato: sinApartado > 0,
           opciones,
           filas,
+          apartados_contrato: contratables,
         },
         facturas: facturasVista,
         control: {
@@ -1354,7 +1352,7 @@ function gestionObras() {
               etiqueta: "Presupuestado",
               valor: euro(presTotal),
               detalle: "Apartados del Excel",
-              color: "#111111",
+              color: "#2a2724",
             },
             {
               etiqueta: "Montaje",
@@ -1362,25 +1360,25 @@ function gestionObras() {
                 apartados.reduce((suma, ap) => suma + (Number(ap.importe_montaje) || 0), 0)
               ),
               detalle: "Base de la subcontrata",
-              color: "#111111",
+              color: "#2a2724",
             },
             {
               etiqueta: "Contratado",
               valor: euro(contrTotal),
               detalle: (proyecto.contratos || []).length + " contratos",
-              color: "#111111",
+              color: "#2a2724",
             },
             {
               etiqueta: "Facturado",
               valor: euro(factTotal),
               detalle: "Solo facturas confirmadas",
-              color: "#111111",
+              color: "#2a2724",
             },
             {
               etiqueta: "Desviación",
               valor: Math.abs(desvioTotal) < 0.5 ? euro(0) : euro(desvioTotal),
               detalle: "Contratado o facturado frente a presupuesto",
-              color: desvioTotal > 0.5 ? "#a52a17" : "#1e7a34",
+              color: desvioTotal > 0.5 ? "#9a1f16" : "#1b6b38",
             },
           ],
           filas: filasControl,
@@ -1467,6 +1465,38 @@ function gestionObras() {
 
     _gestionPendiente(nodo) {
       return Boolean(nodo.solo_gestion && nodo.estado_revision !== "confirmada");
+    },
+
+    _baseContrato(apartado) {
+      if (!apartado) return 0;
+      if (apartado.solo_gestion) {
+        return Number(apartado.importe_presupuestado) || 0;
+      }
+      return Number(apartado.importe_montaje) || 0;
+    },
+
+    _nombreCortoApartado(ap) {
+      const texto = String(ap.descripcion || "").trim();
+      if (!texto) return ap.codigo || "Apartado";
+      const partes = texto.split(/\s[-–]\s/).map((p) => p.trim()).filter(Boolean);
+      const sistema = partes.find((p) => {
+        const letras = p.replace(/[^A-Za-zÁÉÍÓÚÜáéíóúü]/g, "");
+        if (letras.length < 4) return false;
+        const mayus = (letras.match(/[A-ZÁÉÍÓÚÜ]/g) || []).length;
+        return mayus / letras.length >= 0.7;
+      });
+      if (sistema) return sistema;
+      return texto.length > 48 ? texto.slice(0, 45) + "…" : texto;
+    },
+
+    _etiquetaOpcionContrato(ap) {
+      const nombre = this._nombreCortoApartado(ap);
+      const base = this._baseContrato(ap);
+      const cifra = GestorApi.euro(base);
+      if (ap.solo_gestion) {
+        return "Solo gestión · " + nombre + " · " + cifra;
+      }
+      return "Montaje · " + nombre + " · " + cifra;
     },
 
     _filaGestion(nodo) {
@@ -1894,7 +1924,26 @@ function gestionObras() {
     async cambiarApartado(id, valor) {
       if (this.proyectoId && this.vista) {
         const fila = this.vista.contratos.filas.find((c) => c.id === id);
-        if (fila) fila.apartado_idx = String(valor);
+        if (!fila) return;
+        fila.apartado_idx = String(valor);
+        const apartado = (this.vista.contratos.apartados_contrato || []).find(
+          (ap) => ap.id === Number(valor)
+        );
+        if (!valor || !apartado) {
+          fila.etiqueta_base = null;
+          fila.presupuestado = "—";
+          fila.diferencia = "—";
+          fila.supera = false;
+          return;
+        }
+        const base = this._baseContrato(apartado);
+        const diff = (Number(fila.precio_total) || 0) - base;
+        fila.etiqueta_base = apartado.solo_gestion
+          ? "Importe del PDF"
+          : "Montaje del apartado";
+        fila.presupuestado = GestorApi.euro(base);
+        fila.diferencia = GestorApi.euro(diff);
+        fila.supera = diff > 0;
         return;
       }
       const fila = this.estado.contratos.find((c) => c.id === id);
@@ -2059,7 +2108,7 @@ function gestionObras() {
     },
 
     colorConfianza(fila) {
-      return fila.confianza >= 90 ? "#1e7a34" : "#b56a00";
+      return fila.confianza >= 90 ? "#1b6b38" : "#8f5d08";
     },
 
     get filtros() {

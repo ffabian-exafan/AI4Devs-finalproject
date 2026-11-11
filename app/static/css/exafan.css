@@ -1,37 +1,45 @@
+@import url("https://fonts.bunny.net/css?family=ibm-plex-sans:400,500,600,700");
+
 :root {
-  /* #96A78D base, #B6CEB4 apoyo, #D9E9CF suave, #F0F0F0 fondo. */
-  --p900: #111111;
-  --p800: #111111;
-  --p700: #111111;
-  --p600: #96a78d;
-  --p500: #a6b99d;
-  --p400: #b6ceb4;
-  --p300: #b6ceb4;
-  --p200: #b6ceb4;
-  --p100: #d9e9cf;
-  --p50: #d9e9cf;
-  --degradado: #96a78d;
-  --on-accent: #111111;
-  --ink: #111111;
-  --muted: #666666;
-  --faint: #8a8a8a;
-  --line: #b6ceb4;
-  --line-soft: #f0f0f0;
-  --bg: #f0f0f0;
-  --ok: #1e7a34;
-  --ok-bg: #eaf5e6;
-  --warn: #b56a00;
-  --warn-text: #8a5200;
-  --warn-bg: #fff4e2;
-  --warn-line: #febc10;
-  --err: #e63c22;
-  --err-text: #a52a17;
-  --err-bg: #fdeae6;
-  --err-line: #f5b8ad;
-  --info: #5f6f58;
-  --info-bg: #d9e9cf;
-  --sync: #96a78d;
-  --font: Causten, "Segoe UI", system-ui, sans-serif;
+  /* Carbón para el texto y los botones. Ámbar apagado solo para lo activo. */
+  --p900: #1f1c19;
+  --p800: #2a2724;
+  --p700: #3a342e;
+  --p600: #2a2724;
+  --p500: #3d3834;
+  --p400: #c4a06a;
+  --p300: #e0d5c6;
+  --p200: #ddd2c2;
+  --p100: #f3ece3;
+  --p50: #f7f3ec;
+  --degradado: #a67c45;
+  --ambar: #c4a06a;
+  --on-accent: #f7f4ef;
+  --ink: #2a2724;
+  --muted: #6e675f;
+  --faint: #8a8278;
+  --line: #e3ddd4;
+  --line-soft: #efeae3;
+  --bg: #f3f1ed;
+  --surface: #faf9f7;
+  --sidebar: #2a2724;
+  --sidebar-text: #f4efe8;
+  --sidebar-muted: #c4bbb1;
+  --ok: #1b6b38;
+  --ok-bg: #e8f3eb;
+  --warn: #8f5d08;
+  --warn-text: #7a4e06;
+  --warn-bg: #fbf3e4;
+  --warn-line: #e4c98a;
+  --err: #b42318;
+  --err-text: #9a1f16;
+  --err-bg: #fbeceb;
+  --err-line: #f0c7c2;
+  --info: #5c5348;
+  --info-bg: #f3ece3;
+  --sync: #a67c45;
+  --sombra: 0 1px 2px rgba(42, 39, 36, 0.06);
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
 }
 
 * {
@@ -47,7 +55,14 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #eadcc8;
+  color: var(--ink);
 }
 
 button,
@@ -67,7 +82,7 @@ a:hover {
 .shell {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
-  min-height: 100vh;
+  min-height: 100dvh;
   transition: grid-template-columns 0.2s ease;
 }
 
@@ -78,9 +93,10 @@ a:hover {
 .sidebar {
   position: sticky;
   top: 0;
-  height: 100vh;
-  background: #fff;
-  border-right: 1px solid var(--line);
+  height: 100dvh;
+  background: var(--sidebar);
+  border-right: 1px solid #3a342e;
+  color: var(--sidebar-text);
   display: flex;
   flex-direction: column;
   padding: 18px 12px;
@@ -93,15 +109,18 @@ a:hover {
   align-items: center;
   justify-content: center;
   min-height: 48px;
-  margin: 0 4px;
+  min-width: 0;
+  margin: 0 2px 0 4px;
+  padding-right: 14px;
   text-decoration: none;
 }
 
 .brand-logo {
   display: block;
   width: 100%;
-  max-width: 176px;
+  max-width: 100%;
   height: auto;
+  min-width: 0;
 }
 
 .brand-icon {
@@ -135,18 +154,22 @@ a:hover {
   cursor: pointer;
   background: transparent;
   padding: 9px 12px;
-  border-radius: 6px;
-  color: var(--ink);
+  border-radius: 3px;
+  color: var(--sidebar-muted);
+  font-weight: 500;
+  transition: background 180ms ease, color 180ms ease;
 }
 
-.nav button:hover,
-.nav button.activo {
-  background: var(--p100);
-  color: var(--ink);
+.nav button:hover {
+  background: #38342f;
+  color: var(--sidebar-text);
 }
 
 .nav button.activo {
+  background: #35302b;
+  color: var(--sidebar-text);
   font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--ambar);
 }
 
 .nav-marca {
@@ -159,13 +182,13 @@ a:hover {
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-  background: var(--bg);
-  color: var(--p800);
+  background: #3a342e;
+  color: var(--sidebar-text);
 }
 
 .nav button.activo .nav-marca {
-  background: var(--p600);
-  color: var(--on-accent);
+  background: var(--ambar);
+  color: var(--sidebar);
 }
 
 .nav-etiqueta {
@@ -192,7 +215,7 @@ a:hover {
 .nav .cuenta {
   font-size: 11px;
   font-weight: 600;
-  color: var(--p800);
+  color: var(--ambar);
   flex: none;
 }
 
@@ -206,14 +229,14 @@ a:hover {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
   display: grid;
   place-items: center;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--sombra);
 }
 
 .menu-toggle:hover {
@@ -232,8 +255,10 @@ a:hover {
 
 .h1 {
   margin: 0;
-  font-weight: 700;
-  color: var(--p800);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--ink);
 }
 
 .h1-lista {
@@ -269,11 +294,15 @@ a:hover {
 }
 
 .btn {
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
   border: 1px solid transparent;
-  transition: background 150ms, border-color 150ms;
+  transition: background 180ms ease, border-color 180ms ease, transform 120ms ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn-md {
@@ -289,12 +318,14 @@ a:hover {
 .btn-primary {
   background: var(--p600);
   color: var(--on-accent);
-  box-shadow: 0 1px 2px rgba(63, 74, 57, 0.16);
 }
 
-.btn-primary:hover,
-.btn-primary:active {
-  background: var(--p400);
+.btn-primary:hover {
+  background: var(--p500);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--p900);
 }
 
 .btn-primary:disabled {
@@ -305,14 +336,14 @@ a:hover {
 .btn:focus-visible,
 .nav button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--p600);
+  outline: 2px solid var(--ambar);
   outline-offset: 2px;
 }
 
 .btn-secondary {
-  background: #fff;
-  color: var(--p800);
-  border-color: var(--p300);
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
 }
 
 .btn-secondary:hover {
@@ -339,7 +370,7 @@ a:focus-visible {
 .badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 2px 8px;
   font-size: 12px;
   font-weight: 600;
@@ -377,9 +408,10 @@ a:focus-visible {
 }
 
 .card {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: var(--sombra);
 }
 
 .scroll {
@@ -401,9 +433,10 @@ a:focus-visible {
 .cabecera {
   padding: 12px 20px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  background: var(--bg);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--faint);
+  background: transparent;
   border-bottom: 1px solid var(--line);
 }
 
@@ -430,7 +463,7 @@ a:focus-visible {
 
 .fila-factura.sel {
   background: var(--p50);
-  box-shadow: inset 3px 0 0 var(--p600);
+  box-shadow: inset 3px 0 0 var(--degradado);
 }
 
 .obra-nombre {
@@ -478,15 +511,16 @@ a:focus-visible {
   min-width: 0;
   height: 100%;
   padding: 10px 12px 10px 8px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
   text-align: left;
+  box-shadow: var(--sombra);
 }
 
 .paso.activo {
-  border-color: var(--p600);
+  border-color: var(--p400);
   background: var(--p50);
 }
 
@@ -541,9 +575,10 @@ a:focus-visible {
 
 .dropzone {
   border: 2px dashed var(--p300);
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
-  padding: 64px 24px;
+  padding: 56px 24px;
+  transition: background 180ms ease, border-color 180ms ease;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -555,6 +590,7 @@ a:focus-visible {
 .dropzone:hover,
 .dropzone.sobre {
   background: var(--p50);
+  border-color: var(--p400);
 }
 
 .oculto {
@@ -570,7 +606,7 @@ a:focus-visible {
   height: 52px;
   border-radius: 12px;
   background: var(--p100);
-  color: var(--p600);
+  color: var(--degradado);
   display: grid;
   place-items: center;
   font-size: 26px;
@@ -580,7 +616,7 @@ a:focus-visible {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 28px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 28px;
@@ -610,8 +646,8 @@ a:focus-visible {
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--p600);
-  box-shadow: 0 0 12px 4px rgba(150, 167, 141, 0.45);
+  background: var(--degradado);
+  box-shadow: 0 0 10px 3px rgba(166, 124, 69, 0.35);
   animation: exscan 1.2s ease-in-out infinite alternate;
 }
 
@@ -633,9 +669,9 @@ a:focus-visible {
 }
 
 .panel-doc {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 18px;
   display: flex;
   flex-direction: column;
@@ -698,9 +734,9 @@ a:focus-visible {
 }
 
 .ap {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
@@ -726,7 +762,7 @@ a:focus-visible {
 
 .btn-linea {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
@@ -765,7 +801,7 @@ a:focus-visible {
   gap: 8px;
   align-items: end;
   padding: 12px 18px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
 }
@@ -785,7 +821,7 @@ a:focus-visible {
   padding: 8px 10px;
   font: inherit;
   color: inherit;
-  background: #fff;
+  background: var(--surface);
 }
 
 .linea-botones {
@@ -923,7 +959,7 @@ a:focus-visible {
 }
 
 .subap-dentro .subap-cab {
-  background: #fff;
+  background: var(--surface);
 }
 
 .subap-dentro .subap-nombre strong {
@@ -1005,9 +1041,9 @@ a:focus-visible {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  background: #fff;
+  background: var(--surface);
   border: 1px dashed var(--p300);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 14px 18px;
 }
 
@@ -1033,9 +1069,9 @@ a:focus-visible {
 
 .cruce-lista,
 .cruce-destino {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   min-width: 0;
   height: auto;
   min-height: 0;
@@ -1055,7 +1091,7 @@ a:focus-visible {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #fff;
+  background: var(--surface);
 }
 
 .cruce-cab,
@@ -1080,7 +1116,7 @@ a:focus-visible {
   padding: 12px 14px;
   border: 0;
   border-bottom: 1px solid var(--line-soft);
-  background: #fff;
+  background: var(--surface);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -1098,7 +1134,7 @@ a:focus-visible {
 .cruce-flecha:focus-visible,
 .cruce-rama:focus-visible,
 .cruce-bloque:focus-visible {
-  outline: 2px solid var(--p600);
+  outline: 2px solid var(--ambar);
   outline-offset: -2px;
 }
 
@@ -1121,7 +1157,7 @@ a:focus-visible {
 .cruce-dest-cab .meta,
 .cruce-sec-nombre .meta,
 .cruce-bloque .meta {
-  color: #333;
+  color: var(--p700);
 }
 
 .cruce-punto {
@@ -1218,7 +1254,7 @@ a:focus-visible {
   height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  border-left: 5px solid #333;
+  border-left: 5px solid var(--p700);
   transform: rotate(0deg);
   transition: transform 150ms ease;
 }
@@ -1301,14 +1337,14 @@ a:focus-visible {
   flex: none;
   width: 14px;
   height: 14px;
-  border: 1.5px solid #111;
+  border: 1.5px solid var(--ink);
   border-radius: 3px;
   box-sizing: border-box;
 }
 
 .cruce-bloque .marca.on {
-  background: #111;
-  box-shadow: inset 0 0 0 2.5px #fff;
+  background: var(--ink);
+  box-shadow: inset 0 0 0 2.5px var(--surface);
 }
 
 .cruce-bloque:disabled,
@@ -1317,8 +1353,17 @@ a:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cruce-tri {
+  .cruce-tri,
+  .shell,
+  .btn,
+  .nav button,
+  .dropzone {
     transition: none;
+  }
+
+  .scan {
+    animation: none;
+    top: 0;
   }
 }
 
@@ -1343,14 +1388,15 @@ a:focus-visible {
 .h2 {
   margin: 0;
   font-size: 18px;
-  color: var(--p800);
-  font-weight: 700;
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
 .contrato {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--p300);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 18px 20px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1.5fr) 110px;
@@ -1374,12 +1420,21 @@ a:focus-visible {
 
 input.campo {
   font: inherit;
-  color: var(--p700);
+  color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 8px 10px;
-  background: #fff;
+  background: var(--surface);
   width: 100%;
+}
+
+input.campo:focus,
+select.apartado:focus,
+.linea-form input:focus,
+.elige-varios:focus-within {
+  outline: 2px solid var(--ambar);
+  outline-offset: 1px;
+  border-color: var(--p600);
 }
 
 select.apartado {
@@ -1388,7 +1443,7 @@ select.apartado {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px 10px;
-  background: #fff;
+  background: var(--surface);
   max-width: 100%;
 }
 
@@ -1401,7 +1456,7 @@ select.apartado {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 10px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .elige-varios label {
@@ -1430,7 +1485,7 @@ select.apartado {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   padding: 4px 0;
 }
 
@@ -1453,7 +1508,7 @@ select.apartado {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #e4e4e4;
+  background: var(--line);
 }
 
 .tv-flecha {
@@ -1479,13 +1534,13 @@ select.apartado {
   height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  border-left: 5px solid #333;
+  border-left: 5px solid var(--p700);
 }
 
 .tv-tri.abierto {
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
-  border-top: 5px solid #333;
+  border-top: 5px solid var(--p700);
   border-bottom: 0;
 }
 
@@ -1514,11 +1569,11 @@ select.apartado {
 .tv-nodo:hover:not(:disabled),
 .tv-carpeta:hover:not(:disabled),
 .tv-flecha:hover:not(:disabled) {
-  background: #f6f6f6;
+  background: var(--bg);
 }
 
 .tv-nodo.on {
-  background: #ececec;
+  background: var(--p100);
 }
 
 .tv-nodo .nombre,
@@ -1538,14 +1593,14 @@ select.apartado {
   flex: none;
   width: 14px;
   height: 14px;
-  border: 1.5px solid #111;
+  border: 1.5px solid var(--ink);
   border-radius: 3px;
   box-sizing: border-box;
 }
 
 .tv-nodo .marca.on {
-  background: #111;
-  box-shadow: inset 0 0 0 2.5px #fff;
+  background: var(--ink);
+  box-shadow: inset 0 0 0 2.5px var(--surface);
 }
 
 .tv-punto {
@@ -1553,7 +1608,7 @@ select.apartado {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #111;
+  background: var(--ink);
 }
 
 .stack {
@@ -1568,9 +1623,9 @@ select.apartado {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 12px 18px;
 }
 
@@ -1590,7 +1645,7 @@ select.apartado {
 
 .pill {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   border-radius: 999px;
   padding: 5px 12px;
@@ -1618,9 +1673,9 @@ select.apartado {
 }
 
 .detalle {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   flex: 1 1 360px;
@@ -1645,7 +1700,7 @@ select.apartado {
 
 .linea-cmp {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   border-radius: 6px;
   padding: 10px 12px;
   display: flex;
@@ -1682,9 +1737,9 @@ select.apartado {
 }
 
 .kpi {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
@@ -1693,7 +1748,8 @@ select.apartado {
 
 .kpi strong {
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1777,9 +1833,9 @@ select.apartado {
 }
 
 .alerta {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;

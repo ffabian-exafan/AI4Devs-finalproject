@@ -10,7 +10,7 @@ from app.routers import facturas, health, proyectos, revisiones, vista
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
-    title="Obrix",
+    title="Cuadra",
     version="0.2.0",
 )
 

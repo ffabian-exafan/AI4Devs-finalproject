@@ -1,22 +1,27 @@
+@import url("https://fonts.bunny.net/css?family=ibm-plex-sans:400,500,600,700");
+
 :root {
-  /* #96A78D base, #B6CEB4 apoyo, #D9E9CF suave, #F0F0F0 fondo. */
-  --bg: #f0f0f0;
-  --bg-accent: #d9e9cf;
-  --surface: #ffffff;
-  --ink: #111111;
-  --muted: #666666;
-  --line: #b6ceb4;
-  --accent: #96a78d;
-  --accent-dark: #111111;
-  --on-accent: #243026;
-  --warn-bg: #fff3cd;
-  --warn-border: #e0a800;
-  --manual-bg: #ffe8d6;
-  --manual-border: #d35400;
-  --ok: #2f6b3a;
-  --danger: #a33b2b;
-  --font: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
-  --mono: "Cascadia Mono", "Consolas", monospace;
+  /* Misma paleta que la app principal: carbón y ámbar apagado. */
+  --bg: #f3f1ed;
+  --bg-accent: #f3ece3;
+  --surface: #faf9f7;
+  --ink: #2a2724;
+  --muted: #6e675f;
+  --line: #e3ddd4;
+  --line-soft: #efeae3;
+  --accent: #2a2724;
+  --accent-dark: #1f1c19;
+  --accent-soft: #ddd2c2;
+  --ambar: #c4a06a;
+  --on-accent: #f7f4ef;
+  --warn-bg: #fbf3e4;
+  --warn-border: #e4c98a;
+  --manual-bg: #f8ebe3;
+  --manual-border: #c46a32;
+  --ok: #1b6b38;
+  --danger: #b42318;
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "IBM Plex Mono", Consolas, monospace;
 }
 
 * {
@@ -28,7 +33,9 @@ body {
   font-family: var(--font);
   color: var(--ink);
   background: var(--bg);
-  min-height: 100vh;
+  min-height: 100dvh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -48,7 +55,7 @@ a {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 1.5rem;
-  border-bottom: 2px solid var(--accent);
+  border-bottom: 1px solid var(--line);
   padding-bottom: 0.75rem;
 }
 
@@ -67,8 +74,10 @@ a {
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
+  border-radius: 12px;
   padding: 1rem 1.1rem;
   margin-bottom: 1rem;
+  box-shadow: 0 1px 2px rgba(28, 36, 32, 0.05);
 }
 
 .panel h2 {
@@ -77,8 +86,8 @@ a {
 }
 
 .aviso {
-  background: #d9e9cf;
-  border-left: 4px solid #96a78d;
+  background: var(--bg);
+  border-left: 4px solid var(--accent);
   padding: 0.65rem 0.85rem;
   font-size: 0.88rem;
   color: var(--muted);
@@ -106,7 +115,7 @@ a {
 .lista-pendientes button:hover,
 .lista-pendientes button.activo {
   border-color: var(--accent);
-  background: #d9e9cf;
+  background: var(--bg-accent);
 }
 
 .meta {
@@ -154,7 +163,7 @@ table.arbol {
 
 table.arbol th {
   text-align: left;
-  background: #d9e9cf;
+  background: var(--bg);
   padding: 0.45rem 0.5rem;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
@@ -162,7 +171,7 @@ table.arbol th {
 
 table.arbol td {
   padding: 0.35rem 0.45rem;
-  border-bottom: 1px solid #d9e9cf;
+  border-bottom: 1px solid var(--line-soft);
   vertical-align: top;
 }
 
@@ -205,7 +214,7 @@ td.nivel {
 }
 
 tr.fila-sub td {
-  background: #f0f0f0;
+  background: var(--bg);
 }
 
 .indent-1 {
@@ -230,14 +239,26 @@ button.primario {
   background: var(--accent);
   color: var(--on-accent);
   border: none;
+  border-radius: 8px;
   padding: 0.65rem 1.2rem;
   font: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 
+button.primario:hover:not(:disabled) {
+  background: #3d3834;
+}
+
+button.primario:focus-visible,
+button.secundario:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ambar);
+  outline-offset: 2px;
+}
+
 button.primario:disabled {
-  background: #b6ceb4;
+  background: var(--accent-soft);
   cursor: not-allowed;
 }
 
@@ -390,8 +411,8 @@ button.secundario {
 }
 
 .resultado-ok {
-  background: #d9e9cf;
-  border: 1px solid var(--accent);
+  background: var(--bg-accent);
+  border: 1px solid var(--line);
   padding: 0.75rem 0.9rem;
   margin-top: 1rem;
   font-size: 0.9rem;
@@ -412,11 +433,11 @@ button.secundario {
 .tabla-simple td {
   text-align: left;
   padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid #d9e9cf;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .tabla-simple th {
-  background: #d9e9cf;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 
@@ -427,9 +448,9 @@ button.secundario {
 }
 
 .badge-estimacion {
-  background: #d9e9cf;
-  border: 1px solid #96a78d;
-  color: #111111;
+  background: var(--bg-accent);
+  border: 1px solid var(--accent);
+  color: var(--ink);
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -460,12 +481,12 @@ button.secundario {
 .tabla td {
   text-align: left;
   padding: 0.45rem 0.55rem;
-  border-bottom: 1px solid #d9e9cf;
+  border-bottom: 1px solid var(--line-soft);
   vertical-align: top;
 }
 
 .tabla th {
-  background: #d9e9cf;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 
@@ -486,8 +507,8 @@ button.secundario {
 }
 
 .enlace-ok {
-  background: #d9e9cf;
-  border: 1px solid var(--accent);
+  background: var(--bg-accent);
+  border: 1px solid var(--line);
   padding: 0.4rem 0.55rem;
   font-size: 0.88rem;
   margin: 0.35rem 0 0;
@@ -514,7 +535,7 @@ button.secundario {
   align-items: center;
   border: 1px solid var(--line);
   padding: 0.45rem 0.55rem;
-  background: #f0f0f0;
+  background: var(--bg);
 }
 
 .sugerencias label {
@@ -532,7 +553,7 @@ button.secundario {
 button.secundario {
   font: inherit;
   padding: 0.35rem 0.65rem;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--line);
   background: #fff;
   color: var(--accent-dark);
   cursor: pointer;
@@ -544,7 +565,7 @@ button.secundario:disabled {
 }
 
 .badge-sin-contrato {
-  background: #f0f0f0;
+  background: var(--bg);
   border-color: var(--line);
   color: var(--muted);
 }
@@ -571,7 +592,7 @@ button.secundario:disabled {
 .progreso {
   height: 0.42rem;
   overflow: hidden;
-  background: #d9e9cf;
+  background: var(--bg-accent);
   margin: 0.3rem 0;
 }
 
