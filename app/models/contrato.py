@@ -67,8 +67,37 @@ class Contrato(Base):
         back_populates="contratos_como_apartado",
         foreign_keys=[tarea_apartado_id],
     )
+    # Apartados confirmados. tarea_apartado_id queda como el primero (compatibilidad).
+    enlaces_apartado: Mapped[list[ContratoApartado]] = relationship(
+        back_populates="contrato",
+        cascade="all, delete-orphan",
+        order_by="ContratoApartado.tarea_id",
+    )
     tareas: Mapped[list[Tarea]] = relationship(
         back_populates="contrato",
         foreign_keys="Tarea.contrato_id",
     )
     facturas: Mapped[list[Factura]] = relationship(back_populates="contrato")
+
+
+class ContratoApartado(Base):
+    """Apartados que cubre un contrato. Pueden ser del Excel o del propio contrato.
+
+    Si el apartado no está en el Excel, `explicacion` es obligatoria.
+    """
+
+    __tablename__ = "contrato_apartado"
+
+    contrato_id: Mapped[int] = mapped_column(
+        ForeignKey("contrato.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    tarea_id: Mapped[int] = mapped_column(
+        ForeignKey("tarea.id"),
+        primary_key=True,
+        index=True,
+    )
+    explicacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    contrato: Mapped[Contrato] = relationship(back_populates="enlaces_apartado")
+    tarea: Mapped[Tarea] = relationship()

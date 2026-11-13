@@ -1480,6 +1480,19 @@ select.apartado {
   opacity: 0.7;
 }
 
+.explica {
+  width: 100%;
+  min-height: 64px;
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--p800);
+  font: inherit;
+  resize: vertical;
+}
+
 .treeview {
   max-height: 280px;
   overflow: auto;

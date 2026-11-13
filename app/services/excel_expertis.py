@@ -759,8 +759,13 @@ def _cerrar_importes(nodos: list[NodoExcel]) -> Decimal:
     return total
 
 
+def _es_colocacion(descripcion: str) -> bool:
+    """Colocación en obra: la subcontrata la factura como montaje."""
+    return _normalizar(descripcion).startswith("colocacion")
+
+
 def _es_montaje(descripcion: str) -> bool:
-    """La subcontrata factura la línea que empieza por MONTAJE.
+    """La subcontrata factura la línea que empieza por MONTAJE o por COLOCACIÓN.
 
     ELEMENTOS DE MONTAJE es material de su bloque: no entra en la partida Montaje.
     """
@@ -769,7 +774,7 @@ def _es_montaje(descripcion: str) -> bool:
         return False
     if _es_dietas(descripcion):
         return True
-    return n.startswith("montaje")
+    return n.startswith("montaje") or _es_colocacion(descripcion)
 
 
 def _importe_linea(

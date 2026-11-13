@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/css/exafan.css?v=20261111h" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js"></script>
-  <script src="/js/obras.js?v=20261111b"></script>
+  <script src="/js/obras.js?v=20261112e"></script>
 </head>
 
 <body>
@@ -633,7 +633,7 @@
                     <span x-text="fila.nombre"></span>
                     <span class="der num" x-text="fila.excel"></span>
                     <span class="der num" x-text="fila.pdf"></span>
-                    <strong class="der num" :class="fila.negativo ? 'rojo' : 'verde'" x-text="fila.diferencia"></strong>
+                    <strong class="der num" :class="fila.supera ? 'rojo' : 'verde'" x-text="fila.diferencia"></strong>
                   </div>
                 </template>
                 <div class="grid-resumen td" :class="!pdfSinBloque && 'apagado'" x-show="resumenContraste().sinAsignar">
@@ -655,7 +655,7 @@
                   <strong>Total</strong>
                   <strong class="der num" x-text="resumenContraste().excel"></strong>
                   <strong class="der num" x-text="resumenContraste().pdf"></strong>
-                  <strong class="der num" :class="resumenContraste().negativo ? 'rojo' : 'verde'"
+                  <strong class="der num" :class="resumenContraste().supera ? 'rojo' : 'verde'"
                     x-text="resumenContraste().diferencia"></strong>
                 </div>
               </div>
@@ -685,7 +685,7 @@
             <span class="sub" x-text="ficheroNombre"></span>
             <div class="stack" style="gap: 8px">
               <span>Sonnet transcribe el PDF a markdown.</span>
-              <span class="apagado">Haiku extrae el desglose y propone el apartado. Hay que asociarlo a mano.</span>
+              <span class="apagado">Haiku extrae el desglose y propone apartados. Hay que asociarlos a mano.</span>
             </div>
           </div>
         </div>
@@ -696,8 +696,9 @@
           <div class="subida">
             <span>
               <strong style="color: var(--p800)">Arrastra aquí los contratos con los gremios.</strong>
-              <span class="sub">Sonnet pasa el PDF a markdown. Haiku lee ese texto, saca el desglose y propone el
-                apartado. El enlace no queda confirmado hasta que lo asocies.</span>
+              <span class="sub">Sonnet pasa el PDF a markdown. Haiku lee ese texto, saca el desglose y propone
+                apartados. Un contrato puede cubrir varios. El enlace no queda confirmado hasta que lo
+                asocies.</span>
             </span>
             <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir
               contratos</button>
@@ -713,20 +714,61 @@
               </div>
               <span class="flecha">→</span>
               <div class="stack" style="gap: 6px">
-                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
-                  <select class="apartado" :value="c.apartado_idx" :disabled="c.asociado"
-                    @change="cambiarApartado(c.id, $event.target.value)">
-                    <template x-for="op in vista.contratos.opciones" :key="c.id + '-' + op.valor">
-                      <option :value="op.valor" :selected="String(c.apartado_idx) === op.valor" x-text="op.etiqueta">
-                      </option>
-                    </template>
-                  </select>
-                  <span style="font-size: 12px; font-weight: 600" :style="'color:' + colorConfianza(c)"
-                    x-text="'Confianza ' + c.confianza + '%'"></span>
+                <span class="meta">Apartados que cubre el contrato. Puedes marcar varios.</span>
+                <p class="meta" x-show="!vista.contratos.opciones.length">No hay apartados contratables.</p>
+                <div class="elige-varios" x-show="vista.contratos.opciones.length"
+                  :class="c.asociado && 'bloqueado'">
+                  <template x-for="op in vista.contratos.opciones" :key="c.id + '-' + op.valor">
+                    <label>
+                      <input type="checkbox" :value="op.valor" :disabled="c.asociado"
+                        :checked="c.apartado_ids.includes(op.valor)"
+                        @change="toggleApartado(c.id, op.valor, $event.target.checked)">
+                      <span><span class="meta" x-text="op.prefijo"></span> <span x-text="op.etiqueta"></span></span>
+                      <span class="cuantia num" x-text="op.cuantia"></span>
+                    </label>
+                  </template>
                 </div>
+                <span class="meta">Apartados del contrato que no están en el Excel. La explicación es obligatoria.</span>
+                <div class="elige-varios" x-show="c.opciones_contrato.length" :class="c.asociado && 'bloqueado'">
+                  <template x-for="op in c.opciones_contrato" :key="c.id + '-c-' + op.valor">
+                    <div>
+                      <label>
+                        <input type="checkbox" :value="op.valor" :disabled="c.asociado"
+                          :checked="c.apartado_ids.includes(op.valor)"
+                          @change="toggleApartado(c.id, op.valor, $event.target.checked)">
+                        <span><span class="meta" x-text="op.prefijo"></span> <span x-text="op.etiqueta"></span></span>
+                        <span class="cuantia num" x-text="op.cuantia"></span>
+                      </label>
+                      <textarea class="explica" x-show="c.apartado_ids.includes(op.valor)" :disabled="c.asociado"
+                        placeholder="Por qué este apartado no está en el Excel"
+                        :value="c.explicaciones[op.valor] || ''"
+                        @input="c.explicaciones[op.valor] = $event.target.value"></textarea>
+                    </div>
+                  </template>
+                </div>
+                <div x-show="!c.asociado" class="stack" style="gap: 6px">
+                  <button type="button" class="btn-texto" @click="c.anadiendo = !c.anadiendo">Añadir apartado</button>
+                  <div class="stack" style="gap: 6px" x-show="c.anadiendo">
+                    <input class="campo" type="text" placeholder="Descripción" x-model="c.nuevo_descripcion">
+                    <input class="campo" type="text" inputmode="decimal" placeholder="Importe" x-model="c.nuevo_importe">
+                    <textarea class="explica" placeholder="Explicación obligatoria" x-model="c.nuevo_explicacion"></textarea>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                      @click="anadirApartadoManual(c.id)">Añadir a la lista</button>
+                  </div>
+                  <template x-for="(item, indice) in c.nuevos" :key="c.id + '-n-' + indice">
+                    <span class="sub">
+                      <span x-text="item.descripcion"></span>
+                      · <span class="num" x-text="euro(item.importe)"></span>
+                      · <span x-text="item.explicacion"></span>
+                      <button type="button" class="btn-texto" @click="quitarApartadoManual(c.id, indice)">Quitar</button>
+                    </span>
+                  </template>
+                </div>
+                <span style="font-size: 12px; font-weight: 600" :style="'color:' + colorConfianza(c)"
+                  x-text="'Confianza ' + c.confianza + '%'"></span>
                 <span class="sub" x-text="c.motivo"></span>
                 <span class="num sub">
-                  <span x-text="c.etiqueta_base || 'Montaje del apartado'"></span>: <span
+                  <span x-text="c.etiqueta_base || 'Sin apartados'"></span>: <span
                     x-text="c.presupuestado"></span>
                   · <strong :class="c.supera ? 'rojo' : 'verde'" x-text="c.diferencia"></strong>
                 </span>
@@ -734,7 +776,7 @@
               </div>
               <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end">
                 <button type="button" class="btn btn-primary btn-sm" x-show="!c.asociado"
-                  @click="asociar(c.id, true)">Asociar</button>
+                  :disabled="!puedeAsociar(c)" @click="asociar(c.id, true)">Asociar</button>
                 <template x-if="c.asociado">
                   <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
                     <span class="badge badge-success">Asociado</span>

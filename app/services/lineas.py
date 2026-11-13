@@ -11,7 +11,16 @@ from decimal import Decimal
 from sqlalchemy import delete, update
 from sqlalchemy.orm import Session
 
-from app.models import Asignacion, Contrato, LineaFactura, Nave, Presupuesto, Proyecto, Tarea
+from app.models import (
+    Asignacion,
+    Contrato,
+    ContratoApartado,
+    LineaFactura,
+    Nave,
+    Presupuesto,
+    Proyecto,
+    Tarea,
+)
 from app.schemas.tarea import LineaPresupuestoIn, LineaPresupuestoOut
 
 
@@ -77,6 +86,12 @@ def borrar_linea(db: Session, proyecto_id: int, tarea_id: int) -> None:
         .filter(Contrato.tarea_apartado_id.in_(ids))
         .first()
     )
+    if enlace is None:
+        enlace = (
+            db.query(ContratoApartado.contrato_id)
+            .filter(ContratoApartado.tarea_id.in_(ids))
+            .first()
+        )
     if enlace is not None:
         raise LineaEnlazada(
             "Hay un contrato enlazado a esta línea. Quita el enlace antes de borrarla."

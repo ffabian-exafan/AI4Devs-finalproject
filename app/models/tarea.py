@@ -107,7 +107,8 @@ class Tarea(Base):
     )
     hijos: Mapped[list[Tarea]] = relationship(back_populates="padre")
     asignaciones: Mapped[list[Asignacion]] = relationship(back_populates="tarea")
-    # Contratos que enlazan este apartado de presupuesto (vía CONTRATO.tarea_apartado_id)
+    # Contratos cuyo primer apartado confirmado es este (tarea_apartado_id).
+    # El conjunto completo está en contrato_apartado.
     contratos_como_apartado: Mapped[list[Contrato]] = relationship(
         back_populates="tarea_apartado",
         foreign_keys="Contrato.tarea_apartado_id",

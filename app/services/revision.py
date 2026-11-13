@@ -10,6 +10,7 @@ from app.models import Contrato, Contratista, Presupuesto, Proyecto, Tarea
 from app.services.jerarquia import asegurar_apartados_padre, mapa_padres
 from app.services.presupuesto_excel import (
     devolver_elementos_de_montaje,
+    meter_colocacion_en_montaje,
     rellenar_origen_montaje,
     repartir_montaje_por_subapartado,
     sumar_dietas_guardadas,
@@ -91,6 +92,7 @@ def obtener_documento(
         rellenar_origen_montaje(db, doc)
         devolver_elementos_de_montaje(db, doc.id)
         repartir_montaje_por_subapartado(db, doc.id)
+        meter_colocacion_en_montaje(db, doc.id)
         sumar_dietas_guardadas(db, doc.id)
         tareas = db.query(Tarea).filter(Tarea.presupuesto_id == doc.id).all()
         asegurar_apartados_padre(db, tareas)

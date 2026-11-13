@@ -5,8 +5,10 @@ from decimal import Decimal
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Contrato, Factura, Nave, Presupuesto, Proyecto, Tarea
+from app.models import Contrato, ContratoApartado, Factura, Nave, Presupuesto, Proyecto, Tarea
 from app.schemas.proyecto import (
+    ApartadoContratoOut,
+    ApartadoEnlaceOut,
     ApartadoResumenOut,
     ContratoApartadoOut,
     ContratoResumenOut,
@@ -22,6 +24,7 @@ from app.services.presupuesto_excel import (
     contraste_guardado,
     devolver_elementos_de_montaje,
     rellenar_origen_montaje,
+    meter_colocacion_en_montaje,
     repartir_montaje_por_subapartado,
     sumar_dietas_guardadas,
 )
@@ -91,6 +94,18 @@ def _facturado_confirmado(db: Session, proyecto_ids: list[int]) -> dict[int, Dec
     }
 
 
+def _apartados_del_contrato(contrato: Contrato) -> list[Tarea]:
+    enlaces = [
+        enlace.tarea
+        for enlace in (contrato.enlaces_apartado or [])
+        if enlace.tarea is not None
+    ]
+    if not enlaces and contrato.tarea_apartado is not None:
+        enlaces = [contrato.tarea_apartado]
+    enlaces.sort(key=lambda ap: (ap.codigo, ap.id))
+    return enlaces
+
+
 def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
     proyecto = (
         db.query(Proyecto)
@@ -126,6 +141,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             rellenar_origen_montaje(db, presupuesto)
             devolver_elementos_de_montaje(db, presupuesto.id)
             repartir_montaje_por_subapartado(db, presupuesto.id)
+            meter_colocacion_en_montaje(db, presupuesto.id)
             sumar_dietas_guardadas(db, presupuesto.id)
 
     contratos_db = (
@@ -133,6 +149,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         .options(
             joinedload(Contrato.contratista),
             joinedload(Contrato.tarea_apartado),
+            joinedload(Contrato.enlaces_apartado).joinedload(ContratoApartado.tarea),
         )
         .filter(Contrato.proyecto_id == proyecto_id)
         .order_by(Contrato.id.desc())
@@ -156,31 +173,10 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         )
     }
     contratos_por_apartado: dict[int, list[ContratoApartadoOut]] = {}
+    contratos_unicos: dict[int, Contrato] = {}
     for contrato in contratos_db:
-        if contrato.tarea_apartado_id is None:
-            continue
-        contratado = Decimal(contrato.precio_total)
-        facturado = facturado_por_contrato.get(contrato.id, Decimal("0"))
-        porcentaje = (
-            (facturado / contratado * Decimal("100"))
-            if contratado != 0
-            else Decimal("0")
-        )
-        contratos_por_apartado.setdefault(contrato.tarea_apartado_id, []).append(
-            ContratoApartadoOut(
-                id=contrato.id,
-                contratista_nombre=(
-                    contrato.contratista.nombre if contrato.contratista else "—"
-                ),
-                contratista_nif=(
-                    contrato.contratista.nif if contrato.contratista else "—"
-                ),
-                contratado=contratado,
-                facturado=facturado,
-                pendiente=contratado - facturado,
-                porcentaje_facturado=porcentaje.quantize(Decimal("0.01")),
-            )
-        )
+        contratos_unicos[contrato.id] = contrato
+    contratos_db = list(contratos_unicos.values())
 
     padres = mapa_padres(tareas_presupuesto)
     hijos_por_id: dict[int, list[Tarea]] = {}
@@ -204,6 +200,55 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
                 total += Decimal(nodo.importe_presupuestado)
             pila.extend(hijos_por_id.get(nodo.id, []))
         return total
+
+    def base_enlace(tarea: Tarea) -> Decimal:
+        if tarea.solo_gestion:
+            return Decimal(tarea.importe_presupuestado or 0)
+        return importe_montaje_de(tarea)
+
+    def peso_de(tarea: Tarea) -> Decimal:
+        if tarea.presupuesto_id is None:
+            return Decimal(tarea.importe_presupuestado or 0)
+        return base_enlace(tarea)
+
+    por_tarea = {tarea.id: tarea for tarea in tareas_presupuesto}
+    for contrato in contratos_db:
+        ligados = [
+            enlace.tarea
+            for enlace in (contrato.enlaces_apartado or [])
+            if enlace.tarea is not None
+        ]
+        if not ligados and contrato.tarea_apartado is not None:
+            ligados = [contrato.tarea_apartado]
+        ligados.sort(key=lambda tarea: (tarea.presupuesto_id is None, tarea.codigo, tarea.id))
+        if not ligados:
+            continue
+        pesos = [peso_de(tarea) for tarea in ligados]
+        contratado = Decimal(contrato.precio_total)
+        facturado = facturado_por_contrato.get(contrato.id, Decimal("0"))
+        trozos_c = casado_svc.repartir_importe(contratado, pesos)
+        trozos_f = casado_svc.repartir_importe(facturado, pesos)
+        for tarea, parte_c, parte_f in zip(ligados, trozos_c, trozos_f):
+            if tarea.presupuesto_id is None or tarea.id not in por_tarea:
+                continue
+            porcentaje = (
+                (parte_f / parte_c * Decimal("100")) if parte_c != 0 else Decimal("0")
+            )
+            contratos_por_apartado.setdefault(tarea.id, []).append(
+                ContratoApartadoOut(
+                    id=contrato.id,
+                    contratista_nombre=(
+                        contrato.contratista.nombre if contrato.contratista else "—"
+                    ),
+                    contratista_nif=(
+                        contrato.contratista.nif if contrato.contratista else "—"
+                    ),
+                    contratado=parte_c,
+                    facturado=parte_f,
+                    pendiente=parte_c - parte_f,
+                    porcentaje_facturado=porcentaje.quantize(Decimal("0.01")),
+                )
+            )
 
     def resumen_apartado(ap: Tarea, *, con_contratos: bool) -> ApartadoResumenOut:
         nivel = ap.nivel
@@ -244,16 +289,43 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
 
     apartados_out = [resumen_apartado(ap, con_contratos=True) for ap in raices]
 
+    ids_contratos = [c.id for c in contratos_db]
+    raices_de_contrato: dict[int, list[Tarea]] = {}
+    if ids_contratos:
+        for tarea in (
+            db.query(Tarea)
+            .filter(
+                Tarea.contrato_id.in_(ids_contratos),
+                Tarea.tarea_padre_id.is_(None),
+                Tarea.nivel == "apartado",
+            )
+            .order_by(Tarea.codigo, Tarea.id)
+            .all()
+        ):
+            raices_de_contrato.setdefault(tarea.contrato_id, []).append(tarea)
+    excel_para_cruce = [
+        ap
+        for ap in raices
+        if not ap.codigo.startswith("descuento.")
+        and not (ap.solo_gestion and ap.estado_revision != "confirmada")
+    ]
+
     contratos_out: list[ContratoResumenOut] = []
     for c in contratos_db:
-        sugerencias = []
-        apartado_codigo = None
-        apartado_descripcion = None
-        if c.tarea_apartado_id and c.tarea_apartado is not None:
-            apartado_codigo = c.tarea_apartado.codigo
-            apartado_descripcion = c.tarea_apartado.descripcion
+        enlaces = [enlace for enlace in (c.enlaces_apartado or []) if enlace.tarea is not None]
+        enlazados = [enlace.tarea for enlace in enlaces] or _apartados_del_contrato(c)
+        explicacion_de = {enlace.tarea_id: enlace.explicacion for enlace in enlaces}
+        if enlazados:
+            sugerencias = []
         else:
             sugerencias = casado_svc.sugerir_apartados_para_contrato(db, c)
+        de_excel = [ap for ap in enlazados if ap.presupuesto_id is not None]
+        fuera = []
+        for tarea in raices_de_contrato.get(c.id, []):
+            if tarea.id in explicacion_de or not casado_svc.aparece_en_excel(
+                tarea.descripcion, excel_para_cruce
+            ):
+                fuera.append(tarea)
 
         contratos_out.append(
             ContratoResumenOut(
@@ -263,9 +335,30 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
                 precio_total=c.precio_total,
                 estado_extraccion=c.estado_extraccion,
                 nave_id=c.nave_id,
-                tarea_apartado_id=c.tarea_apartado_id,
-                apartado_codigo=apartado_codigo,
-                apartado_descripcion=apartado_descripcion,
+                tarea_apartado_id=de_excel[0].id if de_excel else None,
+                tarea_apartado_ids=[ap.id for ap in enlazados],
+                apartado_codigo=" · ".join(ap.codigo for ap in enlazados) or None,
+                apartado_descripcion=" · ".join(ap.descripcion for ap in enlazados) or None,
+                apartados_enlace=[
+                    ApartadoEnlaceOut(
+                        id=ap.id,
+                        codigo=ap.codigo,
+                        descripcion=ap.descripcion,
+                        importe=ap.importe_presupuestado,
+                        es_de_contrato=ap.presupuesto_id is None,
+                        explicacion=explicacion_de.get(ap.id),
+                    )
+                    for ap in enlazados
+                ],
+                apartados_fuera_excel=[
+                    ApartadoContratoOut(
+                        id=ap.id,
+                        codigo=ap.codigo,
+                        descripcion=ap.descripcion,
+                        importe=ap.importe_presupuestado,
+                    )
+                    for ap in fuera
+                ],
                 fichero_origen=c.fichero_origen,
                 tiene_fichero=bool(c.ruta_almacen),
                 sugerencias=sugerencias,
@@ -357,6 +450,20 @@ def borrar_proyecto(db: Session, proyecto_id: int) -> None:
     db.execute(text("DELETE FROM factura WHERE proyecto_id = :id"), params)
     db.execute(
         text("UPDATE contrato SET tarea_apartado_id = NULL WHERE proyecto_id = :id"),
+        params,
+    )
+    db.execute(
+        text(
+            """
+            DELETE FROM contrato_apartado
+            WHERE contrato_id IN (SELECT id FROM contrato WHERE proyecto_id = :id)
+               OR tarea_id IN (
+                    SELECT tarea.id FROM tarea
+                    JOIN nave ON nave.id = tarea.nave_id
+                    WHERE nave.proyecto_id = :id
+               )
+            """
+        ),
         params,
     )
     db.execute(

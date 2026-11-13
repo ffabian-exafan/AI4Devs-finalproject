@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Contrato, Nave, Tarea
+from app.models import Contrato, ContratoApartado, Nave, Tarea
 from app.schemas.casado import SugerenciaApartadoOut
 from app.services.jerarquia import mapa_padres
 
@@ -108,16 +108,65 @@ def _sugerencia_guardada(
     )
 
 
+def ids_apartados_enlazados(contrato: Contrato) -> list[int]:
+    """Ids confirmados. Si aún no hay filas en contrato_apartado, vale el FK antiguo."""
+    ids = [enlace.tarea_id for enlace in (contrato.enlaces_apartado or [])]
+    if ids:
+        return ids
+    if contrato.tarea_apartado_id is not None:
+        return [contrato.tarea_apartado_id]
+    return []
+
+
+def repartir_importe(total: Decimal, pesos: list[Decimal]) -> list[Decimal]:
+    """Reparte `total` según `pesos`. El último tramo cierra el céntimo.
+
+    [VERIFICAR] docs/readme.md no define cómo se reparte el precio de un
+    contrato entre varios apartados. Se prorratea por la base de cada uno
+    (montaje, o el importe del PDF si es solo gestión). Si todas son 0,
+    a partes iguales.
+    """
+    n = len(pesos)
+    if n == 0:
+        return []
+    cifra = Decimal(total).quantize(Decimal("0.01"))
+    if n == 1:
+        return [cifra]
+    bases = [Decimal(peso) if Decimal(peso) > 0 else Decimal("0") for peso in pesos]
+    suma = sum(bases, Decimal("0"))
+    if suma == 0:
+        bases = [Decimal("1")] * n
+        suma = Decimal(n)
+    partes: list[Decimal] = []
+    acumulado = Decimal("0")
+    for indice, peso in enumerate(bases):
+        if indice == n - 1:
+            partes.append((cifra - acumulado).quantize(Decimal("0.01")))
+        else:
+            trozo = (cifra * peso / suma).quantize(Decimal("0.01"))
+            partes.append(trozo)
+            acumulado += trozo
+    return partes
+
+
 def enlazar_contrato_apartado(
     db: Session,
     proyecto_id: int,
     contrato_id: int,
-    tarea_apartado_id: int,
-) -> tuple[Contrato, Tarea]:
+    tarea_apartado_ids: list[int],
+    explicaciones: dict[int, str] | None = None,
+    apartados_nuevos: list[tuple[str, Decimal, str]] | None = None,
+) -> tuple[Contrato, list[Tarea]]:
     """
-    Confirma el enlace contrato → apartado de presupuesto.
-    Valida pertenencia al proyecto y que la tarea sea apartado de presupuesto.
+    Confirma los apartados que cubre el contrato.
+    Sustituye el enlace anterior. Valida cada id en el backend.
+
+    Un apartado del propio contrato (no está en el Excel) exige explicación.
+    Su importe entra en la base y no se carga como descuadre del Excel.
     """
+    textos = {clave: (valor or "").strip() for clave, valor in (explicaciones or {}).items()}
+    ids = list(tarea_apartado_ids)
+
     contrato = (
         db.query(Contrato)
         .filter(Contrato.id == contrato_id, Contrato.proyecto_id == proyecto_id)
@@ -126,6 +175,131 @@ def enlazar_contrato_apartado(
     if contrato is None:
         raise ValueError(f"Contrato {contrato_id} no encontrado en proyecto {proyecto_id}")
 
+    for descripcion, importe, explicacion in apartados_nuevos or []:
+        creado = _crear_apartado_de_contrato(db, contrato, descripcion, importe)
+        ids.append(creado.id)
+        textos[creado.id] = explicacion.strip()
+
+    if not ids:
+        raise ValueError("Indica al menos un apartado")
+
+    hermanos = _apartados_y_subapartados(db, proyecto_id)
+    padres = mapa_padres(hermanos)
+    vistos: list[int] = []
+    apartados: list[Tarea] = []
+    for tarea_id in ids:
+        if tarea_id in vistos:
+            continue
+        vistos.append(tarea_id)
+        apartados.append(
+            _validar_enlace(db, proyecto_id, contrato, tarea_id, padres, textos)
+        )
+    apartados.sort(key=lambda ap: (ap.presupuesto_id is None, ap.codigo, ap.id))
+
+    contrato.enlaces_apartado.clear()
+    db.flush()
+    for apartado in apartados:
+        contrato.enlaces_apartado.append(
+            ContratoApartado(
+                tarea_id=apartado.id,
+                explicacion=textos.get(apartado.id) if apartado.presupuesto_id is None else None,
+            )
+        )
+    de_excel = [ap for ap in apartados if ap.presupuesto_id is not None]
+    contrato.tarea_apartado_id = de_excel[0].id if de_excel else None
+    db.add(contrato)
+    db.commit()
+    db.refresh(contrato)
+    return contrato, apartados
+
+
+def aparece_en_excel(descripcion: str, apartados_excel: list[Tarea]) -> bool:
+    """True si el texto del contrato ya está cubierto por un apartado del Excel."""
+    propio = _normalizar(descripcion)
+    if len(propio) < 4:
+        return False
+    for apartado in apartados_excel:
+        excel = _normalizar(f"{apartado.codigo} {apartado.descripcion}")
+        if len(excel) < 4:
+            continue
+        if propio in excel or excel in propio:
+            return True
+        for raiz in _RAICES:
+            if raiz in propio and raiz in excel:
+                return True
+    return False
+
+
+def _crear_apartado_de_contrato(
+    db: Session,
+    contrato: Contrato,
+    descripcion: str,
+    importe: Decimal,
+) -> Tarea:
+    """Apartado escrito a mano, colgado del contrato. No entra en el Excel."""
+    if contrato.nave_id is None:
+        raise ValueError("El contrato no tiene nave donde colgar el apartado")
+    cuantos = (
+        db.query(Tarea)
+        .filter(Tarea.contrato_id == contrato.id, Tarea.codigo.like("manual.%"))
+        .count()
+    )
+    tarea = Tarea(
+        nave_id=contrato.nave_id,
+        presupuesto_id=None,
+        contrato_id=contrato.id,
+        tarea_padre_id=None,
+        contratista_id=contrato.contratista_id,
+        codigo=f"manual.{cuantos + 1}",
+        nivel="apartado",
+        descripcion=descripcion.strip(),
+        importe_presupuestado=Decimal(importe).quantize(Decimal("0.01")),
+        es_montaje=False,
+        solo_gestion=False,
+        tiene_anotacion_manual=False,
+        estado_revision="confirmada",
+        estado="no_iniciada",
+        avance_fisico_pct=Decimal("0"),
+    )
+    db.add(tarea)
+    db.flush()
+    return tarea
+
+
+def _validar_enlace(
+    db: Session,
+    proyecto_id: int,
+    contrato: Contrato,
+    tarea_id: int,
+    padres: dict[int, int | None],
+    textos: dict[int, str],
+) -> Tarea:
+    apartado = db.get(Tarea, tarea_id)
+    if apartado is None:
+        raise ValueError(f"Apartado {tarea_id} no encontrado")
+    if apartado.presupuesto_id is not None:
+        return _validar_apartado(db, proyecto_id, tarea_id, padres)
+    if (
+        apartado.contrato_id != contrato.id
+        or apartado.tarea_padre_id is not None
+        or apartado.nivel != "apartado"
+    ):
+        raise ValueError("Solo se puede enlazar un apartado raíz de este contrato")
+    texto = textos.get(tarea_id, "")
+    if len(texto) < 5:
+        raise ValueError("La explicación del apartado del contrato es obligatoria")
+    nave = db.get(Nave, apartado.nave_id)
+    if nave is None or nave.proyecto_id != proyecto_id:
+        raise ValueError("El apartado no pertenece a este proyecto")
+    return apartado
+
+
+def _validar_apartado(
+    db: Session,
+    proyecto_id: int,
+    tarea_apartado_id: int,
+    padres: dict[int, int | None],
+) -> Tarea:
     apartado = db.get(Tarea, tarea_apartado_id)
     if apartado is None:
         raise ValueError(f"Apartado {tarea_apartado_id} no encontrado")
@@ -133,8 +307,7 @@ def enlazar_contrato_apartado(
         raise ValueError("La tarea indicada no proviene de un presupuesto")
     if apartado.nivel != "apartado" or apartado.tarea_padre_id is not None:
         raise ValueError("Solo se puede enlazar a una tarea de nivel 'apartado'")
-    hermanos = _apartados_y_subapartados(db, proyecto_id)
-    if mapa_padres(hermanos).get(apartado.id) is not None:
+    if padres.get(apartado.id) is not None:
         raise ValueError("Solo se puede enlazar a un apartado, no a un subapartado")
     if apartado.codigo.startswith("descuento."):
         raise ValueError("Un descuento de cierre no es un apartado contratable")
@@ -144,12 +317,7 @@ def enlazar_contrato_apartado(
     nave = db.get(Nave, apartado.nave_id)
     if nave is None or nave.proyecto_id != proyecto_id:
         raise ValueError("El apartado no pertenece a este proyecto")
-
-    contrato.tarea_apartado_id = apartado.id
-    db.add(contrato)
-    db.commit()
-    db.refresh(contrato)
-    return contrato, apartado
+    return apartado
 
 
 def _apartados_y_subapartados(db: Session, proyecto_id: int) -> list[Tarea]:

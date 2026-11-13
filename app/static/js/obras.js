@@ -904,11 +904,11 @@ function gestionObras() {
         return suma + this._cuantiaContraste(apartado, hermanos);
       }, 0);
       const cliente = Number(fila.importe_pdf) || 0;
-      // PDF menos Excel. Si el Excel es mayor, la diferencia queda negativa.
-      const diff = cliente - base;
+      // Se muestra Excel menos PDF. El color no cambia: rojo si el Excel es mayor.
+      const diff = base - cliente;
       fila.excel = GestorApi.euro(base);
       fila.diferencia = GestorApi.euro(diff);
-      fila.supera = diff < -0.005;
+      fila.supera = diff > 0.005;
       fila.hay_cruce = true;
       return fila;
     },
@@ -984,14 +984,14 @@ function gestionObras() {
         const excel = Number(apartado.importe_presupuestado) || 0;
         const pdf = Math.round((pdfPorApartado.get(String(apartado.id)) || 0) * 100) / 100;
         const hayPdf = Math.abs(pdf) >= 0.005;
-        const diff = pdf - excel;
+        const diff = excel - pdf;
         return {
           id: apartado.id,
           nombre: (apartado.codigo ? apartado.codigo + " · " : "") + (apartado.descripcion || "Apartado"),
           excel: GestorApi.euro(excel),
           pdf: hayPdf ? GestorApi.euro(pdf) : "—",
           diferencia: hayPdf ? GestorApi.euro(diff) : "—",
-          negativo: hayPdf && diff < -0.005,
+          supera: hayPdf && diff > 0.005,
         };
       });
       const filasGestion = filasPdf
@@ -1004,7 +1004,7 @@ function gestionObras() {
           excel: "—",
           pdf: GestorApi.euro(fila.importe_pdf),
           diferencia: "—",
-          negativo: false,
+          supera: false,
         }));
       const filas = filasExcel.concat(filasGestion);
       const totalExcel = apartados.reduce(
@@ -1019,7 +1019,7 @@ function gestionObras() {
       );
       const basePdf = this.pdfSinBloque ? totalLineas : totalLineas - sinAsignar;
       const totalPdf = basePdf - sumaDescuentos;
-      const diffTotal = totalPdf - totalExcel;
+      const diffTotal = totalExcel - totalPdf;
       return {
         filas,
         sinAsignar: Math.abs(sinAsignar) >= 0.005,
@@ -1029,7 +1029,7 @@ function gestionObras() {
         excel: GestorApi.euro(totalExcel),
         pdf: GestorApi.euro(totalPdf),
         diferencia: GestorApi.euro(diffTotal),
-        negativo: diffTotal < -0.005,
+        supera: diffTotal > 0.005,
       };
     },
 
@@ -1094,20 +1094,25 @@ function gestionObras() {
       const gestiones = todos.filter((ap) => !this._esDescuento(ap) && this._esRecargo(ap));
       const apartados = todos.filter((ap) => !this._esDescuento(ap) && !this._esRecargo(ap));
       const contratables = apartados.filter((ap) => !this._gestionPendiente(ap));
-      const opciones = [{ valor: "", etiqueta: "Elige apartado" }].concat(
-        contratables.map((ap) => ({
-          valor: String(ap.id),
-          etiqueta: this._etiquetaOpcionContrato(ap),
-        }))
-      );
+      const opciones = contratables.map((ap) => ({
+        valor: String(ap.id),
+        etiqueta: this._nombreCortoApartado(ap),
+        prefijo: ap.solo_gestion ? "Solo gestión" : "Montaje",
+        cuantia: euro(this._baseContrato(ap)),
+      }));
       const filas = (proyecto.contratos || []).map((contrato) => {
         const sugerencia = (contrato.sugerencias || [])[0];
-        const apartadoId = contrato.tarea_apartado_id || (sugerencia && sugerencia.tarea_id) || "";
-        const apartado = apartados.find((ap) => ap.id === Number(apartadoId));
-        const base = apartado ? this._baseContrato(apartado) : 0;
-        const contratado = Number(contrato.precio_total) || 0;
-        const diff = contratado - base;
-        return {
+        const confirmados = (contrato.tarea_apartado_ids || []).map(String);
+        const legado = contrato.tarea_apartado_id ? [String(contrato.tarea_apartado_id)] : [];
+        const apartadoIds = confirmados.length
+          ? confirmados
+          : legado.length
+            ? legado
+            : sugerencia
+              ? [String(sugerencia.tarea_id)]
+              : [];
+        const asociado = confirmados.length > 0 || legado.length > 0;
+        const fila = {
           id: contrato.id,
           gremio: contrato.contratista_nombre,
           archivo: contrato.fichero_origen || contrato.contratista_nif,
@@ -1116,30 +1121,47 @@ function gestionObras() {
             ? "/proyectos/" + proyecto.id + "/contratos/" + contrato.id + "/fichero"
             : null,
           importe: euro(contrato.precio_total),
-          precio_total: contratado,
-          apartado_idx: apartadoId === "" ? "" : String(apartadoId),
-          confianza: contrato.tarea_apartado_id
+          precio_total: Number(contrato.precio_total) || 0,
+          apartado_ids: apartadoIds,
+          confianza: asociado
             ? 100
             : sugerencia
               ? Math.round(Number(sugerencia.confianza) * 100)
               : 0,
-          motivo: contrato.tarea_apartado_id
-            ? "Enlace confirmado"
+          motivo: asociado
+            ? apartadoIds.length > 1
+              ? "Enlace confirmado · " + apartadoIds.length + " apartados"
+              : "Enlace confirmado"
             : sugerencia
               ? sugerencia.motivo
               : "Sin sugerencia automática",
           aviso: null,
           hay_aviso: false,
-          etiqueta_base: apartado
-            ? apartado.solo_gestion
-              ? "Importe del PDF"
-              : "Montaje del apartado"
-            : null,
-          presupuestado: apartado ? euro(base) : "—",
-          diferencia: apartado ? euro(diff) : "—",
-          supera: apartado ? diff > 0 : false,
-          asociado: Boolean(contrato.tarea_apartado_id),
+          etiqueta_base: null,
+          presupuestado: "—",
+          diferencia: "—",
+          supera: false,
+          asociado,
+          opciones_contrato: (contrato.apartados_fuera_excel || []).map((ap) => ({
+            valor: String(ap.id),
+            etiqueta: ap.descripcion,
+            prefijo: "Del contrato",
+            cuantia: euro(ap.importe),
+            base: Number(ap.importe) || 0,
+          })),
+          explicaciones: Object.fromEntries(
+            (contrato.apartados_enlace || [])
+              .filter((ap) => ap.es_de_contrato)
+              .map((ap) => [String(ap.id), ap.explicacion || ""])
+          ),
+          nuevos: [],
+          anadiendo: false,
+          nuevo_descripcion: "",
+          nuevo_importe: "",
+          nuevo_explicacion: "",
         };
+        this._pintarBaseContrato(fila, contratables);
+        return fila;
       });
       const pendientesContrato = filas.filter((fila) => !fila.asociado).length;
       const sinApartado = contratables.filter((ap) => !(ap.contratos || []).length).length;
@@ -1201,7 +1223,7 @@ function gestionObras() {
         // Excel: desvío contra montaje. Solo gestión: contra el importe del PDF.
         const base = this._baseContrato(ap);
         const hayCifra = contratado > 0 || facturado > 0;
-        const desvio = hayCifra ? Math.max(contratado, facturado) - base : 0;
+        const desvio = hayCifra ? base - Math.max(contratado, facturado) : 0;
         if (hayCifra) desvioTotal += desvio;
         const detalle = [
           euro(pres) + " presupuestado",
@@ -1222,7 +1244,7 @@ function gestionObras() {
           ancho_contratado: pct(contratado),
           ancho_facturado: pct(facturado),
           desviacion: hayCifra && Math.abs(desvio) >= 0.5 ? euro(desvio) : "—",
-          alerta: desvio > 0.5 || (contratado > 0 && facturado > contratado + 0.5),
+          alerta: desvio < -0.5 || (contratado > 0 && facturado > contratado + 0.5),
           partidas: this._filasControl(ap),
         };
       });
@@ -1378,7 +1400,7 @@ function gestionObras() {
               etiqueta: "Desviación",
               valor: Math.abs(desvioTotal) < 0.5 ? euro(0) : euro(desvioTotal),
               detalle: "Contratado o facturado frente a presupuesto",
-              color: desvioTotal > 0.5 ? "#9a1f16" : "#1b6b38",
+              color: desvioTotal < -0.5 ? "#9a1f16" : "#1b6b38",
             },
           ],
           filas: filasControl,
@@ -1489,14 +1511,48 @@ function gestionObras() {
       return texto.length > 48 ? texto.slice(0, 45) + "…" : texto;
     },
 
-    _etiquetaOpcionContrato(ap) {
-      const nombre = this._nombreCortoApartado(ap);
-      const base = this._baseContrato(ap);
-      const cifra = GestorApi.euro(base);
-      if (ap.solo_gestion) {
-        return "Solo gestión · " + nombre + " · " + cifra;
+    _textoBase(elegidos) {
+      if (!elegidos.length) return null;
+      const solo = elegidos.every((ap) => ap.solo_gestion);
+      const montaje = elegidos.every((ap) => !ap.solo_gestion);
+      if (elegidos.length === 1) {
+        return solo ? "Importe del PDF" : "Montaje del apartado";
       }
-      return "Montaje · " + nombre + " · " + cifra;
+      if (solo) return "Importe de los apartados";
+      if (montaje) return "Montaje de los apartados";
+      return "Base de los apartados";
+    },
+
+    _pintarBaseContrato(fila, catalogo) {
+      const ids = fila.apartado_ids || [];
+      const elegidos = (catalogo || []).filter((ap) => ids.includes(String(ap.id)));
+      const delContrato = (fila.opciones_contrato || []).filter((op) =>
+        ids.includes(op.valor)
+      );
+      const nuevos = fila.nuevos || [];
+      if (!elegidos.length && !delContrato.length && !nuevos.length) {
+        fila.etiqueta_base = null;
+        fila.presupuestado = "—";
+        fila.diferencia = "—";
+        fila.supera = false;
+        return;
+      }
+      const base =
+        elegidos.reduce((suma, ap) => suma + this._baseContrato(ap), 0) +
+        delContrato.reduce((suma, op) => suma + (Number(op.base) || 0), 0) +
+        nuevos.reduce((suma, item) => suma + (Number(item.importe) || 0), 0);
+      // Base menos contrato. El rojo se queda si el contrato supera la base.
+      const diff = base - (Number(fila.precio_total) || 0);
+      fila.etiqueta_base = this._textoBaseMixta(elegidos, delContrato.length + nuevos.length);
+      fila.presupuestado = GestorApi.euro(base);
+      fila.diferencia = GestorApi.euro(diff);
+      fila.supera = diff < -0.005;
+    },
+
+    _textoBaseMixta(elegidos, cuantosContrato) {
+      if (!elegidos.length) return "Apartados del contrato";
+      if (!cuantosContrato) return this._textoBase(elegidos);
+      return "Montaje y apartados del contrato";
     },
 
     _filaGestion(nodo) {
@@ -1921,34 +1977,54 @@ function gestionObras() {
       }
     },
 
-    async cambiarApartado(id, valor) {
-      if (this.proyectoId && this.vista) {
-        const fila = this.vista.contratos.filas.find((c) => c.id === id);
-        if (!fila) return;
-        fila.apartado_idx = String(valor);
-        const apartado = (this.vista.contratos.apartados_contrato || []).find(
-          (ap) => ap.id === Number(valor)
-        );
-        if (!valor || !apartado) {
-          fila.etiqueta_base = null;
-          fila.presupuestado = "—";
-          fila.diferencia = "—";
-          fila.supera = false;
-          return;
-        }
-        const base = this._baseContrato(apartado);
-        const diff = (Number(fila.precio_total) || 0) - base;
-        fila.etiqueta_base = apartado.solo_gestion
-          ? "Importe del PDF"
-          : "Montaje del apartado";
-        fila.presupuestado = GestorApi.euro(base);
-        fila.diferencia = GestorApi.euro(diff);
-        fila.supera = diff > 0;
+    puedeAsociar(fila) {
+      const ids = fila.apartado_ids || [];
+      const nuevos = fila.nuevos || [];
+      if (!ids.length && !nuevos.length) return false;
+      return (fila.opciones_contrato || [])
+        .filter((op) => ids.includes(op.valor))
+        .every((op) => ((fila.explicaciones || {})[op.valor] || "").trim().length >= 5);
+    },
+
+    anadirApartadoManual(id) {
+      if (!this.vista) return;
+      const fila = this.vista.contratos.filas.find((c) => c.id === id);
+      if (!fila || fila.asociado) return;
+      const descripcion = (fila.nuevo_descripcion || "").trim();
+      const explicacion = (fila.nuevo_explicacion || "").trim();
+      const importe = Number(String(fila.nuevo_importe || "").replace(",", "."));
+      if (descripcion.length < 2 || explicacion.length < 5 || !(importe > 0)) {
+        this.error = "El apartado del contrato necesita descripción, importe y explicación.";
         return;
       }
-      const fila = this.estado.contratos.find((c) => c.id === id);
-      fila.apartado_idx = Number(valor);
-      await this.sincronizar();
+      this.error = "";
+      fila.nuevos.push({ descripcion, importe, explicacion });
+      fila.nuevo_descripcion = "";
+      fila.nuevo_importe = "";
+      fila.nuevo_explicacion = "";
+      fila.anadiendo = false;
+      this._pintarBaseContrato(fila, this.vista.contratos.apartados_contrato || []);
+    },
+
+    quitarApartadoManual(id, indice) {
+      if (!this.vista) return;
+      const fila = this.vista.contratos.filas.find((c) => c.id === id);
+      if (!fila || fila.asociado) return;
+      fila.nuevos.splice(indice, 1);
+      this._pintarBaseContrato(fila, this.vista.contratos.apartados_contrato || []);
+    },
+
+    toggleApartado(id, valor, marcado) {
+      if (!this.proyectoId || !this.vista) return;
+      const fila = this.vista.contratos.filas.find((c) => c.id === id);
+      if (!fila || fila.asociado) return;
+      const ids = (fila.apartado_ids || []).filter((item) => item !== String(valor));
+      if (marcado) ids.push(String(valor));
+      fila.apartado_ids = ids;
+      if (marcado && (fila.opciones_contrato || []).some((op) => op.valor === String(valor))) {
+        fila.explicaciones[String(valor)] = fila.explicaciones[String(valor)] || "";
+      }
+      this._pintarBaseContrato(fila, this.vista.contratos.apartados_contrato || []);
     },
 
     async asociar(id, asociado) {
@@ -1968,16 +2044,36 @@ function gestionObras() {
           }
           return;
         }
-        const tareaId = Number(fila.apartado_idx);
-        if (!tareaId) {
-          this.error = "Elige un apartado antes de asociar.";
+        const ids = (fila.apartado_ids || []).map(Number).filter((n) => n > 0);
+        const nuevos = fila.nuevos || [];
+        if (!ids.length && !nuevos.length) {
+          this.error = "Elige al menos un apartado antes de asociar.";
           return;
         }
+        if (!this.puedeAsociar(fila)) {
+          this.error = "Cada apartado del contrato que no está en el Excel necesita una explicación.";
+          return;
+        }
+        const explicaciones = (fila.opciones_contrato || [])
+          .filter((op) => ids.includes(Number(op.valor)))
+          .map((op) => ({
+            tarea_id: Number(op.valor),
+            explicacion: (fila.explicaciones[op.valor] || "").trim(),
+          }));
         this.error = "";
         try {
           await GestorApi.postJson(
             "/proyectos/" + this.proyectoId + "/contratos/" + id + "/enlazar-apartado",
-            { tarea_apartado_id: tareaId }
+            {
+              tarea_apartado_ids: ids,
+              tarea_apartado_id: ids[0] || null,
+              explicaciones,
+              apartados_nuevos: nuevos.map((item) => ({
+                descripcion: item.descripcion,
+                importe: item.importe,
+                explicacion: item.explicacion,
+              })),
+            }
           );
           await this._cargarVistaProyecto(this.proyectoId);
         } catch (err) {

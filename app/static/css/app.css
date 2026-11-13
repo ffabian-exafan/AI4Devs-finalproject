@@ -545,6 +545,13 @@ button.secundario {
   max-width: 420px;
 }
 
+.sugerencias label.check-apartado {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  max-width: none;
+}
+
 .sugerencias select {
   font: inherit;
   padding: 0.35rem 0.45rem;

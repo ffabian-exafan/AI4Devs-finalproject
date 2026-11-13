@@ -163,6 +163,59 @@ def test_lee_montaje_y_avisa_si_el_total_no_cuadra():
     assert "CANTIDAD CERO" not in descripciones
 
 
+def test_la_colocacion_entra_en_el_montaje_del_subapartado():
+    wb = Workbook()
+    hoja = wb.active
+    hoja.title = "COMEDEROS"
+    for col, texto in {
+        "B": "Cant.",
+        "C": "Cod.",
+        "D": "Descripción",
+        "J": "Euros",
+        "K": "Dto. %",
+        "L": "TOTAL",
+    }.items():
+        hoja[f"{col}1"] = texto
+    negrita = Font(bold=True)
+    hoja["C2"] = "20"
+    hoja["D2"] = "COMEDEROS"
+    hoja["C2"].font = negrita
+    hoja["D2"].font = negrita
+    hoja["B3"] = 1
+    hoja["C3"] = "19"
+    hoja["D3"] = "COLOCACIÓN TOLVAS EN OBRA"
+    hoja["J3"] = 1400
+    hoja["L3"] = 1400
+    hoja["B4"] = 1
+    hoja["C4"] = "20"
+    hoja["D4"] = "TOLVA FICTICIA"
+    hoja["J4"] = 100
+    hoja["L4"] = 100
+    hoja["B5"] = 1
+    hoja["C5"] = "0"
+    hoja["D5"] = "MONTAJE COMEDEROS FICTICIO"
+    hoja["J5"] = 210
+    hoja["L5"] = 210
+    buf = BytesIO()
+    wb.save(buf)
+
+    leido = leer_excel_expertis(buf.getvalue())
+    comederos = leido.nodos[0]
+    assert comederos.descripcion == "COMEDEROS"
+    montaje = comederos.hijos[0]
+    assert montaje.descripcion == "Montaje COMEDEROS"
+    assert [hijo.descripcion for hijo in montaje.hijos] == [
+        "COLOCACIÓN TOLVAS EN OBRA",
+        "MONTAJE COMEDEROS FICTICIO",
+    ]
+    assert all(hijo.es_montaje for hijo in montaje.hijos)
+    assert montaje.importe == Decimal("1610.00")
+    material = comederos.hijos[1]
+    assert material.descripcion == "TOLVA FICTICIA"
+    assert material.es_montaje is False
+    assert comederos.importe == Decimal("1710.00")
+
+
 def _libro_subapartados() -> bytes:
     wb = Workbook()
     hoja = wb.active
@@ -923,6 +976,106 @@ def test_el_descuento_de_cierre_no_resta_cada_linea():
     assert [linea.importe_pdf for linea in lineas] == [Decimal("80.00"), Decimal("20.00")]
     assert all(linea.importe_bruto is None for linea in lineas)
     assert [descuento.importe for descuento in descuentos] == [Decimal("5.00"), Decimal("5.00")]
+
+
+def test_colocacion_guardada_pasa_al_bloque_de_montaje(db: Session):
+    from app.services.presupuesto_excel import meter_colocacion_en_montaje
+
+    proyecto = Proyecto(nombre="Obra ficticia colocacion", tipo="llave_en_mano", estado="borrador")
+    db.add(proyecto)
+    db.flush()
+    nave = Nave(
+        proyecto_id=proyecto.id,
+        codigo="N1",
+        descripcion="Nave ficticia",
+        importe_presupuestado=Decimal("1710.00"),
+    )
+    db.add(nave)
+    db.flush()
+    presupuesto = Presupuesto(
+        proyecto_id=proyecto.id,
+        version=1,
+        fichero_origen="comederos-ficticio.xlsx",
+        estado_extraccion="pendiente",
+        es_escaneado=False,
+        formato="excel_expertis",
+    )
+    db.add(presupuesto)
+    db.flush()
+
+    def tarea(**datos) -> Tarea:
+        fila = Tarea(
+            nave_id=nave.id,
+            presupuesto_id=presupuesto.id,
+            tiene_anotacion_manual=False,
+            estado_revision="pendiente",
+            estado="no_iniciada",
+            avance_fisico_pct=Decimal("0"),
+            **datos,
+        )
+        db.add(fila)
+        db.flush()
+        return fila
+
+    apartado = tarea(
+        codigo="20",
+        nivel="apartado",
+        descripcion="COMEDEROS",
+        importe_presupuestado=Decimal("1710.00"),
+    )
+    montaje = tarea(
+        tarea_padre_id=apartado.id,
+        codigo="0",
+        nivel="subapartado",
+        descripcion="Montaje COMEDEROS",
+        importe_presupuestado=Decimal("210.00"),
+    )
+    tarea(
+        tarea_padre_id=montaje.id,
+        codigo="0",
+        nivel="partida",
+        descripcion="MONTAJE COMEDEROS FICTICIO",
+        importe_presupuestado=Decimal("210.00"),
+        es_montaje=True,
+    )
+    colocacion = tarea(
+        tarea_padre_id=apartado.id,
+        codigo="19",
+        nivel="partida",
+        descripcion="COLOCACIÓN TOLVAS EN OBRA",
+        cantidad=Decimal("1"),
+        precio_unitario=Decimal("1400.00"),
+        importe_presupuestado=Decimal("1400.00"),
+        es_montaje=False,
+    )
+    tolva = tarea(
+        tarea_padre_id=apartado.id,
+        codigo="20",
+        nivel="partida",
+        descripcion="TOLVA FICTICIA",
+        importe_presupuestado=Decimal("100.00"),
+        es_montaje=False,
+    )
+    db.commit()
+
+    try:
+        meter_colocacion_en_montaje(db, presupuesto.id)
+        db.refresh(colocacion)
+        db.refresh(montaje)
+        db.refresh(apartado)
+        db.refresh(tolva)
+        assert colocacion.es_montaje is True
+        assert colocacion.tarea_padre_id == montaje.id
+        assert montaje.importe_presupuestado == Decimal("1610.00")
+        assert apartado.importe_presupuestado == Decimal("1710.00")
+        assert tolva.tarea_padre_id == apartado.id
+        assert tolva.es_montaje is False
+    finally:
+        db.query(Tarea).filter(Tarea.presupuesto_id == presupuesto.id).delete()
+        db.delete(presupuesto)
+        db.delete(nave)
+        db.delete(proyecto)
+        db.commit()
 
 
 def test_elementos_de_montaje_vuelve_a_su_subbloque(db: Session):

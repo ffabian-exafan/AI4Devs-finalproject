@@ -140,59 +140,41 @@
                   · <small x-text="c.estado_extraccion"></small>
                 </div>
 
-                <template x-if="c.tarea_apartado_id">
+                <template x-if="(c.tarea_apartado_ids || []).length">
                   <p class="enlace-ok">
-                    Enlazado a apartado
-                    <strong x-text="c.apartado_codigo"></strong>
-                    — <span x-text="c.apartado_descripcion"></span>
+                    Enlazado a
+                    <template x-for="(ap, i) in c.apartados_enlace" :key="ap.id">
+                      <span>
+                        <strong x-text="ap.codigo"></strong>
+                        — <span x-text="ap.descripcion"></span><span
+                          x-show="i < c.apartados_enlace.length - 1"> · </span>
+                      </span>
+                    </template>
                   </p>
                 </template>
 
-                <template x-if="!c.tarea_apartado_id && c.sugerencias.length">
+                <template x-if="!(c.tarea_apartado_ids || []).length">
                   <div class="sugerencias">
-                    <p>Sugerencias de apartado (confirma una):</p>
-                    <ul>
-                      <template x-for="s in c.sugerencias" :key="s.tarea_id">
-                        <li>
-                          <span>
-                            <strong x-text="s.codigo"></strong>
-                            — <span x-text="s.descripcion"></span>
-                            <small>
-                              (<span x-text="Math.round(Number(s.confianza) * 100) + '%'"></span>
-                              · <span x-text="s.motivo"></span>)
-                            </small>
-                          </span>
-                          <button
-                            type="button"
-                            class="secundario"
-                            :disabled="enlazando"
-                            @click="enlazar(c.id, s.tarea_id)"
-                          >
-                            Confirmar enlace
-                          </button>
-                        </li>
-                      </template>
-                    </ul>
-                  </div>
-                </template>
-
-                <template x-if="!c.tarea_apartado_id && !c.sugerencias.length">
-                  <div class="sugerencias">
-                    <p>Sin sugerencia automática. Elige un apartado:</p>
-                    <label>
-                      Apartado
-                      <select x-model="manualApartado[c.id]">
-                        <option value="">—</option>
-                        <template x-for="ap in apartadosEnlazables" :key="'m-' + ap.id">
-                          <option :value="ap.id" x-text="ap.codigo + ' — ' + ap.descripcion"></option>
-                        </template>
-                      </select>
-                    </label>
+                    <p x-show="c.sugerencias.length">
+                      Sugerencias de apartado. Marca todos los que cubra el contrato:
+                    </p>
+                    <p x-show="!c.sugerencias.length">Sin sugerencia automática. Elige los apartados:</p>
+                    <template x-for="ap in apartadosEnlazables" :key="'m-' + c.id + '-' + ap.id">
+                      <label class="check-apartado">
+                        <input
+                          type="checkbox"
+                          :checked="(manualApartado[c.id] || []).includes(String(ap.id))"
+                          @change="toggleManual(c.id, ap.id, $event.target.checked)"
+                        />
+                        <span x-text="ap.codigo + ' — ' + ap.descripcion"></span>
+                        <small x-show="sugerenciaDe(c, ap.id)" x-text="sugerenciaDe(c, ap.id)"></small>
+                      </label>
+                    </template>
                     <button
                       type="button"
                       class="secundario"
-                      :disabled="enlazando || !manualApartado[c.id]"
-                      @click="enlazar(c.id, Number(manualApartado[c.id]))"
+                      :disabled="enlazando || !(manualApartado[c.id] || []).length"
+                      @click="enlazar(c.id)"
                     >
                       Enlazar
                     </button>

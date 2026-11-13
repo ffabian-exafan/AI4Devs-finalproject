@@ -80,6 +80,26 @@ class ApartadoResumenOut(BaseModel):
     subapartados: list["ApartadoResumenOut"] = Field(default_factory=list)
 
 
+class ApartadoEnlaceOut(BaseModel):
+    """Apartado confirmado en un contrato. Puede ser del Excel o del propio contrato."""
+
+    id: int
+    codigo: str
+    descripcion: str
+    importe: Money = Decimal("0")
+    es_de_contrato: bool = False
+    explicacion: str | None = None
+
+
+class ApartadoContratoOut(BaseModel):
+    """Apartado leído en el contrato que no está en el Excel."""
+
+    id: int
+    codigo: str
+    descripcion: str
+    importe: Money
+
+
 class ContratoResumenOut(BaseModel):
     """Contrato del proyecto con enlace o sugerencias."""
 
@@ -89,9 +109,13 @@ class ContratoResumenOut(BaseModel):
     precio_total: Money
     estado_extraccion: str
     nave_id: int | None = None
+    # Primer apartado confirmado. El conjunto va en tarea_apartado_ids.
     tarea_apartado_id: int | None = None
+    tarea_apartado_ids: list[int] = Field(default_factory=list)
     apartado_codigo: str | None = None
     apartado_descripcion: str | None = None
+    apartados_enlace: list[ApartadoEnlaceOut] = Field(default_factory=list)
+    apartados_fuera_excel: list[ApartadoContratoOut] = Field(default_factory=list)
     fichero_origen: str = ""
     tiene_fichero: bool = False
     sugerencias: list[SugerenciaApartadoOut] = Field(default_factory=list)

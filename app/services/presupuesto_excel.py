@@ -38,6 +38,7 @@ from app.services.excel_expertis import (
     lineas_y_productos_montaje,
     sumar_dietas_a_apartados,
     _es_cajon_general,
+    _es_colocacion,
     _es_dietas,
     _repartir_pesos,
 )
@@ -1339,6 +1340,80 @@ def _crear_dietas(
         nodo.importe_presupuestado = _dinero(Decimal(nodo.importe_presupuestado) + parte)
 
 
+def meter_colocacion_en_montaje(db: Session, presupuesto_id: int) -> None:
+    """Pasa al bloque de montaje la colocación que se guardó como material.
+
+    Una línea que empieza por COLOCACIÓN es trabajo de montaje en obra.
+    """
+    tareas = (
+        db.query(Tarea)
+        .filter(Tarea.presupuesto_id == presupuesto_id)
+        .order_by(Tarea.id)
+        .all()
+    )
+    if not tareas:
+        return
+    por_id = {tarea.id: tarea for tarea in tareas}
+    cambio = False
+    for linea in list(tareas):
+        if linea.nivel != "partida" or not _es_colocacion(linea.descripcion):
+            continue
+        padre = por_id.get(linea.tarea_padre_id or 0)
+        if padre is not None and _es_bloque_montaje(padre.descripcion):
+            if not linea.es_montaje:
+                linea.es_montaje = True
+                cambio = True
+            continue
+        if padre is None:
+            continue
+        destino = _producto_de_la_linea(linea, por_id) or padre
+        linea.es_montaje = True
+        linea.capitulo = (destino.descripcion or "")[:255] or linea.capitulo
+        origen = padre if padre is not None else destino
+        _mover_grupo_montaje(
+            db,
+            origen,
+            destino,
+            [linea],
+            por_id,
+            tareas,
+            _titulo_montaje(destino.descripcion),
+        )
+        cambio = True
+    if cambio:
+        db.commit()
+
+
+def _producto_de_la_linea(linea: Tarea, por_id: dict[int, Tarea]) -> Tarea | None:
+    """Subapartado de producto que contiene la línea, o el único hermano."""
+    actual = por_id.get(linea.tarea_padre_id or 0)
+    while actual is not None:
+        if (
+            actual.nivel == "subapartado"
+            and not _es_bloque_montaje(actual.descripcion)
+            and not _es_cajon_general(actual.descripcion)
+        ):
+            return actual
+        if actual.nivel == "apartado" or actual.tarea_padre_id is None:
+            break
+        actual = por_id.get(actual.tarea_padre_id or 0)
+    padre = por_id.get(linea.tarea_padre_id or 0)
+    if padre is None:
+        return None
+    productos = [
+        nodo
+        for nodo in por_id.values()
+        if nodo.tarea_padre_id == padre.id
+        and nodo.nivel == "subapartado"
+        and nodo.id != linea.id
+        and not _es_bloque_montaje(nodo.descripcion)
+        and not _es_cajon_general(nodo.descripcion)
+    ]
+    if len(productos) == 1:
+        return productos[0]
+    return None
+
+
 def repartir_montaje_por_subapartado(db: Session, presupuesto_id: int) -> None:
     """Parte el bloque único «Montaje» de una obra ya importada.
 
@@ -1503,9 +1578,15 @@ def _montaje_vacio(db: Session, bloque: Tarea, tareas: list[Tarea]) -> bool:
         return False
     if bloque.importe_contrato_cliente is not None:
         return False
-    from app.models import Asignacion, Contrato, LineaFactura
+    from app.models import Asignacion, Contrato, ContratoApartado, LineaFactura
 
     if db.query(Contrato.id).filter(Contrato.tarea_apartado_id == bloque.id).first():
+        return False
+    if (
+        db.query(ContratoApartado.contrato_id)
+        .filter(ContratoApartado.tarea_id == bloque.id)
+        .first()
+    ):
         return False
     if db.query(Asignacion.id).filter(Asignacion.tarea_id == bloque.id).first():
         return False

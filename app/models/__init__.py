@@ -2,7 +2,7 @@
 
 from app.models.asignacion import Asignacion
 from app.models.contratista import Contratista
-from app.models.contrato import Contrato
+from app.models.contrato import Contrato, ContratoApartado
 from app.models.factura import Factura, LineaFactura
 from app.models.linea_pdf_cliente import LineaPdfCliente, LineaPdfClienteTarea
 from app.models.nave import Nave
@@ -15,6 +15,7 @@ __all__ = [
     "Asignacion",
     "Contratista",
     "Contrato",
+    "ContratoApartado",
     "Factura",
     "LineaFactura",
     "LineaPdfCliente",

@@ -53,7 +53,8 @@ function proyectoApp() {
         this.proyecto = await GestorApi.getJson("/proyectos/" + this.proyectoId);
         this.manualApartado = {};
         for (const c of this.proyecto.contratos || []) {
-          this.manualApartado[c.id] = "";
+          const primera = (c.sugerencias || [])[0];
+          this.manualApartado[c.id] = primera ? [String(primera.tarea_id)] : [];
         }
       } catch (err) {
         this.error = err.message;
@@ -102,8 +103,31 @@ function proyectoApp() {
       }
     },
 
-    async enlazar(contratoId, tareaApartadoId) {
-      if (!tareaApartadoId) return;
+    sugerenciaDe(contrato, tareaId) {
+      const sugerencia = (contrato.sugerencias || []).find(
+        (s) => s.tarea_id === Number(tareaId)
+      );
+      if (!sugerencia) return "";
+      return (
+        Math.round(Number(sugerencia.confianza) * 100) +
+        "% · " +
+        sugerencia.motivo
+      );
+    },
+
+    toggleManual(contratoId, tareaId, marcado) {
+      const actual = (this.manualApartado[contratoId] || []).map(String);
+      const id = String(tareaId);
+      const siguiente = actual.filter((valor) => valor !== id);
+      if (marcado) siguiente.push(id);
+      this.manualApartado[contratoId] = siguiente;
+    },
+
+    async enlazar(contratoId) {
+      const ids = (this.manualApartado[contratoId] || [])
+        .map(Number)
+        .filter((n) => n > 0);
+      if (!ids.length) return;
       this.enlazando = true;
       this.msgEnlace = "";
       this.errEnlace = "";
@@ -114,15 +138,16 @@ function proyectoApp() {
             "/contratos/" +
             contratoId +
             "/enlazar-apartado",
-          { tarea_apartado_id: tareaApartadoId }
+          { tarea_apartado_ids: ids, tarea_apartado_id: ids[0] }
         );
+        const nombres = (out.apartados || [])
+          .map((ap) => ap.codigo_apartado)
+          .join(", ");
         this.msgEnlace =
           "Enlace confirmado: contrato #" +
           out.contrato_id +
           " → " +
-          out.codigo_apartado +
-          " " +
-          out.descripcion_apartado;
+          (nombres || out.codigo_apartado + " " + out.descripcion_apartado);
         await this.cargar();
       } catch (err) {
         this.errEnlace = err.message;

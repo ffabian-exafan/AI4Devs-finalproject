@@ -7,7 +7,16 @@ from decimal import Decimal
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.models import Contrato, LineaPdfCliente, LineaPdfClienteTarea, Nave, Presupuesto, Proyecto, Tarea
+from app.models import (
+    Contrato,
+    ContratoApartado,
+    LineaPdfCliente,
+    LineaPdfClienteTarea,
+    Nave,
+    Presupuesto,
+    Proyecto,
+    Tarea,
+)
 from app.schemas.casado import DesenlazarApartadoOut
 from app.schemas.presupuesto import SoloGestionOut
 
@@ -62,7 +71,10 @@ def desmarcar(db: Session, proyecto_id: int, linea_id: int) -> None:
         raise ValueError("La línea no está marcada como solo gestión")
     tarea_id = linea.apartado_gestion_id
     enlazados = (
-        db.query(Contrato).filter(Contrato.tarea_apartado_id == tarea_id).count()
+        db.query(Contrato.id).filter(Contrato.tarea_apartado_id == tarea_id).first()
+        or db.query(ContratoApartado.contrato_id)
+        .filter(ContratoApartado.tarea_id == tarea_id)
+        .first()
     )
     if enlazados:
         raise ValueError("Hay un contrato enlazado a este apartado")
@@ -100,7 +112,8 @@ def desenlazar(db: Session, proyecto_id: int, contrato_id: int) -> DesenlazarApa
     )
     if contrato is None:
         raise ValueError(f"Contrato {contrato_id} no encontrado en proyecto {proyecto_id}")
-    if contrato.tarea_apartado_id is not None:
+    if contrato.tarea_apartado_id is not None or contrato.enlaces_apartado:
+        contrato.enlaces_apartado.clear()
         contrato.tarea_apartado_id = None
         db.commit()
         db.refresh(contrato)

@@ -5,9 +5,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Asignacion, Contratista, Contrato, Factura, Nave, Proyecto, Tarea
+from app.services import casado as casado_svc
 from app.schemas.control_economico import (
     ControlEconomicoOut,
     DesvioApartadoOut,
@@ -160,9 +161,14 @@ def _por_apartado(db: Session, proyecto_id: int) -> list[DesvioApartadoOut]:
 
     contratos = (
         db.query(Contrato)
-        .filter(Contrato.proyecto_id == proyecto_id, Contrato.tarea_apartado_id.isnot(None))
+        .options(joinedload(Contrato.enlaces_apartado))
+        .filter(Contrato.proyecto_id == proyecto_id)
         .all()
     )
+    unicos: dict[int, Contrato] = {}
+    for contrato in contratos:
+        unicos[contrato.id] = contrato
+    contratos = list(unicos.values())
     facturado_por_contrato = {
         contrato_id: Decimal(total)
         for contrato_id, total in (
@@ -202,18 +208,49 @@ def _por_apartado(db: Session, proyecto_id: int) -> list[DesvioApartadoOut]:
             pila.extend(hijos.get(nodo.id, []))
         return total if hay else None
 
+    def peso(tarea: Tarea) -> Decimal:
+        if tarea.solo_gestion:
+            return Decimal(tarea.importe_presupuestado or 0)
+        propio = Decimal(tarea.importe_presupuestado) if tarea.es_montaje else Decimal("0")
+        return propio + montaje_de(tarea.id)
+
+    por_id = {tarea.id: tarea for tarea in tareas}
+    partes: dict[int, list[tuple[Decimal, Decimal]]] = {}
+    for contrato in contratos:
+        ids = casado_svc.ids_apartados_enlazados(contrato)
+        extra = {
+            tarea.id: tarea
+            for tarea in db.query(Tarea).filter(Tarea.id.in_(ids)).all()
+        } if ids else {}
+        ligados = [extra[tarea_id] for tarea_id in ids if tarea_id in extra]
+        ligados.sort(key=lambda tarea: (tarea.presupuesto_id is None, tarea.codigo, tarea.id))
+        if not ligados:
+            continue
+        pesos = [
+            Decimal(tarea.importe_presupuestado or 0)
+            if tarea.presupuesto_id is None
+            else peso(tarea)
+            for tarea in ligados
+        ]
+        precios = casado_svc.repartir_importe(Decimal(contrato.precio_total), pesos)
+        facts = casado_svc.repartir_importe(
+            facturado_por_contrato.get(contrato.id, Decimal("0")),
+            pesos,
+        )
+        for tarea, precio, fact in zip(ligados, precios, facts):
+            if tarea.presupuesto_id is None or tarea.id not in por_id:
+                continue
+            partes.setdefault(tarea.id, []).append((precio, fact))
+
     salida: list[DesvioApartadoOut] = []
     for tarea in tareas:
         if padres.get(tarea.id) is not None or tarea.codigo.startswith("descuento."):
             continue
         if tarea.solo_gestion and tarea.estado_revision != "confirmada":
             continue
-        enlazados = [c for c in contratos if c.tarea_apartado_id == tarea.id]
-        contratado = sum((Decimal(c.precio_total) for c in enlazados), Decimal("0"))
-        facturado = sum(
-            (facturado_por_contrato.get(c.id, Decimal("0")) for c in enlazados),
-            Decimal("0"),
-        )
+        trozos = partes.get(tarea.id, [])
+        contratado = sum((precio for precio, _fact in trozos), Decimal("0"))
+        facturado = sum((fact for _precio, fact in trozos), Decimal("0"))
         salida.append(
             DesvioApartadoOut(
                 tarea_id=tarea.id,

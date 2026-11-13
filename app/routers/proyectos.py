@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Contrato, Factura, Presupuesto
-from app.schemas.casado import DesenlazarApartadoOut, EnlazarApartadoIn, EnlazarApartadoOut
+from app.schemas.casado import (
+    ApartadoEnlazadoOut,
+    DesenlazarApartadoOut,
+    EnlazarApartadoIn,
+    EnlazarApartadoOut,
+)
 from app.schemas.contrato import ImportarContratoOut
 from app.schemas.control_economico import ControlEconomicoOut
 from app.schemas.presupuesto import (
@@ -462,11 +467,16 @@ def enlazar_apartado(
     db: Session = Depends(get_db),
 ) -> EnlazarApartadoOut:
     try:
-        contrato, apartado = casado_svc.enlazar_contrato_apartado(
+        contrato, apartados = casado_svc.enlazar_contrato_apartado(
             db,
             proyecto_id,
             contrato_id,
-            body.tarea_apartado_id,
+            body.tarea_apartado_ids,
+            explicaciones={item.tarea_id: item.explicacion for item in body.explicaciones},
+            apartados_nuevos=[
+                (item.descripcion, item.importe, item.explicacion)
+                for item in body.apartados_nuevos
+            ],
         )
     except ValueError as exc:
         detail = str(exc)
@@ -477,11 +487,20 @@ def enlazar_apartado(
         )
         raise HTTPException(status_code=codigo, detail=detail) from exc
 
+    primero = apartados[0]
     return EnlazarApartadoOut(
         contrato_id=contrato.id,
-        tarea_apartado_id=apartado.id,
-        codigo_apartado=apartado.codigo,
-        descripcion_apartado=apartado.descripcion,
+        tarea_apartado_id=primero.id,
+        codigo_apartado=primero.codigo,
+        descripcion_apartado=primero.descripcion,
+        apartados=[
+            ApartadoEnlazadoOut(
+                tarea_apartado_id=ap.id,
+                codigo_apartado=ap.codigo,
+                descripcion_apartado=ap.descripcion,
+            )
+            for ap in apartados
+        ],
     )
 
 
