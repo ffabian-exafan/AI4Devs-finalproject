@@ -521,25 +521,95 @@ def test_apartado_de_contrato_exige_explicacion_y_no_descuadra_el_excel(
         justificado = next(ap for ap in fila["apartados_enlace"] if ap["es_de_contrato"])
         assert justificado["explicacion"] == "Este trabajo no está en el Excel de la obra."
 
+        manual_pdf = Presupuesto(
+            proyecto_id=proyecto.id,
+            version=1,
+            fichero_origen="cliente-ficticio.pdf",
+            estado_extraccion="confirmada",
+            es_escaneado=False,
+            formato="pdf_cliente",
+        )
+        db.add(manual_pdf)
+        db.flush()
+        from app.models import LineaPdfCliente, LineaPdfClienteTarea
+
+        linea = LineaPdfCliente(
+            presupuesto_id=manual_pdf.id,
+            orden=1,
+            tipo="importe",
+            codigo="12",
+            descripcion="Cerramiento ficticio que no sale en el Excel",
+            importe=Decimal("40.00"),
+            es_manuscrito=False,
+            relacion_intentada=True,
+        )
+        linea_excel = LineaPdfCliente(
+            presupuesto_id=manual_pdf.id,
+            orden=2,
+            tipo="importe",
+            codigo="01",
+            descripcion="Comederos ya contrastados",
+            importe=Decimal("200.00"),
+            es_manuscrito=False,
+            relacion_intentada=True,
+        )
+        db.add(linea)
+        db.add(linea_excel)
+        db.flush()
+        db.add(
+            LineaPdfClienteTarea(
+                linea_id=linea_excel.id,
+                tarea_id=apartado.id,
+                es_sugerencia=False,
+            )
+        )
+        db.commit()
+
         manual = client.post(
             f"/proyectos/{proyecto.id}/contratos/{contrato.id}/enlazar-apartado",
             json={
                 "apartados_nuevos": [
                     {
-                        "descripcion": "Retoque ficticio",
+                        "linea_id": linea.id,
+                        "nombre": "Retoque ficticio",
                         "importe": "15.00",
-                        "explicacion": "Sale en el contrato y no en el Excel.",
+                        "explicacion": "Sale en el PDF del cliente y no en el Excel.",
                     }
                 ]
             },
         )
         assert manual.status_code == 200, manual.text
         assert manual.json()["apartados"][0]["descripcion_apartado"] == "Retoque ficticio"
+        tras_manual = client.get(f"/proyectos/{proyecto.id}").json()
+        fila_manual = next(c for c in tras_manual["contratos"] if c["id"] == contrato.id)
+        anotado = next(ap for ap in fila_manual["apartados_enlace"] if ap["es_de_contrato"])
+        assert anotado["linea_pdf_id"] == linea.id
+        assert anotado["linea_pdf_descripcion"] == linea.descripcion
+        assert Decimal(str(anotado["importe"])) == Decimal("15.00")
+        en_excel = client.post(
+            f"/proyectos/{proyecto.id}/contratos/{contrato.id}/enlazar-apartado",
+            json={
+                "apartados_nuevos": [
+                    {
+                        "linea_id": linea_excel.id,
+                        "nombre": "No vale",
+                        "importe": "10.00",
+                        "explicacion": "Esta línea ya está en el Excel.",
+                    }
+                ]
+            },
+        )
+        assert en_excel.status_code == 422
         corto = client.post(
             f"/proyectos/{proyecto.id}/contratos/{contrato.id}/enlazar-apartado",
             json={
                 "apartados_nuevos": [
-                    {"descripcion": "Otro", "importe": "10.00", "explicacion": "no"}
+                    {
+                        "linea_id": linea.id,
+                        "nombre": "Otro",
+                        "importe": "10.00",
+                        "explicacion": "no",
+                    }
                 ]
             },
         )

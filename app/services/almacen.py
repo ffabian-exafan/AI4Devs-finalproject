@@ -109,6 +109,13 @@ def borrar_proyecto(proyecto_id: int) -> None:
         shutil.rmtree(carpeta)
 
 
+def borrar_fichero(ruta_relativa: str | None) -> None:
+    ruta = abrir_si_existe(ruta_relativa)
+    if ruta is None:
+        return
+    ruta.unlink()
+
+
 def _nombre_seguro(nombre: str) -> str:
     base = Path(nombre.replace("\\", "/")).name.strip() or "documento"
     limpio = _RE_NOMBRE.sub("_", base).strip("._") or "documento"

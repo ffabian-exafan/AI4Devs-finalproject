@@ -898,11 +898,7 @@ function gestionObras() {
         fila.hay_cruce = false;
         return fila;
       }
-      const base = elegidos.reduce((suma, apartado) => {
-        const padre = this._padreTarea(apartado.id);
-        const hermanos = (padre && padre.subapartados) || [];
-        return suma + this._cuantiaContraste(apartado, hermanos);
-      }, 0);
+      const base = this._importeDeElegidos(ids);
       const cliente = Number(fila.importe_pdf) || 0;
       // Se muestra Excel menos PDF. El color no cambia: rojo si el Excel es mayor.
       const diff = base - cliente;
@@ -913,21 +909,6 @@ function gestionObras() {
       return fila;
     },
 
-    _repartirCentesimas(importe, pesos) {
-      const totalCents = Math.round((Number(importe) || 0) * 100);
-      if (!pesos.length) return [];
-      const suma = pesos.reduce((acum, peso) => acum + (Number(peso) || 0), 0);
-      const bases = suma > 0 ? pesos.map((peso) => Number(peso) || 0) : pesos.map(() => 1);
-      const total = bases.reduce((acum, peso) => acum + peso, 0);
-      let acumulado = 0;
-      return bases.map((peso, indice) => {
-        if (indice === bases.length - 1) return (totalCents - acumulado) / 100;
-        const parte = Math.round((totalCents * peso) / total);
-        acumulado += parte;
-        return parte / 100;
-      });
-    },
-
     _raizApartado(id) {
       let raiz = this._buscarTarea(id, (this.proyecto && this.proyecto.apartados) || []);
       let padre = raiz ? this._padreTarea(raiz.id) : null;
@@ -936,6 +917,49 @@ function gestionObras() {
         padre = this._padreTarea(raiz.id);
       }
       return raiz;
+    },
+
+    _importeDeBloque(id) {
+      const nodo = this._buscarTarea(id, (this.proyecto && this.proyecto.apartados) || []);
+      if (!nodo) return 0;
+      const padre = this._padreTarea(nodo.id);
+      const hermanos = (padre && padre.subapartados) || [];
+      return this._cuantiaContraste(nodo, hermanos);
+    },
+
+    _importeDeElegidos(ids) {
+      return (ids || []).reduce((suma, id) => suma + this._importeDeBloque(id), 0);
+    },
+
+    _algunBloqueElegido(nodos, elegidos) {
+      for (const nodo of nodos || []) {
+        if (elegidos.has(String(nodo.valor))) return true;
+        if (this._algunBloqueElegido(nodo.hijos, elegidos)) return true;
+      }
+      return false;
+    },
+
+    // Bloques que ninguna línea del PDF tiene marcados. Si el padre ya está
+    // marcado, sus hijos no salen: el importe del padre ya los incluye.
+    _bloquesSinLinea() {
+      const elegidos = new Set();
+      ((this.contraste && this.contraste.sugerencias) || []).forEach((fila) => {
+        if (fila.solo_gestion) return;
+        (fila.elegidos || []).forEach((id) => elegidos.add(String(id)));
+      });
+      const libres = [];
+      const visitar = (nodos) => {
+        (nodos || []).forEach((nodo) => {
+          if (elegidos.has(String(nodo.valor))) return;
+          if (this._algunBloqueElegido(nodo.hijos, elegidos)) {
+            visitar(nodo.hijos);
+            return;
+          }
+          libres.push(nodo);
+        });
+      };
+      this.seccionesContraste().forEach((sec) => visitar(sec.hijos));
+      return libres;
     },
 
     resumenContraste() {
@@ -953,7 +977,10 @@ function gestionObras() {
       );
       const filasPdf = (this.contraste && this.contraste.sugerencias) || [];
       if (!apartados.length && !filasPdf.length) return vacio;
-      const pdfPorApartado = new Map(apartados.map((apartado) => [String(apartado.id), 0]));
+      // Una fila por apartado del PDF: el Excel es la suma de sus bloques,
+      // la misma cifra del pie de la línea. No se agrupa por fichero.
+      const filas = [];
+      let excelNum = 0;
       let sinAsignar = 0;
       filasPdf.forEach((fila) => {
         if (fila.solo_gestion) return;
@@ -965,52 +992,50 @@ function gestionObras() {
           sinAsignar += importe;
           return;
         }
-        const pesos = elegidos.map((nodo) => {
-          const padre = this._padreTarea(nodo.id);
-          const hermanos = (padre && padre.subapartados) || [];
-          return this._cuantiaContraste(nodo, hermanos);
-        });
-        const partes = this._repartirCentesimas(importe, pesos);
-        elegidos.forEach((nodo, indice) => {
-          const raiz = this._raizApartado(nodo.id);
-          if (!raiz || !pdfPorApartado.has(String(raiz.id))) return;
-          pdfPorApartado.set(
-            String(raiz.id),
-            pdfPorApartado.get(String(raiz.id)) + (partes[indice] || 0)
-          );
-        });
-      });
-      const filasExcel = apartados.map((apartado) => {
-        const excel = Number(apartado.importe_presupuestado) || 0;
-        const pdf = Math.round((pdfPorApartado.get(String(apartado.id)) || 0) * 100) / 100;
-        const hayPdf = Math.abs(pdf) >= 0.005;
-        const diff = excel - pdf;
-        return {
-          id: apartado.id,
-          nombre: (apartado.codigo ? apartado.codigo + " · " : "") + (apartado.descripcion || "Apartado"),
-          excel: GestorApi.euro(excel),
-          pdf: hayPdf ? GestorApi.euro(pdf) : "—",
-          diferencia: hayPdf ? GestorApi.euro(diff) : "—",
-          supera: hayPdf && diff > 0.005,
-        };
-      });
-      const filasGestion = filasPdf
-        .filter((fila) => fila.solo_gestion)
-        .map((fila) => ({
-          id: "gestion-" + fila.id,
+        const excel = this._importeDeElegidos(elegidos.map((nodo) => nodo.id));
+        const diff = excel - importe;
+        excelNum += excel;
+        filas.push({
+          id: "pdf-" + fila.id,
           nombre:
             (fila.codigo_pdf ? fila.codigo_pdf + " · " : "") +
-            (fila.descripcion_pdf || "Solo gestión"),
-          excel: "—",
-          pdf: GestorApi.euro(fila.importe_pdf),
+            (fila.descripcion_pdf || "Apartado"),
+          excel: GestorApi.euro(excel),
+          pdf: GestorApi.euro(importe),
+          diferencia: GestorApi.euro(diff),
+          supera: diff > 0.005,
+        });
+      });
+      this._bloquesSinLinea().forEach((nodo) => {
+        const excel = this._importeDeBloque(nodo.valor);
+        if (Math.abs(excel) < 0.005) return;
+        excelNum += excel;
+        const raiz = this._raizApartado(nodo.valor);
+        const prefijo = raiz && raiz.codigo ? raiz.codigo + " · " : "";
+        filas.push({
+          id: "libre-" + nodo.valor,
+          nombre: prefijo + (nodo.etiqueta || "Apartado"),
+          excel: GestorApi.euro(excel),
+          pdf: "—",
           diferencia: "—",
           supera: false,
-        }));
-      const filas = filasExcel.concat(filasGestion);
-      const totalExcel = apartados.reduce(
-        (suma, apartado) => suma + (Number(apartado.importe_presupuestado) || 0),
-        0
-      );
+        });
+      });
+      filasPdf
+        .filter((fila) => fila.solo_gestion)
+        .forEach((fila) => {
+          filas.push({
+            id: "gestion-" + fila.id,
+            nombre:
+              (fila.codigo_pdf ? fila.codigo_pdf + " · " : "") +
+              (fila.descripcion_pdf || "Solo gestión"),
+            excel: "—",
+            pdf: GestorApi.euro(fila.importe_pdf),
+            diferencia: "—",
+            supera: false,
+          });
+        });
+      const totalExcel = excelNum;
       const totalLineas = filasPdf.reduce((suma, fila) => suma + (Number(fila.importe_pdf) || 0), 0);
       const descuentos = (this.contraste && this.contraste.descuentos) || [];
       const sumaDescuentos = descuentos.reduce(
@@ -1140,23 +1165,21 @@ function gestionObras() {
           etiqueta_base: null,
           presupuestado: "—",
           diferencia: "—",
-          supera: false,
-          asociado,
-          opciones_contrato: (contrato.apartados_fuera_excel || []).map((ap) => ({
-            valor: String(ap.id),
-            etiqueta: ap.descripcion,
-            prefijo: "Del contrato",
-            cuantia: euro(ap.importe),
-            base: Number(ap.importe) || 0,
-          })),
-          explicaciones: Object.fromEntries(
-            (contrato.apartados_enlace || [])
-              .filter((ap) => ap.es_de_contrato)
-              .map((ap) => [String(ap.id), ap.explicacion || ""])
-          ),
+        supera: false,
+        base: 0,
+        asociado,
+          pdf_guardados: (contrato.apartados_enlace || [])
+            .filter((ap) => ap.linea_pdf_id)
+            .map((ap) => ({
+              linea_id: ap.linea_pdf_id,
+              nombre: ap.descripcion,
+              importe: Number(ap.importe) || 0,
+              linea_descripcion: ap.linea_pdf_descripcion || "",
+              explicacion: ap.explicacion || "",
+            })),
           nuevos: [],
-          anadiendo: false,
-          nuevo_descripcion: "",
+          linea_abierta: null,
+          nuevo_nombre: "",
           nuevo_importe: "",
           nuevo_explicacion: "",
         };
@@ -1170,7 +1193,9 @@ function gestionObras() {
         proveedor: factura.contratista_nombre,
         numero: factura.numero,
         fecha: factura.fecha_emision || "—",
-        apartado: factura.contrato_id ? "Contrato #" + factura.contrato_id : "Sin contrato",
+        apartado: factura.contrato_etiqueta || "Sin contrato",
+        contrato_id: factura.contrato_id,
+        candidatos: [],
         importe: euro(factura.total),
         kind: factura.estado_revision === "confirmada" ? "ok" : "bad",
         estado: factura.estado_revision === "confirmada" ? "Confirmada" : "Pendiente",
@@ -1203,49 +1228,31 @@ function gestionObras() {
         0
       );
       let desvioTotal = 0;
-      const filasControl = apartados
-        .concat(gestiones)
-        .filter((ap) => !this._gestionPendiente(ap))
-        .map((ap) => {
-        const contratado = (ap.contratos || []).reduce(
-          (suma, contrato) => suma + (Number(contrato.contratado) || 0),
-          0
-        );
-        const facturado = (ap.contratos || []).reduce(
-          (suma, contrato) => suma + (Number(contrato.facturado) || 0),
-          0
-        );
-        const pres = Number(ap.importe_presupuestado) || 0;
-        const montaje = Number(ap.importe_montaje) || 0;
-        const cliente = this._sumaCliente(ap);
-        const escala = Math.max(pres, montaje, contratado, facturado, 1);
-        const pct = (valor) => Math.round((valor / escala) * 100) + "%";
-        // Excel: desvío contra montaje. Solo gestión: contra el importe del PDF.
-        const base = this._baseContrato(ap);
-        const hayCifra = contratado > 0 || facturado > 0;
-        const desvio = hayCifra ? base - Math.max(contratado, facturado) : 0;
-        if (hayCifra) desvioTotal += desvio;
-        const detalle = [
-          euro(pres) + " presupuestado",
-          euro(montaje) + " montaje",
-          cliente == null ? null : euro(cliente) + " contrato cliente",
-          euro(contratado) + " contratado",
-          euro(facturado) + " facturado",
-        ]
-          .filter(Boolean)
-          .join(" · ");
+      const filasControl = filas.map((fila) => {
+        const presupuestado = Number(fila.base) || 0;
+        const facturado = (facturas || [])
+          .filter(
+            (factura) =>
+              factura.estado_revision === "confirmada" &&
+              String(factura.contrato_id) === String(fila.id)
+          )
+          .reduce((suma, factura) => suma + (Number(factura.total) || 0), 0);
+        const contratado = Number(fila.precio_total) || 0;
+        const escala = contratado > 0 ? contratado : Math.max(presupuestado, facturado, 1);
+        const pct = (valor) =>
+          Math.min(100, Math.max(0, Math.round((valor / escala) * 100))) + "%";
+        const desvio = presupuestado - facturado;
+        desvioTotal += desvio;
         return {
-          codigo: ap.codigo,
-          nombre: ap.descripcion,
+          id: fila.id,
+          nombre: fila.gremio,
+          base: presupuestado,
+          contratado: euro(contratado),
+          presupuestado: euro(presupuestado),
           facturado: euro(facturado),
-          presupuestado: euro(pres),
-          detalle,
-          ancho_presupuesto: pct(pres),
-          ancho_contratado: pct(contratado),
+          ancho_presupuesto: pct(presupuestado),
           ancho_facturado: pct(facturado),
-          desviacion: hayCifra && Math.abs(desvio) >= 0.5 ? euro(desvio) : "—",
-          alerta: desvio < -0.5 || (contratado > 0 && facturado > contratado + 0.5),
-          partidas: this._filasControl(ap),
+          alerta: facturado > presupuestado + 0.5,
         };
       });
       const alertas = [];
@@ -1366,21 +1373,24 @@ function gestionObras() {
           opciones,
           filas,
           apartados_contrato: contratables,
+          lineas_pdf_sin_excel: (
+            (proyecto.contraste_cliente && proyecto.contraste_cliente.sugerencias) || []
+          )
+            .filter((fila) => fila.id && !fila.confirmada && !fila.solo_gestion)
+            .map((fila) => ({
+              id: fila.id,
+              descripcion: fila.codigo_pdf
+                ? fila.codigo_pdf + " " + fila.descripcion_pdf
+                : fila.descripcion_pdf,
+              importe: euro(fila.importe_pdf),
+            })),
         },
         facturas: facturasVista,
         control: {
           kpis: [
             {
-              etiqueta: "Presupuestado",
-              valor: euro(presTotal),
-              detalle: "Apartados del Excel",
-              color: "#2a2724",
-            },
-            {
-              etiqueta: "Montaje",
-              valor: euro(
-                apartados.reduce((suma, ap) => suma + (Number(ap.importe_montaje) || 0), 0)
-              ),
+              etiqueta: "Mano de obra y montaje",
+              valor: euro(filasControl.reduce((suma, fila) => suma + fila.base, 0)),
               detalle: "Base de la subcontrata",
               color: "#2a2724",
             },
@@ -1397,10 +1407,12 @@ function gestionObras() {
               color: "#2a2724",
             },
             {
-              etiqueta: "Desviación",
-              valor: Math.abs(desvioTotal) < 0.5 ? euro(0) : euro(desvioTotal),
-              detalle: "Contratado o facturado frente a presupuesto",
-              color: desvioTotal < -0.5 ? "#9a1f16" : "#1b6b38",
+              etiqueta: desvioTotal < -0.5 ? "Desviación" : "Por facturar",
+              valor: euro(Math.abs(desvioTotal)),
+              detalle: desvioTotal < -0.5
+                ? "Facturado por encima del presupuesto"
+                : "Presupuesto aún sin factura",
+              color: desvioTotal < -0.5 ? "#9a1f16" : "#2a2724",
             },
           ],
           filas: filasControl,
@@ -1458,17 +1470,27 @@ function gestionObras() {
     },
 
     _filasControl(ap) {
-      const filas = this._conMontajeArriba(this._filasPartida(ap));
+      const filas = this._filasPartida(ap).filter((fila) => fila.montaje);
       return filas.map((fila) => ({
         codigo: fila.codigo,
         descripcion: fila.descripcion,
         presupuesto: fila.importe,
-        medicion: fila.montaje ? "Montaje" : "—",
+        medicion: this._etiquetaMano(fila),
         facturado: "—",
         medicion_facturada: "—",
         desviacion: "—",
         alerta: false,
       }));
+    },
+
+    _etiquetaMano(fila) {
+      const texto = String(fila.descripcion || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      if (texto.startsWith("colocacion")) return "Mano de obra";
+      return "Montaje";
     },
 
     _esDescuento(nodo) {
@@ -1526,11 +1548,8 @@ function gestionObras() {
     _pintarBaseContrato(fila, catalogo) {
       const ids = fila.apartado_ids || [];
       const elegidos = (catalogo || []).filter((ap) => ids.includes(String(ap.id)));
-      const delContrato = (fila.opciones_contrato || []).filter((op) =>
-        ids.includes(op.valor)
-      );
-      const nuevos = fila.nuevos || [];
-      if (!elegidos.length && !delContrato.length && !nuevos.length) {
+      const delPdf = (fila.pdf_guardados || []).concat(fila.nuevos || []);
+      if (!elegidos.length && !delPdf.length) {
         fila.etiqueta_base = null;
         fila.presupuestado = "—";
         fila.diferencia = "—";
@@ -1539,11 +1558,11 @@ function gestionObras() {
       }
       const base =
         elegidos.reduce((suma, ap) => suma + this._baseContrato(ap), 0) +
-        delContrato.reduce((suma, op) => suma + (Number(op.base) || 0), 0) +
-        nuevos.reduce((suma, item) => suma + (Number(item.importe) || 0), 0);
+        delPdf.reduce((suma, item) => suma + (Number(item.importe) || 0), 0);
       // Base menos contrato. El rojo se queda si el contrato supera la base.
       const diff = base - (Number(fila.precio_total) || 0);
-      fila.etiqueta_base = this._textoBaseMixta(elegidos, delContrato.length + nuevos.length);
+      fila.base = base;
+      fila.etiqueta_base = this._textoBaseMixta(elegidos, delPdf.length);
       fila.presupuestado = GestorApi.euro(base);
       fila.diferencia = GestorApi.euro(diff);
       fila.supera = diff < -0.005;
@@ -1980,29 +1999,38 @@ function gestionObras() {
     puedeAsociar(fila) {
       const ids = fila.apartado_ids || [];
       const nuevos = fila.nuevos || [];
-      if (!ids.length && !nuevos.length) return false;
-      return (fila.opciones_contrato || [])
-        .filter((op) => ids.includes(op.valor))
-        .every((op) => ((fila.explicaciones || {})[op.valor] || "").trim().length >= 5);
+      return ids.length > 0 || nuevos.length > 0;
     },
 
-    anadirApartadoManual(id) {
+    lineaEnContrato(fila, lineaId) {
+      const enNuevos = (fila.nuevos || []).some((item) => item.linea_id === lineaId);
+      const guardada = (fila.pdf_guardados || []).some((item) => item.linea_id === lineaId);
+      return enNuevos || guardada;
+    },
+
+    anadirApartadoPdf(id, linea) {
       if (!this.vista) return;
       const fila = this.vista.contratos.filas.find((c) => c.id === id);
-      if (!fila || fila.asociado) return;
-      const descripcion = (fila.nuevo_descripcion || "").trim();
+      if (!fila || fila.asociado || this.lineaEnContrato(fila, linea.id)) return;
+      const nombre = (fila.nuevo_nombre || "").trim();
       const explicacion = (fila.nuevo_explicacion || "").trim();
       const importe = Number(String(fila.nuevo_importe || "").replace(",", "."));
-      if (descripcion.length < 2 || explicacion.length < 5 || !(importe > 0)) {
-        this.error = "El apartado del contrato necesita descripción, importe y explicación.";
+      if (nombre.length < 2 || explicacion.length < 5 || !(importe > 0)) {
+        this.error = "En el apartado del PDF anota nombre, importe y explicación.";
         return;
       }
       this.error = "";
-      fila.nuevos.push({ descripcion, importe, explicacion });
-      fila.nuevo_descripcion = "";
+      fila.nuevos.push({
+        linea_id: linea.id,
+        nombre,
+        importe,
+        explicacion,
+        linea_descripcion: linea.descripcion,
+      });
+      fila.nuevo_nombre = "";
       fila.nuevo_importe = "";
       fila.nuevo_explicacion = "";
-      fila.anadiendo = false;
+      fila.linea_abierta = null;
       this._pintarBaseContrato(fila, this.vista.contratos.apartados_contrato || []);
     },
 
@@ -2021,9 +2049,6 @@ function gestionObras() {
       const ids = (fila.apartado_ids || []).filter((item) => item !== String(valor));
       if (marcado) ids.push(String(valor));
       fila.apartado_ids = ids;
-      if (marcado && (fila.opciones_contrato || []).some((op) => op.valor === String(valor))) {
-        fila.explicaciones[String(valor)] = fila.explicaciones[String(valor)] || "";
-      }
       this._pintarBaseContrato(fila, this.vista.contratos.apartados_contrato || []);
     },
 
@@ -2050,16 +2075,6 @@ function gestionObras() {
           this.error = "Elige al menos un apartado antes de asociar.";
           return;
         }
-        if (!this.puedeAsociar(fila)) {
-          this.error = "Cada apartado del contrato que no está en el Excel necesita una explicación.";
-          return;
-        }
-        const explicaciones = (fila.opciones_contrato || [])
-          .filter((op) => ids.includes(Number(op.valor)))
-          .map((op) => ({
-            tarea_id: Number(op.valor),
-            explicacion: (fila.explicaciones[op.valor] || "").trim(),
-          }));
         this.error = "";
         try {
           await GestorApi.postJson(
@@ -2067,9 +2082,10 @@ function gestionObras() {
             {
               tarea_apartado_ids: ids,
               tarea_apartado_id: ids[0] || null,
-              explicaciones,
+              explicaciones: [],
               apartados_nuevos: nuevos.map((item) => ({
-                descripcion: item.descripcion,
+                linea_id: item.linea_id,
+                nombre: item.nombre,
                 importe: item.importe,
                 explicacion: item.explicacion,
               })),
@@ -2180,6 +2196,15 @@ function gestionObras() {
           if (String(fila.id) !== String(id)) return fila;
           return {
             ...fila,
+            contrato_id: detalle.contrato_id,
+            apartado: detalle.contrato_etiqueta || "Sin contrato",
+            candidatos: (detalle.contratos_candidatos || []).map((contrato) => ({
+              id: contrato.id,
+              etiqueta:
+                contrato.contratista_nombre +
+                " · " +
+                GestorApi.euro(contrato.precio_total),
+            })),
             lineas: (detalle.lineas || []).map((linea) => ({
               codigo: String(linea.id),
               descripcion: linea.descripcion,
@@ -2194,6 +2219,38 @@ function gestionObras() {
         });
       } catch (err) {
         this.error = err.message || "No se ha podido abrir la factura";
+      }
+    },
+
+    async borrarFactura(factura) {
+      if (!factura || !factura.id || !this.proyectoId) return;
+      const numero = factura.numero ? " " + factura.numero : "";
+      const nombre = (factura.proveedor || "esta factura") + numero;
+      if (!window.confirm("¿Borrar la factura " + nombre + "?")) return;
+      this.error = "";
+      try {
+        await GestorApi.borrar("/facturas/" + factura.id);
+        if (String(this.sel) === String(factura.id)) this.sel = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+      } catch (err) {
+        this.error = err.message || "No se ha podido borrar la factura";
+      }
+    },
+
+    async enlazarContratoFactura(factura, contratoId) {
+      if (!factura || !factura.id || !contratoId) return;
+      if (String(factura.contrato_id || "") === String(contratoId)) return;
+      this.error = "";
+      try {
+        await GestorApi.postJson("/facturas/" + factura.id + "/contrato", {
+          contrato_id: Number(contratoId),
+        });
+        const abierta = factura.id;
+        this.sel = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+        await this.seleccionarFactura(abierta);
+      } catch (err) {
+        this.error = err.message || "No se ha podido enlazar el contrato";
       }
     },
 

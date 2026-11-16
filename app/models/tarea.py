@@ -78,6 +78,12 @@ class Tarea(Base):
     importe_contrato_cliente: Mapped[Decimal | None] = mapped_column(
         Numeric(14, 2), nullable=True
     )
+    # Línea del PDF del cliente que no está en el Excel y a la que se cuelga este apartado.
+    linea_pdf_cliente_id: Mapped[int | None] = mapped_column(
+        ForeignKey("linea_pdf_cliente.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     # Fuerza estado_revision = pendiente cuando es true
     tiene_anotacion_manual: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False

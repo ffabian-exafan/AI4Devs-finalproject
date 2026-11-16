@@ -10,11 +10,12 @@ from pathlib import Path
 import pymupdf
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Contratista, Contrato, Factura, LineaFactura, Proyecto
+from app.models import Asignacion, Contratista, Contrato, Factura, LineaFactura, Proyecto
 from app.schemas.factura import (
     ConfirmarFacturaIn,
     ConfirmarFacturaOut,
     ContratoCandidatoFacturaOut,
+    EnlazarContratoFacturaIn,
     FacturaImportacionOut,
     FacturaRevisionOut,
     FacturaResumenOut,
@@ -24,6 +25,14 @@ from app.services import almacen as almacen_svc
 from app.services import ocr
 
 _NIF_RE = re.compile(r"\b(?:[A-Z]\d{7}[A-Z0-9]|\d{8}[A-Z])\b", re.IGNORECASE)
+_NUMERO_ETIQUETA_RE = re.compile(
+    r"^(?:n[úu]mero(?:\s+de\s+factura)?|factura(?:\s+n[.º°o]*)?)\s*[:#-]\s*(.*)$",
+    re.IGNORECASE,
+)
+_IMPORTE_SUELTO_RE = re.compile(
+    r"^[€$]?\s*-?[\d.]+(?:,\d+)?\s*(?:€|eur)?$",
+    re.IGNORECASE,
+)
 
 
 def importar_factura(
@@ -44,11 +53,7 @@ def importar_factura(
     texto, es_escaneada = _extraer_texto(contenido, nombre_fichero)
     datos = _parsear_factura(texto)
 
-    contratista = (
-        db.query(Contratista)
-        .filter(Contratista.nif == datos["contratista_nif"])
-        .first()
-    )
+    contratista = _contratista_por_nif(db, datos["contratista_nif"])
     if contratista is None:
         raise ValueError(
             f"No existe un contratista con NIF {datos['contratista_nif']}"
@@ -106,18 +111,26 @@ def listar_facturas(db: Session, proyecto_id: int) -> list[FacturaResumenOut]:
         raise ValueError(f"Proyecto {proyecto_id} no encontrado")
     facturas = (
         db.query(Factura)
-        .options(joinedload(Factura.contratista))
+        .options(
+            joinedload(Factura.contratista),
+            joinedload(Factura.contrato).joinedload(Contrato.contratista),
+        )
         .filter(Factura.proyecto_id == proyecto_id)
         .order_by(Factura.id.desc())
         .all()
     )
+    _rellenar_contrato_unico(db, facturas)
     return [_a_resumen(f) for f in facturas]
 
 
 def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
     factura = (
         db.query(Factura)
-        .options(joinedload(Factura.contratista), joinedload(Factura.lineas))
+        .options(
+            joinedload(Factura.contratista),
+            joinedload(Factura.lineas),
+            joinedload(Factura.contrato).joinedload(Contrato.contratista),
+        )
         .filter(Factura.id == factura_id)
         .first()
     )
@@ -125,6 +138,7 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
         raise ValueError(f"Factura {factura_id} no encontrada")
     if factura.proyecto_id is None:
         raise ValueError(f"La factura {factura_id} no tiene proyecto")
+    _rellenar_contrato_unico(db, [factura])
 
     candidatos = _contratos_candidatos(
         db, factura.proyecto_id, factura.contratista_id
@@ -169,8 +183,6 @@ def confirmar_factura(
             raise ValueError("El contrato no pertenece al proyecto de la factura")
         if contrato.contratista_id != factura.contratista_id:
             raise ValueError("El contrato no pertenece al contratista de la factura")
-        if contrato.estado_extraccion != "confirmada":
-            raise ValueError("El contrato debe estar confirmado antes de enlazar la factura")
 
     factura.numero = payload.numero
     factura.fecha_emision = payload.fecha_emision
@@ -180,7 +192,9 @@ def confirmar_factura(
     factura.retencion_garantia = payload.retencion_garantia
     factura.total = payload.total
     factura.tipo = payload.tipo
-    factura.contrato_id = payload.contrato_id
+    factura.contrato_id = payload.contrato_id or _contrato_unico_id(
+        db, factura.proyecto_id, factura.contratista_id
+    )
     factura.estado_revision = "confirmada"
 
     db.query(LineaFactura).filter(
@@ -205,6 +219,57 @@ def confirmar_factura(
     )
 
 
+def enlazar_contrato(
+    db: Session,
+    factura_id: int,
+    payload: EnlazarContratoFacturaIn,
+) -> FacturaResumenOut:
+    factura = (
+        db.query(Factura)
+        .options(
+            joinedload(Factura.contratista),
+            joinedload(Factura.contrato).joinedload(Contrato.contratista),
+        )
+        .filter(Factura.id == factura_id)
+        .first()
+    )
+    if factura is None:
+        raise ValueError(f"Factura {factura_id} no encontrada")
+    if factura.proyecto_id is None:
+        raise ValueError(f"La factura {factura_id} no tiene proyecto")
+    contrato = db.get(Contrato, payload.contrato_id)
+    if contrato is None:
+        raise ValueError(f"Contrato {payload.contrato_id} no encontrado")
+    if contrato.proyecto_id != factura.proyecto_id:
+        raise ValueError("El contrato no pertenece al proyecto de la factura")
+    if contrato.contratista_id != factura.contratista_id:
+        raise ValueError("El contrato no pertenece al contratista de la factura")
+    factura.contrato_id = contrato.id
+    db.commit()
+    db.refresh(factura)
+    return _a_resumen(factura)
+
+
+def borrar_factura(db: Session, factura_id: int) -> None:
+    factura = db.get(Factura, factura_id)
+    if factura is None:
+        raise ValueError(f"Factura {factura_id} no encontrada")
+    ruta = factura.ruta_almacen
+    db.query(Factura).filter(Factura.duplicado_de_id == factura.id).update(
+        {Factura.duplicado_de_id: None},
+        synchronize_session=False,
+    )
+    db.query(Asignacion).filter(Asignacion.factura_id == factura.id).delete(
+        synchronize_session=False
+    )
+    db.query(LineaFactura).filter(LineaFactura.factura_id == factura.id).delete(
+        synchronize_session=False
+    )
+    db.delete(factura)
+    db.commit()
+    almacen_svc.borrar_fichero(ruta)
+
+
 def _contratos_candidatos(
     db: Session,
     proyecto_id: int,
@@ -216,11 +281,45 @@ def _contratos_candidatos(
         .filter(
             Contrato.proyecto_id == proyecto_id,
             Contrato.contratista_id == contratista_id,
-            Contrato.estado_extraccion == "confirmada",
         )
         .order_by(Contrato.id.desc())
         .all()
     )
+
+
+def _contrato_unico_id(
+    db: Session,
+    proyecto_id: int,
+    contratista_id: int,
+) -> int | None:
+    candidatos = _contratos_candidatos(db, proyecto_id, contratista_id)
+    if len(candidatos) == 1:
+        return candidatos[0].id
+    return None
+
+
+def _rellenar_contrato_unico(db: Session, facturas: list[Factura]) -> None:
+    """Si el proveedor solo tiene un contrato en la obra, la factura se le enlaza."""
+    cambio = False
+    for factura in facturas:
+        if factura.contrato_id is not None or factura.proyecto_id is None:
+            continue
+        contrato_id = _contrato_unico_id(db, factura.proyecto_id, factura.contratista_id)
+        if contrato_id is None:
+            continue
+        factura.contrato_id = contrato_id
+        cambio = True
+    if cambio:
+        db.commit()
+
+
+def _etiqueta_contrato(factura: Factura) -> str | None:
+    if factura.contrato_id is None:
+        return None
+    contrato = factura.contrato
+    if contrato is not None and contrato.contratista and contrato.contratista.nombre:
+        return contrato.contratista.nombre
+    return f"Contrato #{factura.contrato_id}"
 
 
 def _a_resumen(factura: Factura) -> FacturaResumenOut:
@@ -234,6 +333,7 @@ def _a_resumen(factura: Factura) -> FacturaResumenOut:
         ),
         contratista_nif=factura.contratista.nif if factura.contratista else "—",
         contrato_id=factura.contrato_id,
+        contrato_etiqueta=_etiqueta_contrato(factura),
         total=factura.total,
         tipo=factura.tipo,
         es_escaneada=factura.es_escaneada,
@@ -275,7 +375,7 @@ def _parsear_factura(texto: str) -> dict:
     if nif_match is None:
         raise ValueError("No se ha detectado el NIF del contratista")
 
-    numero = _campo_texto(texto, ("número", "numero", "factura"))
+    numero = _numero_factura(texto)
     if not numero:
         raise ValueError("No se ha detectado el número de factura")
 
@@ -309,6 +409,45 @@ def _parsear_factura(texto: str) -> dict:
     }
 
 
+def _nif_clave(nif: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", nif.upper())
+
+
+def _contratista_por_nif(db: Session, nif: str) -> Contratista | None:
+    clave = _nif_clave(nif)
+    if not clave:
+        return None
+    for contratista in db.query(Contratista).all():
+        if _nif_clave(contratista.nif) == clave:
+            return contratista
+    return None
+
+
+def _numero_factura(texto: str) -> str | None:
+    lineas = [linea.strip() for linea in texto.splitlines()]
+    for indice, limpia in enumerate(lineas):
+        if not limpia:
+            continue
+        match = _NUMERO_ETIQUETA_RE.match(limpia)
+        if not match:
+            continue
+        valor = match.group(1).strip()
+        if valor:
+            return valor
+        for siguiente in lineas[indice + 1 :]:
+            if not siguiente:
+                continue
+            if (
+                ":" in siguiente
+                or not re.search(r"\d", siguiente)
+                or len(siguiente) > 100
+            ):
+                return None
+            return siguiente
+        return None
+    return None
+
+
 def _campo_texto(texto: str, etiquetas: tuple[str, ...]) -> str | None:
     for linea in texto.splitlines():
         limpia = linea.strip()
@@ -324,16 +463,36 @@ def _campo_texto(texto: str, etiquetas: tuple[str, ...]) -> str | None:
 
 
 def _campo_importe(texto: str, etiquetas: tuple[str, ...]) -> Decimal | None:
-    for linea in texto.splitlines():
+    lineas = texto.splitlines()
+    for indice, linea in enumerate(lineas):
         limpia = linea.strip()
+        if not limpia:
+            continue
         for etiqueta in etiquetas:
             match = re.match(
-                rf"^{re.escape(etiqueta)}(?:\s+\d+(?:[.,]\d+)?\s*%)?\s*[:#-]\s*(.+)$",
+                rf"^{re.escape(etiqueta)}(?:\s+\d+(?:[.,]\d+)?\s*%)?\s*[:#-]\s*(.*)$",
                 limpia,
                 flags=re.IGNORECASE,
             )
-            if match:
+            if match and match.group(1).strip():
                 return _parsear_decimal(match.group(1))
+            if match or re.match(
+                rf"^{re.escape(etiqueta)}\b", limpia, flags=re.IGNORECASE
+            ):
+                siguiente = _importe_en_linea_siguiente(lineas, indice + 1)
+                if siguiente is not None:
+                    return siguiente
+    return None
+
+
+def _importe_en_linea_siguiente(lineas: list[str], inicio: int) -> Decimal | None:
+    for linea in lineas[inicio:]:
+        limpia = linea.strip()
+        if not limpia:
+            continue
+        if _IMPORTE_SUELTO_RE.match(limpia):
+            return _parsear_decimal(limpia)
+        return None
     return None
 
 
@@ -353,7 +512,7 @@ def _parsear_decimal(valor: str) -> Decimal:
 
 
 def _parsear_fecha(valor: str) -> date:
-    for formato in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
+    for formato in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%y", "%d-%m-%y"):
         try:
             return datetime.strptime(valor.strip(), formato).date()
         except ValueError:

@@ -81,6 +81,10 @@ class ContratoCandidatoFacturaOut(BaseModel):
     precio_total: Money
 
 
+class EnlazarContratoFacturaIn(BaseModel):
+    contrato_id: int = Field(ge=1)
+
+
 class FacturaResumenOut(BaseModel):
     id: int
     proyecto_id: int
@@ -89,6 +93,7 @@ class FacturaResumenOut(BaseModel):
     contratista_nombre: str
     contratista_nif: str
     contrato_id: int | None
+    contrato_etiqueta: str | None = None
     total: Money
     tipo: str
     es_escaneada: bool

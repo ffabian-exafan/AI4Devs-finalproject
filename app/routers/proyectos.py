@@ -474,7 +474,7 @@ def enlazar_apartado(
             body.tarea_apartado_ids,
             explicaciones={item.tarea_id: item.explicacion for item in body.explicaciones},
             apartados_nuevos=[
-                (item.descripcion, item.importe, item.explicacion)
+                (item.linea_id, item.nombre, item.importe, item.explicacion)
                 for item in body.apartados_nuevos
             ],
         )
@@ -482,7 +482,7 @@ def enlazar_apartado(
         detail = str(exc)
         codigo = (
             status.HTTP_404_NOT_FOUND
-            if "no encontrado" in detail.lower()
+            if "no encontrado" in detail.lower() or "no encontrada" in detail.lower()
             else status.HTTP_422_UNPROCESSABLE_ENTITY
         )
         raise HTTPException(status_code=codigo, detail=detail) from exc

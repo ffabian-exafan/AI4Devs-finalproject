@@ -5,7 +5,16 @@ from decimal import Decimal
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Contrato, ContratoApartado, Factura, Nave, Presupuesto, Proyecto, Tarea
+from app.models import (
+    Contrato,
+    ContratoApartado,
+    Factura,
+    LineaPdfCliente,
+    Nave,
+    Presupuesto,
+    Proyecto,
+    Tarea,
+)
 from app.schemas.proyecto import (
     ApartadoContratoOut,
     ApartadoEnlaceOut,
@@ -303,6 +312,27 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             .all()
         ):
             raices_de_contrato.setdefault(tarea.contrato_id, []).append(tarea)
+    ids_linea = {
+        tarea.linea_pdf_cliente_id
+        for tareas in raices_de_contrato.values()
+        for tarea in tareas
+        if tarea.linea_pdf_cliente_id
+    }
+    lineas_pdf = {
+        linea.id: linea
+        for linea in (
+            db.query(LineaPdfCliente).filter(LineaPdfCliente.id.in_(ids_linea)).all()
+            if ids_linea
+            else []
+        )
+    }
+
+    def texto_linea(tarea: Tarea) -> tuple[int | None, str | None]:
+        linea = lineas_pdf.get(tarea.linea_pdf_cliente_id or 0)
+        if linea is None:
+            return None, None
+        return linea.id, linea.descripcion
+
     excel_para_cruce = [
         ap
         for ap in raices
@@ -327,6 +357,19 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             ):
                 fuera.append(tarea)
 
+        def enlace_de(ap: Tarea) -> ApartadoEnlaceOut:
+            linea_id, linea_texto = texto_linea(ap)
+            return ApartadoEnlaceOut(
+                id=ap.id,
+                codigo=ap.codigo,
+                descripcion=ap.descripcion,
+                importe=ap.importe_presupuestado,
+                es_de_contrato=ap.presupuesto_id is None,
+                explicacion=explicacion_de.get(ap.id),
+                linea_pdf_id=linea_id,
+                linea_pdf_descripcion=linea_texto,
+            )
+
         contratos_out.append(
             ContratoResumenOut(
                 id=c.id,
@@ -339,23 +382,15 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
                 tarea_apartado_ids=[ap.id for ap in enlazados],
                 apartado_codigo=" · ".join(ap.codigo for ap in enlazados) or None,
                 apartado_descripcion=" · ".join(ap.descripcion for ap in enlazados) or None,
-                apartados_enlace=[
-                    ApartadoEnlaceOut(
-                        id=ap.id,
-                        codigo=ap.codigo,
-                        descripcion=ap.descripcion,
-                        importe=ap.importe_presupuestado,
-                        es_de_contrato=ap.presupuesto_id is None,
-                        explicacion=explicacion_de.get(ap.id),
-                    )
-                    for ap in enlazados
-                ],
+                apartados_enlace=[enlace_de(ap) for ap in enlazados],
                 apartados_fuera_excel=[
                     ApartadoContratoOut(
                         id=ap.id,
                         codigo=ap.codigo,
                         descripcion=ap.descripcion,
                         importe=ap.importe_presupuestado,
+                        linea_pdf_id=texto_linea(ap)[0],
+                        linea_pdf_descripcion=texto_linea(ap)[1],
                     )
                     for ap in fuera
                 ],

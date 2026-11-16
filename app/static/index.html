@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cuadra</title>
   <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261111h" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261116d" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js"></script>
-  <script src="/js/obras.js?v=20261112e"></script>
+  <script src="/js/obras.js?v=20261116g"></script>
 </head>
 
 <body>
@@ -728,37 +728,37 @@
                     </label>
                   </template>
                 </div>
-                <span class="meta">Apartados del contrato que no están en el Excel. La explicación es obligatoria.</span>
-                <div class="elige-varios" x-show="c.opciones_contrato.length" :class="c.asociado && 'bloqueado'">
-                  <template x-for="op in c.opciones_contrato" :key="c.id + '-c-' + op.valor">
-                    <div>
-                      <label>
-                        <input type="checkbox" :value="op.valor" :disabled="c.asociado"
-                          :checked="c.apartado_ids.includes(op.valor)"
-                          @change="toggleApartado(c.id, op.valor, $event.target.checked)">
-                        <span><span class="meta" x-text="op.prefijo"></span> <span x-text="op.etiqueta"></span></span>
-                        <span class="cuantia num" x-text="op.cuantia"></span>
-                      </label>
-                      <textarea class="explica" x-show="c.apartado_ids.includes(op.valor)" :disabled="c.asociado"
-                        placeholder="Por qué este apartado no está en el Excel"
-                        :value="c.explicaciones[op.valor] || ''"
-                        @input="c.explicaciones[op.valor] = $event.target.value"></textarea>
+                <div class="stack" style="gap: 6px">
+                  <span class="meta">Apartados del PDF del cliente que no salen en el Excel. En cada uno anota el nombre, el importe y la explicación.</span>
+                  <p class="meta" x-show="!c.asociado && !vista.contratos.lineas_pdf_sin_excel.length">No hay apartados del PDF del cliente fuera del Excel.</p>
+                  <template x-for="item in c.pdf_guardados" :key="c.id + '-g-' + item.linea_id">
+                    <span class="sub">
+                      <span x-text="item.nombre"></span>
+                      · <span class="num" x-text="euro(item.importe)"></span>
+                      · <span x-text="item.linea_descripcion"></span>
+                      · <span x-text="item.explicacion"></span>
+                    </span>
+                  </template>
+                  <template x-for="linea in vista.contratos.lineas_pdf_sin_excel" :key="c.id + '-pdf-' + linea.id">
+                    <div class="stack" style="gap: 6px" x-show="!c.asociado && !lineaEnContrato(c, linea.id)">
+                      <button type="button" class="btn-texto" @click="c.linea_abierta = linea.id">
+                        <span x-text="linea.descripcion"></span>
+                        · <span class="num" x-text="linea.importe"></span>
+                      </button>
+                      <div class="stack" style="gap: 6px" x-show="c.linea_abierta === linea.id">
+                        <input class="campo" type="text" placeholder="Nombre" x-model="c.nuevo_nombre">
+                        <input class="campo" type="text" inputmode="decimal" placeholder="Importe" x-model="c.nuevo_importe">
+                        <textarea class="explica" placeholder="Explicación obligatoria" x-model="c.nuevo_explicacion"></textarea>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                          @click="anadirApartadoPdf(c.id, linea)">Añadir a este contrato</button>
+                      </div>
                     </div>
                   </template>
-                </div>
-                <div x-show="!c.asociado" class="stack" style="gap: 6px">
-                  <button type="button" class="btn-texto" @click="c.anadiendo = !c.anadiendo">Añadir apartado</button>
-                  <div class="stack" style="gap: 6px" x-show="c.anadiendo">
-                    <input class="campo" type="text" placeholder="Descripción" x-model="c.nuevo_descripcion">
-                    <input class="campo" type="text" inputmode="decimal" placeholder="Importe" x-model="c.nuevo_importe">
-                    <textarea class="explica" placeholder="Explicación obligatoria" x-model="c.nuevo_explicacion"></textarea>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                      @click="anadirApartadoManual(c.id)">Añadir a la lista</button>
-                  </div>
                   <template x-for="(item, indice) in c.nuevos" :key="c.id + '-n-' + indice">
                     <span class="sub">
-                      <span x-text="item.descripcion"></span>
+                      <span x-text="item.nombre"></span>
                       · <span class="num" x-text="euro(item.importe)"></span>
+                      · <span x-text="item.linea_descripcion"></span>
                       · <span x-text="item.explicacion"></span>
                       <button type="button" class="btn-texto" @click="quitarApartadoManual(c.id, indice)">Quitar</button>
                     </span>
@@ -815,7 +815,7 @@
             <div class="card scroll crece">
               <div style="min-width: 640px">
                 <div class="cabecera cols-facturas">
-                  <span>Factura</span><span>Apartado</span><span class="der">Importe</span><span>Resultado</span>
+                  <span>Factura</span><span>Contrato</span><span class="der">Importe</span><span>Resultado</span><span></span>
                 </div>
                 <template x-for="f in facturasVisibles" :key="f.id">
                   <div class="fila-factura cols-facturas" role="button" tabindex="0" :class="sel === f.id && 'sel'"
@@ -830,6 +830,7 @@
                       <span class="badge" :class="'badge-' + f.tono" x-text="f.estado"></span>
                       <div class="rojo" style="font-size: 12px; font-weight: 600" x-text="f.diferencia"></div>
                     </div>
+                    <button type="button" class="btn-linea btn-linea-peligro" @click.stop="borrarFactura(f)">Borrar</button>
                   </div>
                 </template>
               </div>
@@ -847,6 +848,17 @@
                         factura</a>
                     </div>
                     <button type="button" class="cerrar" @click="sel = null">×</button>
+                  </div>
+                  <div style="padding: 0 20px" x-show="seleccion.candidatos && seleccion.candidatos.length">
+                    <label class="meta">Contrato del proveedor
+                      <select :value="seleccion.contrato_id ? String(seleccion.contrato_id) : ''"
+                        @change="enlazarContratoFactura(seleccion, $event.target.value)">
+                        <option value="" disabled>Elige el contrato</option>
+                        <template x-for="c in seleccion.candidatos" :key="c.id">
+                          <option :value="String(c.id)" x-text="c.etiqueta"></option>
+                        </template>
+                      </select>
+                    </label>
                   </div>
                   <div class="aviso-ambar" style="margin: 16px 20px 0" x-show="seleccion.es_duplicado"
                     x-text="seleccion.aviso_duplicado"></div>
@@ -880,6 +892,8 @@
                           :class="accion.variante === 'primary' ? 'btn-primary' : 'btn-secondary'"
                           @click="resolver(seleccion.id, accion.resolucion)" x-text="accion.etiqueta"></button>
                       </template>
+                      <button type="button" class="btn btn-secondary btn-sm"
+                        @click="borrarFactura(seleccion)">Borrar factura</button>
                     </div>
                   </div>
                 </div>
@@ -902,58 +916,32 @@
           </div>
           <div class="banda">
             <div class="card crece" style="padding: 6px 20px 14px; flex: 999 1 520px">
-              <div class="fila-titulo" style="padding: 14px 0 10px">
-                <h2 class="h2" style="font-size: 17px">Presupuestado, contratado y facturado</h2>
-                <div class="leyenda">
-                  <span><i class="muestra" style="background: var(--p200)"></i> Contratado</span>
-                  <span><i class="muestra" style="background: var(--degradado)"></i> Facturado</span>
+              <div style="padding: 14px 0 6px">
+                <h2 class="h2" style="font-size: 17px">Contratos de subcontrata</h2>
+                <div class="leyenda" style="margin-top: 6px">
                   <span><i class="muestra-pres"></i> Presupuestado</span>
+                  <span><i class="muestra-fact"></i> Facturado</span>
                 </div>
               </div>
-              <template x-for="(fila, i) in vista.control.filas" :key="fila.codigo">
-                <div>
-                  <div class="fila-ctrl" @click="ctrlOpen = ctrlOpen === i ? -1 : i">
-                    <div>
-                      <strong>
-                        <span x-text="fila.codigo + ' · ' + fila.nombre"></span>
-                        <span class="apagado" x-text="ctrlOpen === i ? '▾' : '▸'"></span>
-                      </strong>
-                      <div class="meta num" x-text="fila.detalle"></div>
-                    </div>
+              <template x-for="fila in vista.control.filas" :key="fila.id">
+                <div class="fila-ctrl estatica">
+                  <div>
+                    <strong x-text="fila.nombre"></strong>
+                    <div class="meta">Contrato <span class="num" x-text="fila.contratado"></span></div>
+                  </div>
+                  <div class="track-bloque">
                     <div class="track">
-                      <div class="contratado" :style="'width:' + fila.ancho_contratado"></div>
                       <div class="facturado" :style="'width:' + fila.ancho_facturado"></div>
                       <div class="marca" :style="'left:' + fila.ancho_presupuesto"></div>
                     </div>
-                    <strong class="der num" :class="fila.alerta ? 'rojo' : 'apagado'" x-text="fila.desviacion"></strong>
-                  </div>
-                  <div x-show="ctrlOpen === i"
-                    style="background: var(--bg); border-radius: 8px; padding: 4px 14px 8px; margin-bottom: 10px; overflow-x: auto">
-                    <div style="min-width: 520px">
-                      <div class="grid-ctrl-p th">
-                        <span>Partida</span><span>Descripción</span>
-                        <span class="der">Presupuesto</span><span class="der">Facturado</span><span
-                          class="der">Desviación</span>
-                      </div>
-                      <template x-for="(p, j) in fila.partidas" :key="fila.codigo + '-' + j">
-                        <div class="grid-ctrl-p td">
-                          <span class="meta" x-text="p.codigo"></span>
-                          <span x-text="p.descripcion"></span>
-                          <span class="der">
-                            <span x-text="p.presupuesto"></span><br />
-                            <span class="meta" x-text="p.medicion"></span>
-                          </span>
-                          <span class="der">
-                            <span x-text="p.facturado"></span><br />
-                            <span class="meta" x-text="p.medicion_facturada"></span>
-                          </span>
-                          <strong class="der" :class="p.alerta ? 'rojo' : 'apagado'" x-text="p.desviacion"></strong>
-                        </div>
-                      </template>
+                    <div class="track-cifras">
+                      <span><i class="muestra-pres"></i> <span class="num" x-text="fila.presupuestado"></span></span>
+                      <span><i class="muestra-fact"></i> <span class="num" x-text="fila.facturado"></span></span>
                     </div>
                   </div>
                 </div>
               </template>
+              <p class="sub" x-show="vista.control.filas.length === 0">Todavía no hay contratos de subcontrata.</p>
             </div>
             <div class="stack" style="flex: 1 1 300px">
               <h2 class="h2" style="font-size: 17px">Descuadres abiertos</h2>

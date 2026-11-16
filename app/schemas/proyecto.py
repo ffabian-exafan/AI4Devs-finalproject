@@ -81,7 +81,7 @@ class ApartadoResumenOut(BaseModel):
 
 
 class ApartadoEnlaceOut(BaseModel):
-    """Apartado confirmado en un contrato. Puede ser del Excel o del propio contrato."""
+    """Apartado confirmado en un contrato. Puede ser del Excel, del contrato o del PDF del cliente."""
 
     id: int
     codigo: str
@@ -89,15 +89,19 @@ class ApartadoEnlaceOut(BaseModel):
     importe: Money = Decimal("0")
     es_de_contrato: bool = False
     explicacion: str | None = None
+    linea_pdf_id: int | None = None
+    linea_pdf_descripcion: str | None = None
 
 
 class ApartadoContratoOut(BaseModel):
-    """Apartado leído en el contrato que no está en el Excel."""
+    """Apartado leído en el contrato que no está en el Excel, o anotado sobre una línea del PDF."""
 
     id: int
     codigo: str
     descripcion: str
     importe: Money
+    linea_pdf_id: int | None = None
+    linea_pdf_descripcion: str | None = None
 
 
 class ContratoResumenOut(BaseModel):

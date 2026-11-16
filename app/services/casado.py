@@ -8,7 +8,15 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Contrato, ContratoApartado, Nave, Tarea
+from app.models import (
+    Contrato,
+    ContratoApartado,
+    LineaPdfCliente,
+    LineaPdfClienteTarea,
+    Nave,
+    Presupuesto,
+    Tarea,
+)
 from app.schemas.casado import SugerenciaApartadoOut
 from app.services.jerarquia import mapa_padres
 
@@ -155,14 +163,15 @@ def enlazar_contrato_apartado(
     contrato_id: int,
     tarea_apartado_ids: list[int],
     explicaciones: dict[int, str] | None = None,
-    apartados_nuevos: list[tuple[str, Decimal, str]] | None = None,
+    apartados_nuevos: list[tuple[int, str, Decimal, str]] | None = None,
 ) -> tuple[Contrato, list[Tarea]]:
     """
     Confirma los apartados que cubre el contrato.
     Sustituye el enlace anterior. Valida cada id en el backend.
 
-    Un apartado del propio contrato (no está en el Excel) exige explicación.
-    Su importe entra en la base y no se carga como descuadre del Excel.
+    Un apartado escrito a mano cuelga de una línea del PDF del cliente que no
+    está en el Excel. Lleva nombre, importe y explicación. El importe entra en
+    la base y no se carga como descuadre del Excel.
     """
     textos = {clave: (valor or "").strip() for clave, valor in (explicaciones or {}).items()}
     ids = list(tarea_apartado_ids)
@@ -175,8 +184,13 @@ def enlazar_contrato_apartado(
     if contrato is None:
         raise ValueError(f"Contrato {contrato_id} no encontrado en proyecto {proyecto_id}")
 
-    for descripcion, importe, explicacion in apartados_nuevos or []:
-        creado = _crear_apartado_de_contrato(db, contrato, descripcion, importe)
+    lineas_vistas: set[int] = set()
+    for linea_id, nombre, importe, explicacion in apartados_nuevos or []:
+        if linea_id in lineas_vistas:
+            raise ValueError("Esa línea del PDF ya está en este enlace")
+        lineas_vistas.add(linea_id)
+        linea = _linea_pdf_sin_excel(db, proyecto_id, linea_id)
+        creado = _crear_apartado_de_contrato(db, contrato, linea, nombre, importe)
         ids.append(creado.id)
         textos[creado.id] = explicacion.strip()
 
@@ -230,32 +244,70 @@ def aparece_en_excel(descripcion: str, apartados_excel: list[Tarea]) -> bool:
     return False
 
 
+def _linea_pdf_sin_excel(db: Session, proyecto_id: int, linea_id: int) -> LineaPdfCliente:
+    """Línea de importe del PDF del cliente que no está contrastada con el Excel."""
+    linea = db.get(LineaPdfCliente, linea_id)
+    presupuesto = db.get(Presupuesto, linea.presupuesto_id) if linea is not None else None
+    if (
+        linea is None
+        or presupuesto is None
+        or presupuesto.proyecto_id != proyecto_id
+        or presupuesto.formato != "pdf_cliente"
+    ):
+        raise ValueError(f"Línea {linea_id} no encontrada")
+    if linea.tipo != "importe":
+        raise ValueError("Solo se puede relacionar una línea de importe del PDF del cliente")
+    if linea.apartado_gestion_id is not None:
+        raise ValueError("Esa línea ya es un apartado de solo gestión")
+    contrastada = (
+        db.query(LineaPdfClienteTarea)
+        .filter(
+            LineaPdfClienteTarea.linea_id == linea.id,
+            LineaPdfClienteTarea.es_sugerencia.is_(False),
+        )
+        .first()
+    )
+    if contrastada is not None:
+        raise ValueError("Esa línea del PDF ya está en el Excel")
+    return linea
+
+
 def _crear_apartado_de_contrato(
     db: Session,
     contrato: Contrato,
-    descripcion: str,
+    linea: LineaPdfCliente,
+    nombre: str,
     importe: Decimal,
 ) -> Tarea:
-    """Apartado escrito a mano, colgado del contrato. No entra en el Excel."""
+    """Apartado escrito a mano sobre una línea del PDF del cliente. No entra en el Excel."""
     if contrato.nave_id is None:
         raise ValueError("El contrato no tiene nave donde colgar el apartado")
-    cuantos = (
+    codigo = f"pdf.{linea.id}"
+    usado = (
         db.query(Tarea)
-        .filter(Tarea.contrato_id == contrato.id, Tarea.codigo.like("manual.%"))
-        .count()
+        .filter(Tarea.contrato_id == contrato.id, Tarea.codigo == codigo)
+        .first()
     )
+    if usado is not None:
+        cuantos = (
+            db.query(Tarea)
+            .filter(Tarea.contrato_id == contrato.id, Tarea.codigo.like(f"pdf.{linea.id}.%"))
+            .count()
+        )
+        codigo = f"pdf.{linea.id}.{cuantos + 1}"
     tarea = Tarea(
         nave_id=contrato.nave_id,
         presupuesto_id=None,
         contrato_id=contrato.id,
         tarea_padre_id=None,
         contratista_id=contrato.contratista_id,
-        codigo=f"manual.{cuantos + 1}",
+        codigo=codigo,
         nivel="apartado",
-        descripcion=descripcion.strip(),
+        descripcion=nombre.strip(),
         importe_presupuestado=Decimal(importe).quantize(Decimal("0.01")),
         es_montaje=False,
         solo_gestion=False,
+        linea_pdf_cliente_id=linea.id,
         tiene_anotacion_manual=False,
         estado_revision="confirmada",
         estado="no_iniciada",

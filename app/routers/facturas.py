@@ -7,6 +7,7 @@ from app.db import get_db
 from app.schemas.factura import (
     ConfirmarFacturaIn,
     ConfirmarFacturaOut,
+    EnlazarContratoFacturaIn,
     FacturaImportacionOut,
     FacturaRevisionOut,
     FacturaResumenOut,
@@ -72,6 +73,35 @@ def obtener_factura(
 ) -> FacturaRevisionOut:
     try:
         return facturas_svc.obtener_factura(db, factura_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post("/{factura_id}/contrato", response_model=FacturaResumenOut)
+def enlazar_contrato(
+    factura_id: int,
+    payload: EnlazarContratoFacturaIn,
+    db: Session = Depends(get_db),
+) -> FacturaResumenOut:
+    try:
+        return facturas_svc.enlazar_contrato(db, factura_id, payload)
+    except ValueError as exc:
+        detail = str(exc)
+        codigo = (
+            status.HTTP_404_NOT_FOUND
+            if "no encontrado" in detail.lower()
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+@router.delete("/{factura_id}", status_code=status.HTTP_204_NO_CONTENT)
+def borrar_factura(factura_id: int, db: Session = Depends(get_db)) -> None:
+    try:
+        facturas_svc.borrar_factura(db, factura_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

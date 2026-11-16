@@ -6,18 +6,19 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ApartadoManualIn(BaseModel):
-    """Apartado que se escribe a mano porque no salió en el Excel ni en la lectura."""
+    """Nombre, importe y explicación sobre una línea del PDF del cliente que no está en el Excel."""
 
-    descripcion: str
+    linea_id: int = Field(ge=1)
+    nombre: str
     importe: Decimal
     explicacion: str
 
     @model_validator(mode="after")
     def exigir_texto(self) -> "ApartadoManualIn":
-        self.descripcion = self.descripcion.strip()
+        self.nombre = self.nombre.strip()
         self.explicacion = self.explicacion.strip()
-        if len(self.descripcion) < 2:
-            raise ValueError("Indica la descripción del apartado")
+        if len(self.nombre) < 2:
+            raise ValueError("Indica el nombre del apartado")
         if len(self.explicacion) < 5:
             raise ValueError("La explicación del apartado es obligatoria")
         if self.importe <= 0:
