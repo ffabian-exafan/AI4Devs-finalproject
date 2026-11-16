@@ -93,3 +93,50 @@ def test_si_el_vistazo_falla_se_usa_sonnet():
     decision = decidir_lectura_pdf(_pdf(frase), forzar_vision=False, detectar_manuscrito=vistazo)
     assert decision.via == "sonnet"
     assert decision.motivo == "detector_fallo"
+
+
+def test_el_vistazo_de_haiku_lee_el_json_y_no_pide_markdown():
+    from unittest.mock import patch
+
+    from app.services.lectura_pdf import detectar_manuscrito_haiku
+
+    frase = "Presupuesto con texto seleccionable suficiente para no parecer un escaneo."
+
+    def completar_texto(**kwargs):
+        assert kwargs["model"] == "claude-haiku-4-5"
+        assert kwargs["documento_b64"]
+        assert kwargs["max_tokens"] <= 400
+        assert "tiene_manuscrito" in kwargs["system"]
+        assert "No transcribas" in kwargs["system"]
+        return '{"tiene_manuscrito": false}'
+
+    with patch("app.services.lectura_pdf.llm_svc.completar_texto", side_effect=completar_texto):
+        with patch("app.services.lectura_pdf.llm_svc.hay_llm", return_value=True):
+            with patch("app.services.lectura_pdf.llm_svc.es_anthropic", return_value=True):
+                with patch(
+                    "app.services.lectura_pdf.llm_svc.modelo_extraccion",
+                    return_value="claude-haiku-4-5",
+                ):
+                    assert detectar_manuscrito_haiku(_pdf(frase)) is False
+
+
+def test_un_json_roto_del_vistazo_no_se_traga():
+    from unittest.mock import patch
+
+    from app.services.lectura_pdf import detectar_manuscrito_haiku
+
+    with patch(
+        "app.services.lectura_pdf.llm_svc.completar_texto",
+        return_value="no es json",
+    ):
+        with patch("app.services.lectura_pdf.llm_svc.hay_llm", return_value=True):
+            with patch("app.services.lectura_pdf.llm_svc.es_anthropic", return_value=True):
+                with patch(
+                    "app.services.lectura_pdf.llm_svc.modelo_extraccion",
+                    return_value="claude-haiku-4-5",
+                ):
+                    try:
+                        detectar_manuscrito_haiku(_pdf("texto " * 20))
+                    except ValueError:
+                        return
+                    raise AssertionError("un vistazo ilegible tiene que fallar, no devolver false")

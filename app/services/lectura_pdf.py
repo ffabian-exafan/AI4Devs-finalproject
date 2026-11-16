@@ -6,12 +6,15 @@ de corrección y el caso en que el vistazo ve bolígrafo o falla.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
 import pymupdf
 
+from app.config import get_settings
+from app.services import llm as llm_svc
 from app.services import ocr as ocr_svc
 
 Via = Literal["texto_local", "sonnet"]
@@ -21,6 +24,14 @@ Via = Literal["texto_local", "sonnet"]
 _TIPOS_CORRECCION = frozenset(
     {"Ink", "StrikeOut", "Squiggly", "Caret", "Highlight", "Underline", "FreeText"}
 )
+
+_PROMPT_VISTA = """\
+Miras un PDF de obra solo para detectar bolígrafo.
+Respondes solo JSON: {"tiene_manuscrito": true} o {"tiene_manuscrito": false}.
+true si un tachón, una cifra escrita a mano o una corrección tapa o cambia un valor impreso.
+false si todo es texto impreso, firma digital o sello, sin corrección encima de una cifra.
+No transcribas el documento y no inventes importes.
+"""
 
 
 @dataclass(frozen=True)
@@ -52,6 +63,29 @@ def decidir_lectura_pdf(
     if hay_manuscrito:
         return DecisionLectura("sonnet", False, texto, "manuscrito")
     return DecisionLectura("texto_local", False, texto, "limpio")
+
+
+def detectar_manuscrito_haiku(contenido: bytes) -> bool:
+    """True si Haiku ve un tachón. Si la respuesta no es un bool, lanza ValueError."""
+    settings = get_settings()
+    if not (llm_svc.hay_llm(settings) and llm_svc.es_anthropic(settings)):
+        raise ValueError("El vistazo de manuscrito pide la API de Claude")
+    texto = llm_svc.completar_texto(
+        api_key=settings.llm_api_key or "",
+        api_base=settings.llm_api_base,
+        anthropic=True,
+        model=llm_svc.modelo_extraccion(settings),
+        system=_PROMPT_VISTA,
+        user="¿Hay una corrección manuscrita sobre un valor impreso?",
+        documento_b64=base64.b64encode(contenido).decode("ascii"),
+        documento_mime="application/pdf",
+        max_tokens=200,
+    )
+    parsed = llm_svc.parsear_json_llm(texto)
+    valor = parsed.get("tiene_manuscrito")
+    if not isinstance(valor, bool):
+        raise ValueError("el vistazo no devolvió tiene_manuscrito como bool")
+    return valor
 
 
 def _texto_pdf(contenido: bytes) -> str:
