@@ -175,6 +175,8 @@ def contrastar_presupuesto_cliente(
     proyecto_id: int,
     contenido: bytes,
     nombre_fichero: str,
+    *,
+    forzar_vision: bool = False,
 ) -> ContrastarClienteOut:
     """Lee el PDF del cliente y deja cada importe para contrastarlo a mano. No crea partidas."""
     proyecto = db.get(Proyecto, proyecto_id)
@@ -185,7 +187,7 @@ def contrastar_presupuesto_cliente(
         raise ValueError("La obra no tiene subapartados de Excel con los que contrastar")
     _exigir_fichero_nuevo(db, proyecto_id, "pdf_cliente", nombre_fichero, contenido)
 
-    leido = leer_presupuesto(contenido, nombre_fichero)
+    leido = leer_presupuesto(contenido, nombre_fichero, forzar_vision=forzar_vision)
     extraido = extraccion_svc.extraer_presupuesto(leido.texto)
     version = (
         db.query(Presupuesto)

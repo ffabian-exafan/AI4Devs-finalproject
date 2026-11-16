@@ -38,6 +38,10 @@ from app.services import solo_gestion as solo_gestion_svc
 router = APIRouter(tags=["proyectos"])
 
 
+def _ver_pagina(valor: str | None) -> bool:
+    return (valor or "").strip().lower() in {"1", "true", "on", "si", "sí", "yes"}
+
+
 @router.get("/proyectos", response_model=list[ProyectoRead])
 def listar_proyectos(db: Session = Depends(get_db)) -> list[ProyectoRead]:
     return proyectos_svc.listar_proyectos(db)
@@ -146,6 +150,7 @@ def obtener_proyecto(
 )
 async def importar_presupuesto(
     fichero: UploadFile = File(...),
+    ver_pagina: str = Form(""),
     db: Session = Depends(get_db),
 ) -> ImportarPresupuestoOut:
     if not fichero.filename:
@@ -162,7 +167,12 @@ async def importar_presupuesto(
         )
 
     try:
-        return ingesta_svc.importar_presupuesto(db, contenido, fichero.filename)
+        return ingesta_svc.importar_presupuesto(
+            db,
+            contenido,
+            fichero.filename,
+            forzar_vision=_ver_pagina(ver_pagina),
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -224,6 +234,7 @@ async def anadir_presupuesto_excel(
 async def contrastar_presupuesto_cliente(
     proyecto_id: int,
     fichero: UploadFile = File(...),
+    ver_pagina: str = Form(""),
     db: Session = Depends(get_db),
 ) -> ContrastarClienteOut:
     if not fichero.filename:
@@ -239,7 +250,11 @@ async def contrastar_presupuesto_cliente(
         )
     try:
         return presupuesto_excel_svc.contrastar_presupuesto_cliente(
-            db, proyecto_id, contenido, fichero.filename
+            db,
+            proyecto_id,
+            contenido,
+            fichero.filename,
+            forzar_vision=_ver_pagina(ver_pagina),
         )
     except ValueError as exc:
         detail = str(exc)
@@ -423,6 +438,7 @@ async def importar_contrato(
     proyecto_id: int,
     fichero: UploadFile = File(...),
     nave_id: int | None = Form(default=None),
+    ver_pagina: str = Form(""),
     db: Session = Depends(get_db),
 ) -> ImportarContratoOut:
     if not fichero.filename:
@@ -445,6 +461,7 @@ async def importar_contrato(
             contenido,
             fichero.filename,
             nave_id=nave_id,
+            forzar_vision=_ver_pagina(ver_pagina),
         )
     except ValueError as exc:
         detail = str(exc)

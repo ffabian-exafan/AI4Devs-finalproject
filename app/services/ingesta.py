@@ -103,9 +103,11 @@ def importar_presupuesto(
     db: Session,
     contenido: bytes,
     nombre_fichero: str,
+    *,
+    forzar_vision: bool = False,
 ) -> ImportarPresupuestoOut:
     """Lee, extrae, valida forma y persiste proyecto en pendiente de revisión."""
-    leido = leer_presupuesto(contenido, nombre_fichero)
+    leido = leer_presupuesto(contenido, nombre_fichero, forzar_vision=forzar_vision)
     extraido = extraccion_svc.extraer_presupuesto(leido.texto)
     if leido.es_escaneado:
         extraido = extraido.model_copy(update={"requiere_revision": True})
@@ -322,6 +324,8 @@ def importar_contrato(
     contenido: bytes,
     nombre_fichero: str,
     nave_id: int | None = None,
+    *,
+    forzar_vision: bool = False,
 ) -> ImportarContratoOut:
     """Lee, extrae y persiste un contrato enlazado al proyecto (árbol propio)."""
     proyecto = db.get(Proyecto, proyecto_id)
@@ -335,7 +339,7 @@ def importar_contrato(
     ]
     almacen_svc.exigir_distinto(contenido, nombre_fichero, rutas)
 
-    leido = leer_contrato(contenido, nombre_fichero)
+    leido = leer_contrato(contenido, nombre_fichero, forzar_vision=forzar_vision)
     apartados = [
         (tarea.codigo, tarea.descripcion)
         for tarea in casado_svc.apartados_de_presupuesto(db, proyecto.id)

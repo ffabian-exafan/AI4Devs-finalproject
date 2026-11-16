@@ -199,3 +199,82 @@ def test_si_el_vistazo_marca_manuscrito_el_contrato_sigue_en_sonnet(monkeypatch)
     leido = leer_contrato(_pdf(frase), "contrato.pdf", forzar_vision=False)
     assert leido.texto == "markdown con (manuscrito)"
     assert leido.es_escaneado is False
+
+
+import pytest
+from decimal import Decimal
+from fastapi.testclient import TestClient
+
+from app.db import SessionLocal
+from app.main import app
+from app.schemas.extraccion import ContratoExtraido
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def db():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+def _contrato_falso(_texto: str, _apartados: list) -> ContratoExtraido:
+    return ContratoExtraido(
+        contratista_nif="B00000001",
+        contratista_nombre="Gremio de prueba",
+        contratista_tipo="externo",
+        precio_total=Decimal("1000.00"),
+        requiere_revision=True,
+        arbol_tareas=[],
+    )
+
+
+def test_la_casilla_del_formulario_fuerza_sonnet_en_el_contrato(client, monkeypatch):
+    """POST con ver_pagina=1 transcribe aunque el vistazo diga que no hay tachón."""
+    from app.models import Nave, Proyecto
+
+    monkeypatch.setattr("app.services.ingesta.llm_svc.hay_llm", lambda _s: True)
+    monkeypatch.setattr("app.services.ingesta.llm_svc.es_anthropic", lambda _s: True)
+    monkeypatch.setattr(
+        "app.services.ingesta.detectar_manuscrito_haiku",
+        lambda _contenido: False,
+    )
+    visto = {"sonnet": False}
+
+    def transcribe(_contenido: bytes) -> str:
+        visto["sonnet"] = True
+        return (
+            "Contratista B00000001. Precio 1000.\n\n"
+            "| codigo | descripcion | importe |\n| 1 | Sala | 1000 |"
+        )
+
+    monkeypatch.setattr("app.services.ingesta.transcribir_contrato_a_markdown", transcribe)
+    monkeypatch.setattr(
+        "app.services.extraccion_contrato.extraer_contrato",
+        _contrato_falso,
+    )
+
+    db = SessionLocal()
+    proyecto = Proyecto(nombre="Obra casilla", tipo="reforma", estado="activa")
+    db.add(proyecto)
+    db.flush()
+    db.add(Nave(proyecto_id=proyecto.id, codigo="01", descripcion="Nave", importe_presupuestado=0))
+    db.commit()
+    proyecto_id = proyecto.id
+    db.close()
+
+    frase = "Contrato con texto seleccionable suficiente para leerse sin Sonnet."
+    response = client.post(
+        f"/proyectos/{proyecto_id}/importar-contrato",
+        files={"fichero": ("contrato.pdf", _pdf(frase), "application/pdf")},
+        data={"ver_pagina": "1"},
+    )
+    assert response.status_code == 201, response.text
+    assert visto["sonnet"] is True
