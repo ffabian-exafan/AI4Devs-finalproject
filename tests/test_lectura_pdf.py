@@ -140,3 +140,62 @@ def test_un_json_roto_del_vistazo_no_se_traga():
                     except ValueError:
                         return
                     raise AssertionError("un vistazo ilegible tiene que fallar, no devolver false")
+
+
+def test_un_presupuesto_con_texto_no_llama_a_sonnet(monkeypatch):
+    from app.services.ingesta import leer_presupuesto
+
+    monkeypatch.setattr("app.services.ingesta.llm_svc.hay_llm", lambda _s: True)
+    monkeypatch.setattr("app.services.ingesta.llm_svc.es_anthropic", lambda _s: True)
+    monkeypatch.setattr(
+        "app.services.ingesta.detectar_manuscrito_haiku",
+        lambda _contenido: False,
+    )
+
+    def no_sonnet(_contenido: bytes) -> str:
+        raise AssertionError("Sonnet no tiene que ver un PDF con texto limpio")
+
+    monkeypatch.setattr("app.services.ingesta.transcribir_pdf_a_markdown", no_sonnet)
+    frase = "Apartado cubierta por 80000 euros. Texto de presupuesto suficientemente largo."
+    leido = leer_presupuesto(_pdf(frase), "presupuesto.pdf")
+    assert leido.es_escaneado is False
+    assert "cubierta" in leido.texto.lower()
+
+
+def test_un_contrato_con_texto_no_llama_a_sonnet(monkeypatch):
+    from app.services.ingesta import leer_contrato
+
+    monkeypatch.setattr("app.services.ingesta.llm_svc.hay_llm", lambda _s: True)
+    monkeypatch.setattr("app.services.ingesta.llm_svc.es_anthropic", lambda _s: True)
+    monkeypatch.setattr(
+        "app.services.ingesta.detectar_manuscrito_haiku",
+        lambda _contenido: False,
+    )
+
+    def no_sonnet(_contenido: bytes) -> str:
+        raise AssertionError("Sonnet no tiene que ver un contrato con texto limpio")
+
+    monkeypatch.setattr("app.services.ingesta.transcribir_contrato_a_markdown", no_sonnet)
+    frase = "Contrato de electricidad. Precio cerrado 45000 euros. Texto largo de prueba."
+    leido = leer_contrato(_pdf(frase), "contrato.pdf")
+    assert leido.es_escaneado is False
+    assert "electricidad" in leido.texto.lower()
+
+
+def test_si_el_vistazo_marca_manuscrito_el_contrato_sigue_en_sonnet(monkeypatch):
+    from app.services.ingesta import leer_contrato
+
+    monkeypatch.setattr("app.services.ingesta.llm_svc.hay_llm", lambda _s: True)
+    monkeypatch.setattr("app.services.ingesta.llm_svc.es_anthropic", lambda _s: True)
+    monkeypatch.setattr(
+        "app.services.ingesta.detectar_manuscrito_haiku",
+        lambda _contenido: True,
+    )
+    monkeypatch.setattr(
+        "app.services.ingesta.transcribir_contrato_a_markdown",
+        lambda _contenido: "markdown con (manuscrito)",
+    )
+    frase = "Contrato con texto seleccionable suficiente para no parecer escaneado."
+    leido = leer_contrato(_pdf(frase), "contrato.pdf", forzar_vision=False)
+    assert leido.texto == "markdown con (manuscrito)"
+    assert leido.es_escaneado is False

@@ -96,37 +96,35 @@ def test_un_codigo_que_no_esta_en_el_presupuesto_no_se_asigna(monkeypatch):
     assert extraido.apartado_sugerido_codigo is None
 
 
-def test_pdf_de_contrato_lo_transcribe_sonnet(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.ingesta.llm_svc.hay_llm",
-        lambda _settings: True,
-    )
-    monkeypatch.setattr(
-        "app.services.ingesta.llm_svc.es_anthropic",
-        lambda _settings: True,
-    )
-    monkeypatch.setattr(
-        "app.services.ingesta._leer_pdf_pymupdf",
-        lambda _contenido: "texto nativo suficiente del contrato " * 5,
-    )
-    monkeypatch.setattr(
-        "app.services.ingesta.ocr_svc.pdf_parece_escaneado",
-        lambda _texto: False,
-    )
-    llamado = {}
+def _pdf_texto(frase: str) -> bytes:
+    import pymupdf
 
-    def transcribe(contenido: bytes) -> str:
-        llamado["bytes"] = contenido
+    doc = pymupdf.open()
+    pagina = doc.new_page()
+    pagina.insert_text((72, 72), frase)
+    contenido = doc.tobytes()
+    doc.close()
+    return contenido
+
+
+def test_pdf_de_contrato_con_texto_no_pasa_por_sonnet(monkeypatch):
+    monkeypatch.setattr("app.services.ingesta.llm_svc.hay_llm", lambda _settings: True)
+    monkeypatch.setattr("app.services.ingesta.llm_svc.es_anthropic", lambda _settings: True)
+    monkeypatch.setattr(
+        "app.services.ingesta.detectar_manuscrito_haiku",
+        lambda _contenido: False,
+    )
+    llamado = {"sonnet": False}
+
+    def transcribe(_contenido: bytes) -> str:
+        llamado["sonnet"] = True
         return "markdown del contrato"
 
-    monkeypatch.setattr(
-        "app.services.ingesta.transcribir_contrato_a_markdown",
-        transcribe,
-    )
-
-    leido = leer_contrato(b"%PDF-1.4 contrato", "contrato_prueba.pdf")
-    assert llamado["bytes"].startswith(b"%PDF")
-    assert leido.texto == "markdown del contrato"
+    monkeypatch.setattr("app.services.ingesta.transcribir_contrato_a_markdown", transcribe)
+    frase = "Contrato de subcontrata con texto seleccionable y precio cerrado de prueba."
+    leido = leer_contrato(_pdf_texto(frase), "contrato_prueba.pdf")
+    assert llamado["sonnet"] is False
+    assert "precio cerrado" in leido.texto
     assert leido.es_escaneado is False
 
 

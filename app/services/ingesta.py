@@ -22,6 +22,7 @@ from app.services import extraccion as extraccion_svc
 from app.services import extraccion_contrato as extraccion_contrato_svc
 from app.services import llm as llm_svc
 from app.services import ocr as ocr_svc
+from app.services.lectura_pdf import DecisionLectura, decidir_lectura_pdf, detectar_manuscrito_haiku
 from app.services.transcripcion import (
     transcribir_contrato_a_markdown,
     transcribir_pdf_a_markdown,
@@ -71,10 +72,16 @@ def leer_fichero(ruta: Path | str) -> DocumentoLeido:
     return leer_documento(path.read_bytes(), path.name)
 
 
-def leer_presupuesto(contenido: bytes, nombre_fichero: str) -> DocumentoLeido:
+def leer_presupuesto(
+    contenido: bytes,
+    nombre_fichero: str,
+    *,
+    forzar_vision: bool = False,
+) -> DocumentoLeido:
     """
-    PDF con Claude: Sonnet lo pasa a markdown.
-    El resto (markdown, imagen, PDF sin clave) sigue la lectura anterior.
+    PDF con Claude y con texto: Haiku lee el texto local.
+    PDF sin texto, con tachón o con la casilla marcada: Sonnet lo pasa a markdown.
+    Sin clave de Claude, o si no es PDF, sigue la lectura anterior.
     """
     if not nombre_fichero.lower().endswith(".pdf"):
         return leer_documento(contenido, nombre_fichero)
@@ -83,13 +90,13 @@ def leer_presupuesto(contenido: bytes, nombre_fichero: str) -> DocumentoLeido:
     if not (llm_svc.hay_llm(settings) and llm_svc.es_anthropic(settings)):
         return leer_documento(contenido, nombre_fichero)
 
-    texto_nativo = _leer_pdf_pymupdf(contenido)
-    es_escaneado = ocr_svc.pdf_parece_escaneado(texto_nativo)
-    if es_escaneado:
-        es_escaneado = ocr_svc.pdf_parece_escaneado(_leer_pdf_pdfplumber(contenido))
-
-    markdown = transcribir_pdf_a_markdown(contenido)
-    return DocumentoLeido(texto=markdown, es_escaneado=es_escaneado)
+    decision = _decidir(contenido, forzar_vision)
+    if decision.via == "sonnet":
+        return DocumentoLeido(
+            texto=transcribir_pdf_a_markdown(contenido),
+            es_escaneado=decision.es_escaneado,
+        )
+    return DocumentoLeido(texto=decision.texto_local, es_escaneado=False)
 
 
 def importar_presupuesto(
@@ -278,11 +285,13 @@ def persistir_presupuesto(
     )
 
 
-def leer_contrato(contenido: bytes, nombre_fichero: str) -> DocumentoLeido:
-    """
-    PDF con Claude: Sonnet lo pasa a markdown.
-    Markdown, imagen o PDF sin clave siguen la lectura anterior.
-    """
+def leer_contrato(
+    contenido: bytes,
+    nombre_fichero: str,
+    *,
+    forzar_vision: bool = False,
+) -> DocumentoLeido:
+    """Igual que el presupuesto: Sonnet solo si el texto local no basta."""
     if not nombre_fichero.lower().endswith(".pdf"):
         return leer_documento(contenido, nombre_fichero)
 
@@ -290,13 +299,21 @@ def leer_contrato(contenido: bytes, nombre_fichero: str) -> DocumentoLeido:
     if not (llm_svc.hay_llm(settings) and llm_svc.es_anthropic(settings)):
         return leer_documento(contenido, nombre_fichero)
 
-    texto_nativo = _leer_pdf_pymupdf(contenido)
-    es_escaneado = ocr_svc.pdf_parece_escaneado(texto_nativo)
-    if es_escaneado:
-        es_escaneado = ocr_svc.pdf_parece_escaneado(_leer_pdf_pdfplumber(contenido))
+    decision = _decidir(contenido, forzar_vision)
+    if decision.via == "sonnet":
+        return DocumentoLeido(
+            texto=transcribir_contrato_a_markdown(contenido),
+            es_escaneado=decision.es_escaneado,
+        )
+    return DocumentoLeido(texto=decision.texto_local, es_escaneado=False)
 
-    markdown = transcribir_contrato_a_markdown(contenido)
-    return DocumentoLeido(texto=markdown, es_escaneado=es_escaneado)
+
+def _decidir(contenido: bytes, forzar_vision: bool) -> DecisionLectura:
+    return decidir_lectura_pdf(
+        contenido,
+        forzar_vision=forzar_vision,
+        detectar_manuscrito=detectar_manuscrito_haiku,
+    )
 
 
 def importar_contrato(
