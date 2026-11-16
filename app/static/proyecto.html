@@ -212,6 +212,10 @@
                   required
                 />
               </label>
+              <label>
+                <input type="checkbox" x-model="verPagina" />
+                Este PDF tiene una corrección escrita a mano
+              </label>
               <div class="acciones">
                 <button type="submit" class="primario" :disabled="!fichero || subiendo">
                   <span x-text="subiendo ? 'Importando…' : 'Importar contrato'"></span>

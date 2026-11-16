@@ -5,6 +5,7 @@ function contratoApp() {
     proyectoId: "",
     naveId: "",
     fichero: null,
+    verPagina: false,
     cargandoNaves: false,
     enviando: false,
     error: "",
@@ -60,6 +61,9 @@ function contratoApp() {
         fd.append("fichero", this.fichero, this.fichero.name);
         if (this.naveId) {
           fd.append("nave_id", this.naveId);
+        }
+        if (this.verPagina) {
+          fd.append("ver_pagina", "1");
         }
         this.resultado = await GestorApi.postForm(
           "/proyectos/" + this.proyectoId + "/importar-contrato",

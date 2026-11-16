@@ -5,6 +5,7 @@ function proyectoApp() {
     cargando: true,
     error: "",
     fichero: null,
+    verPagina: false,
     naveId: "",
     subiendo: false,
     errSubida: "",
@@ -83,6 +84,9 @@ function proyectoApp() {
         fd.append("fichero", this.fichero, this.fichero.name);
         if (this.naveId) {
           fd.append("nave_id", this.naveId);
+        }
+        if (this.verPagina) {
+          fd.append("ver_pagina", "1");
         }
         const res = await GestorApi.postForm(
           "/proyectos/" + this.proyectoId + "/importar-contrato",

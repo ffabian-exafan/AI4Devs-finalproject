@@ -20,6 +20,7 @@ function gestionObras() {
     guardandoLinea: false,
     altaLectura: false,
     ficheroNombre: "",
+    verPagina: false,
     leyendoContrato: false,
     leyendoFactura: false,
     sobreDrop: false,
@@ -393,6 +394,9 @@ function gestionObras() {
       this.error = "";
       const fd = new FormData();
       fd.append("fichero", fichero, fichero.name);
+      if (this.verPagina) {
+        fd.append("ver_pagina", "1");
+      }
       try {
         const contraste = await GestorApi.postForm(
           "/proyectos/" + this.proyectoId + "/contrastar-presupuesto-cliente",
@@ -400,6 +404,7 @@ function gestionObras() {
         );
         this.contraste = this._contrasteDesdeApi(contraste);
         this.contrasteIndice = 0;
+        this.verPagina = false;
         this.up = "done";
       } catch (err) {
         this.error = err.message || "No se ha podido contrastar el PDF";

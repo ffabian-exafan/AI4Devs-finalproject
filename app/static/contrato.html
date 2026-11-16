@@ -55,6 +55,11 @@
             <input type="file" accept=".pdf,.md,application/pdf,text/markdown" @change="onFile($event)" required />
           </label>
 
+          <label>
+            <input type="checkbox" x-model="verPagina" />
+            Este PDF tiene una corrección escrita a mano
+          </label>
+
           <div class="acciones">
             <button
               type="submit"

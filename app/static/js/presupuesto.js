@@ -1,6 +1,7 @@
 function presupuestoApp() {
   return {
     fichero: null,
+    verPagina: false,
     enviando: false,
     error: "",
     resultado: null,
@@ -23,6 +24,9 @@ function presupuestoApp() {
       try {
         const fd = new FormData();
         fd.append("fichero", this.fichero, this.fichero.name);
+        if (this.verPagina) {
+          fd.append("ver_pagina", "1");
+        }
         this.resultado = await GestorApi.postForm(
           "/proyectos/importar-presupuesto",
           fd

@@ -462,6 +462,10 @@
             </span>
             <span style="color: var(--p800); font-weight: 600">Arrastra el PDF o haz clic para elegirlo</span>
           </div>
+          <label @click.stop>
+            <input type="checkbox" x-model="verPagina" />
+            Este PDF tiene una corrección escrita a mano
+          </label>
           <template x-if="contraste && contraste.sugerencias">
             <div class="stack">
               <div class="subida" :class="sobreDrop && 'sobre'" @dragover.prevent="sobreDrop = true"

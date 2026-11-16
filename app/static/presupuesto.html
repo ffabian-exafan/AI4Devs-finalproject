@@ -41,6 +41,10 @@
               PDF (nativo o escaneado), imagen, o fixture .md anonimizada en pruebas.
             </span>
           </label>
+          <label>
+            <input type="checkbox" x-model="verPagina" />
+            Este PDF tiene una corrección escrita a mano
+          </label>
           <div class="acciones">
             <button type="submit" class="primario" :disabled="!fichero || enviando">
               <span x-text="enviando ? 'Importando…' : 'Importar presupuesto'"></span>
