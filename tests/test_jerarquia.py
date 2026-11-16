@@ -15,6 +15,7 @@ def _fila(identificador: int, codigo: str) -> Tarea:
         descripcion=codigo,
         importe_presupuestado=Decimal("10"),
         tiene_anotacion_manual=False,
+        es_montaje=False,
         estado_revision="pendiente",
         estado="no_iniciada",
         avance_fisico_pct=Decimal("0"),
