@@ -57,13 +57,11 @@ La misma factura en foto o en PDF escaneado hace una llamada a Sonnet por págin
 
 Se gana el 100 % del coste de API de esa factura, y la espera: el nativo no espera al modelo; el escaneo espera una llamada por página, cada una con un tope de 3 minutos. La revisión humana sigue en los dos casos: toda factura entra pendiente de confirmar.
 
-### Presupuesto y contrato: hoy el formato no cambia la factura
+### Presupuesto y contrato: el PDF con texto ya no pasa por Sonnet
 
-Con la clave de Claude activa, un PDF de presupuesto o de contrato se envía entero a Sonnet tanto si tiene texto como si es un escaneo. Anthropic, al recibir el PDF, vuelve a convertir cada página en imagen y le suma el texto. El nativo y el escaneado pagan la misma lectura visual.
+Con la clave de Claude, un PDF de presupuesto o de contrato que ya trae texto seleccionable no se envía a Sonnet. PyMuPDF (o pdfplumber si hace falta) saca el texto y Haiku rellena los campos. Sonnet sigue viendo el PDF cuando no hay texto útil, cuando la persona marca «corrección escrita a mano», cuando el PDF trae una anotación de corrección (tinta, tachado, resaltado) o cuando un vistazo de Haiku marca bolígrafo. Si ese vistazo falla, también entra Sonnet. Una firma digital no cuenta como tachón. La factura no cambia: la nativa sigue sin modelo y la escaneada sigue por OCR o por visión, una llamada por página.
 
 La foto suelta (JPG, PNG, TIFF) es el caso más lento: una llamada de visión por imagen, no un solo envío del documento.
-
-El ahorro del PDF nativo en presupuesto y contrato aparece cuando el texto local deje de pasar por Sonnet y vaya directo a Haiku. Hasta ese cambio, pedir el PDF nativo mejora la lectura (menos errores de OCR) y no baja esta partida de la factura.
 
 ### Presupuesto y contrato: lo que se ganaría con ese cambio
 
