@@ -1,5 +1,6 @@
 function gestionObras() {
   return {
+    ...sesionLateral(),
     screen: "obras",
     up: "done",
     open: 0,
@@ -17,6 +18,7 @@ function gestionObras() {
     nPendientes: 0,
     lectura: null,
     lineaForm: null,
+    lineaPdfForm: null,
     guardandoLinea: false,
     altaLectura: false,
     ficheroNombre: "",
@@ -38,6 +40,8 @@ function gestionObras() {
       } catch (_) {
         this.menuCompacto = false;
       }
+      const dentro = await this.cargarYo();
+      if (!dentro) return;
       await this.cargarObras();
     },
 
@@ -539,6 +543,91 @@ function gestionObras() {
       return (fila.elegidos || []).map(String).includes(String(valor));
     },
 
+    abrirLineaPdf() {
+      this.error = "";
+      this.lineaPdfForm = { id: null, codigo: "", descripcion: "", importe: "" };
+    },
+
+    editarLineaPdf(fila, indice) {
+      if (!fila || !fila.es_manual) return;
+      this.error = "";
+      this.contrasteIndice = indice;
+      this.lineaPdfForm = {
+        id: fila.id,
+        codigo: fila.codigo_pdf || "",
+        descripcion: fila.descripcion_pdf || "",
+        importe: this._importePlano(fila.importe_pdf),
+      };
+    },
+
+    async guardarLineaPdf() {
+      if (!this.lineaPdfForm || !this.proyectoId) return;
+      const codigo = (this.lineaPdfForm.codigo || "").trim();
+      const descripcion = (this.lineaPdfForm.descripcion || "").trim();
+      const importe = Number(this._importePlano(this.lineaPdfForm.importe));
+      if (!codigo || descripcion.length < 2 || Number.isNaN(importe) || importe < 0) {
+        this.error = "Código, descripción (al menos 2 caracteres) e importe son obligatorios";
+        return;
+      }
+      const body = { codigo, descripcion, importe };
+      const idLinea = this.lineaPdfForm.id;
+      this.error = "";
+      try {
+        const contraste = idLinea
+          ? await GestorApi.patchJson(
+              "/proyectos/" + this.proyectoId + "/lineas-pdf/" + idLinea,
+              body
+            )
+          : await GestorApi.postJson("/proyectos/" + this.proyectoId + "/lineas-pdf", body);
+        this._ponerContraste(contraste, idLinea);
+        this.lineaPdfForm = null;
+      } catch (err) {
+        this.error = err.message || "No se ha podido guardar el apartado";
+      }
+    },
+
+    async borrarLineaPdf(fila) {
+      if (!fila || !fila.es_manual || !this.proyectoId) return;
+      const nombre = fila.descripcion_pdf || "este apartado";
+      if (!window.confirm("¿Borrar el apartado «" + nombre + "»?")) return;
+      this.error = "";
+      try {
+        await GestorApi.borrar(
+          "/proyectos/" + this.proyectoId + "/lineas-pdf/" + fila.id
+        );
+        if (this.lineaPdfForm && this.lineaPdfForm.id === fila.id) this.lineaPdfForm = null;
+        const contraste = await GestorApi.getJson(
+          "/proyectos/" + this.proyectoId + "/contraste-cliente"
+        );
+        this._ponerContraste(contraste);
+      } catch (err) {
+        this.error = err.message || "No se ha podido borrar el apartado";
+      }
+    },
+
+    _ponerContraste(contraste, idPreferido) {
+      const leido = this._contrasteDesdeApi(contraste);
+      let indice = leido.indicePendiente;
+      if (!idPreferido) {
+        const ultima = [...leido.sugerencias].reverse().find((fila) => fila.es_manual);
+        if (ultima) {
+          const puesto = leido.sugerencias.findIndex((fila) => fila.id === ultima.id);
+          if (puesto >= 0) indice = puesto;
+        }
+      } else {
+        const puesto = leido.sugerencias.findIndex((fila) => fila.id === idPreferido);
+        if (puesto >= 0) indice = puesto;
+      }
+      this.contrasteIndice = indice;
+      this.contraste = leido;
+      this.up = "done";
+    },
+
+    metaContraste(fila) {
+      const base = (fila.codigo_pdf || "") + " · " + this.etiquetaEstadoContraste(fila);
+      return fila.es_manual ? base + " · Añadido a mano" : base;
+    },
+
     filaContraste() {
       const filas = (this.contraste && this.contraste.sugerencias) || [];
       if (!filas.length) return null;
@@ -559,6 +648,7 @@ function gestionObras() {
           sugerida: Boolean(fila.sugerida) && !fila.confirmada,
           solo_gestion: Boolean(fila.solo_gestion),
           apartado_gestion_id: fila.apartado_gestion_id || null,
+          es_manual: Boolean(fila.es_manual),
         })
       );
       const pendiente = sugerencias.findIndex(
@@ -586,6 +676,7 @@ function gestionObras() {
           if (!remoto) return;
           fila.solo_gestion = Boolean(remoto.solo_gestion);
           fila.apartado_gestion_id = remoto.apartado_gestion_id || null;
+          fila.es_manual = Boolean(remoto.es_manual);
           if (!remoto.confirmada) return;
           fila.elegidos = (remoto.tarea_ids || []).map(String);
           fila.confirmada = true;
@@ -905,11 +996,11 @@ function gestionObras() {
       }
       const base = this._importeDeElegidos(ids);
       const cliente = Number(fila.importe_pdf) || 0;
-      // Se muestra Excel menos PDF. El color no cambia: rojo si el Excel es mayor.
-      const diff = base - cliente;
+      // Contrato cliente menos presupuesto. Verde si el contrato es mayor.
+      const diff = cliente - base;
       fila.excel = GestorApi.euro(base);
       fila.diferencia = GestorApi.euro(diff);
-      fila.supera = diff > 0.005;
+      fila.supera = diff < -0.005;
       fila.hay_cruce = true;
       return fila;
     },
@@ -998,7 +1089,7 @@ function gestionObras() {
           return;
         }
         const excel = this._importeDeElegidos(elegidos.map((nodo) => nodo.id));
-        const diff = excel - importe;
+        const diff = importe - excel;
         excelNum += excel;
         filas.push({
           id: "pdf-" + fila.id,
@@ -1008,7 +1099,7 @@ function gestionObras() {
           excel: GestorApi.euro(excel),
           pdf: GestorApi.euro(importe),
           diferencia: GestorApi.euro(diff),
-          supera: diff > 0.005,
+          supera: diff < -0.005,
         });
       });
       this._bloquesSinLinea().forEach((nodo) => {
@@ -1049,7 +1140,7 @@ function gestionObras() {
       );
       const basePdf = this.pdfSinBloque ? totalLineas : totalLineas - sinAsignar;
       const totalPdf = basePdf - sumaDescuentos;
-      const diffTotal = totalExcel - totalPdf;
+      const diffTotal = totalPdf - totalExcel;
       return {
         filas,
         sinAsignar: Math.abs(sinAsignar) >= 0.005,
@@ -1059,7 +1150,7 @@ function gestionObras() {
         excel: GestorApi.euro(totalExcel),
         pdf: GestorApi.euro(totalPdf),
         diferencia: GestorApi.euro(diffTotal),
-        supera: diffTotal > 0.005,
+        supera: diffTotal < -0.005,
       };
     },
 

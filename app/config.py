@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+psycopg://usuario:password@localhost:5432/gestor_obra"
+    # Firma de la cookie de sesión. En local vale el defecto; fuera, cámbiala.
+    session_secret: str = "secreto-local-cuadra"
     # Carpeta de documentos subidos (Excel, PDF, facturas). Relativa a la raíz del repo.
     uploads_dir: str = str(_RAIZ / "uploads")
 

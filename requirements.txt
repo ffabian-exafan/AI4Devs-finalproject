@@ -13,4 +13,6 @@ pgvector
 pytest
 httpx
 python-multipart
+argon2-cffi
+itsdangerous
 openpyxl

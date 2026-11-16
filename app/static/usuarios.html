@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Usuarios — Cuadra</title>
+  <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261116i" />
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <script src="/js/api.js?v=20261116g"></script>
+  <script src="/js/sesion.js?v=20261116i"></script>
+  <script src="/js/usuarios.js?v=20261116i"></script>
+</head>
+
+<body>
+  <div class="shell" :class="{ 'menu-compacto': menuCompacto }" x-data="gestionUsuarios()" x-init="init()" x-cloak>
+    <aside class="sidebar">
+      <a class="brand" href="/" :title="menuCompacto ? 'Cuadra' : null">
+        <img class="brand-logo" src="/assets/cuadra-logo.png?v=20261111g" alt="Cuadra" width="196" height="58" />
+        <img class="brand-icon" src="/assets/cuadra-mark.png?v=20261111g" alt="Cuadra" width="40" height="40" />
+      </a>
+      <nav class="nav">
+        <a class="nav-enlace" href="/" title="Obras">
+          <span class="nav-marca" aria-hidden="true">O</span>
+          <span class="nav-etiqueta">Obras</span>
+        </a>
+        <a class="nav-enlace activo" href="/usuarios.html" title="Usuarios">
+          <span class="nav-marca" aria-hidden="true">U</span>
+          <span class="nav-etiqueta">Usuarios</span>
+        </a>
+      </nav>
+      <div class="sesion" x-show="yo">
+        <div class="sesion-quien" :title="yo ? yo.nombre : ''">
+          <span class="sesion-inicial" x-text="inicialSesion()" aria-hidden="true"></span>
+          <span class="sesion-nombre" x-text="yo ? yo.nombre : ''"></span>
+        </div>
+        <button type="button" class="sesion-salir" @click="salir()" aria-label="Cerrar sesión">
+          <span class="sesion-salir-texto">Cerrar sesión</span>
+        </button>
+      </div>
+      <button type="button" class="menu-toggle" @click="toggleMenu()"
+        :title="menuCompacto ? 'Expandir menú' : 'Compactar menú'" :aria-expanded="(!menuCompacto).toString()"
+        :aria-label="menuCompacto ? 'Expandir menú' : 'Compactar menú'" x-text="menuCompacto ? '›' : '‹'"></button>
+    </aside>
+
+    <main class="main">
+      <p class="sub" x-show="cargando">Cargando usuarios…</p>
+
+      <template x-if="!cargando && yo">
+        <div class="stack">
+          <div class="fila-titulo">
+            <div>
+              <h1 class="h1 h1-lista">Usuarios</h1>
+              <p class="sub">Quién puede entrar en la app.</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-md" @click="nuevo()">+ Nuevo usuario</button>
+          </div>
+
+          <p class="estado-msg" x-show="error && !modalAbierto" x-text="error"></p>
+
+          <div class="card scroll">
+            <div class="tabla-usuarios">
+              <div class="cabecera cols-usuarios">
+                <span>Nombre</span><span>Correo</span><span>Rol</span><span></span>
+              </div>
+              <template x-for="usuario in usuarios" :key="usuario.id">
+                <div class="fila-usuario cols-usuarios">
+                  <strong x-text="usuario.nombre"></strong>
+                  <span x-text="usuario.email"></span>
+                  <span x-text="etiquetaRol(usuario.rol)"></span>
+                  <div class="obra-acciones">
+                    <button type="button" class="btn btn-secondary btn-sm" :aria-label="'Editar ' + usuario.nombre"
+                      @click="editar(usuario)">Editar</button>
+                    <button type="button" class="btn btn-secondary btn-sm" x-show="yo && usuario.id !== yo.id"
+                      :aria-label="'Borrar ' + usuario.nombre" @click="borrar(usuario)">Borrar</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <dialog class="modal" x-ref="modalUsuario" @close="alCerrar()"
+        @click="if ($event.target === $el) cerrarModal()">
+        <form class="ficha-usuario" @submit.prevent="guardar()">
+          <div class="modal-cabecera">
+            <h2 class="h1" style="font-size: 20px" x-text="editandoId ? 'Editar usuario' : 'Nuevo usuario'"></h2>
+            <button type="button" class="modal-cerrar" @click="cerrarModal()" aria-label="Cerrar">×</button>
+          </div>
+          <p class="estado-msg" x-show="error" x-text="error"></p>
+          <label>
+            Nombre
+            <input class="campo" required maxlength="255" x-model="form.nombre" />
+          </label>
+          <label>
+            Correo
+            <input class="campo" type="email" required maxlength="255" x-model="form.email" />
+          </label>
+          <label>
+            Rol
+            <select class="campo" x-model="form.rol">
+              <option value="jefe_obra">Jefe de obra</option>
+              <option value="administracion">Administración</option>
+              <option value="direccion">Dirección</option>
+            </select>
+          </label>
+          <label>
+            Clave
+            <input class="campo" type="password" minlength="8" maxlength="255" autocomplete="new-password"
+              :required="!editandoId" :placeholder="editandoId ? 'Vacía si no quieres cambiarla' : 'Mínimo 8 caracteres'"
+              x-model="form.password" />
+          </label>
+          <div class="obra-acciones" style="justify-content: flex-end">
+            <button class="btn btn-secondary btn-md" type="button" @click="cerrarModal()">Cancelar</button>
+            <button class="btn btn-primary btn-md" type="submit"
+              x-text="editandoId ? 'Guardar cambios' : 'Crear usuario'"></button>
+          </div>
+        </form>
+      </dialog>
+    </main>
+  </div>
+</body>
+
+</html>

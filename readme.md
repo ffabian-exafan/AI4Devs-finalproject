@@ -214,7 +214,7 @@ Los presupuestos, contratos y facturas llevan NIF, nombres, direcciones e import
 - **Validación en el backend.** Pydantic rechaza payloads mal formados. Los servicios repiten las reglas de negocio (manuscrito sin confirmar, contrato ajeno, línea enlazada).
 - **Revisión humana obligatoria.** Ningún documento leído por OCR o LLM queda confirmado al subirlo. Una anotación manuscrita sobre un valor impreso fuerza `estado_revision = "pendiente"`.
 - **Datos de prueba anonimizados.** Fixtures en `fixtures/`. No hay NIF, nombres ni importes reales en código, tests ni migraciones.
-- **Modelo de roles.** La tabla `usuario` prevé `jefe_obra`, `administracion` y `direccion`, con `password_hash`. _[VERIFICAR] — El login, el hash de contraseña y el control de acceso por rol no están implementados en los routers: la API no exige autenticación._
+- **Modelo de roles.** La tabla `usuario` prevé `jefe_obra`, `administracion` y `direccion`. La clave se guarda con argon2. Las pantallas piden sesión (`/login.html`). Cualquier usuario que haya entrado puede abrir Usuarios y dar de alta, editar o borrar. _[VERIFICAR] — Quién puede gestionar usuarios no está cerrado. La API de obras y facturas sigue sin pedir sesión._
 
 ### **2.6. Tests**
 
@@ -385,7 +385,7 @@ erDiagram
 
 ### **3.2. Descripción de entidades principales:**
 
-- **USUARIO.** Quien usa la app. `rol` define permisos previstos (jefe de obra, administración, dirección). `email` único. `password_hash` obligatorio en el esquema. El login no está cableado (sección 2.5).
+- **USUARIO.** Quien usa la app. `rol` define permisos previstos (jefe de obra, administración, dirección). `email` único. `password_hash` obligatorio, con argon2. El login abre las pantallas. La gestión (alta, edición y baja) está en `/usuarios.html`. _[VERIFICAR] quién puede gestionar usuarios: hoy cualquier sesión._
 - **PROYECTO.** Una obra. Cabecera de todo. `tipo` distingue llave en mano de reforma. La migración `0004` añade `codigo`, `cliente`, `ubicacion`, `especie` y `fase`, todos opcionales, para la ficha que muestra la lista de obras.
 - **PRESUPUESTO.** El fichero de origen y su versión. `es_escaneado` marca baja fiabilidad por OCR (migración `0003`). Permite conservar el histórico cuando el número de presupuesto lleva sufijo de versión.
 - **NAVE.** Unidad de desglose del presupuesto. Guarda su importe presupuestado.

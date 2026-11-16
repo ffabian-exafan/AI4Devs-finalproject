@@ -64,6 +64,14 @@ window.GestorApi = {
     return res.json();
   },
 
+  async postVacio(url) {
+    const res = await fetch(url, { method: "POST" });
+    if (!res.ok) {
+      throw new Error(await this._detalleError(res));
+    }
+    return null;
+  },
+
   async postJson(url, body) {
     const res = await fetch(url, {
       method: "POST",

@@ -401,6 +401,14 @@ paths:
   /proyectos/{id}/contraste-cliente:
     get:
       summary: Devuelve las líneas guardadas del PDF del cliente. Si faltan, las lee del fichero. Si no hay relación, propone una y la deja sin confirmar
+  /proyectos/{id}/lineas-pdf:
+    post:
+      summary: Añade un importe del PDF que la lectura no trajo. Solo esa línea se puede editar o borrar
+  /proyectos/{id}/lineas-pdf/{linea_id}:
+    patch:
+      summary: Edita código, descripción e importe de una línea añadida a mano
+    delete:
+      summary: Borra una línea añadida a mano. Si hay un contrato enlazado, no la borra
   /proyectos/{id}/lineas-pdf/{linea_id}/solo-gestion:
     post:
       summary: Crea un apartado de solo gestión desde una línea de importe del PDF del cliente

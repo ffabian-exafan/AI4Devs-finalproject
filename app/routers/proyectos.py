@@ -17,6 +17,7 @@ from app.schemas.control_economico import ControlEconomicoOut
 from app.schemas.presupuesto import (
     ContrastarClienteOut,
     ImporteClienteIn,
+    LineaPdfManualIn,
     ImporteClienteOut,
     ImportarExcelOut,
     ImportarPresupuestoOut,
@@ -30,6 +31,7 @@ from app.services import almacen as almacen_svc
 from app.services import casado as casado_svc
 from app.services import economico as economico_svc
 from app.services import ingesta as ingesta_svc
+from app.services import linea_pdf_manual as linea_pdf_manual_svc
 from app.services import lineas as lineas_svc
 from app.services import presupuesto_excel as presupuesto_excel_svc
 from app.services import proyectos as proyectos_svc
@@ -331,6 +333,69 @@ def confirmar_importes_cliente(
             else status.HTTP_422_UNPROCESSABLE_ENTITY
         )
         raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+def _error_linea_pdf(exc: ValueError) -> HTTPException:
+    detail = str(exc)
+    bajo = detail.lower()
+    codigo = (
+        status.HTTP_404_NOT_FOUND
+        if "no encontrado" in bajo or "no encontrada" in bajo or "no tiene" in bajo
+        else status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
+    return HTTPException(status_code=codigo, detail=detail)
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/lineas-pdf",
+    response_model=ContrastarClienteOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_linea_pdf_manual(
+    proyecto_id: int,
+    body: LineaPdfManualIn,
+    db: Session = Depends(get_db),
+) -> ContrastarClienteOut:
+    try:
+        return linea_pdf_manual_svc.crear(
+            db, proyecto_id, body.codigo, body.descripcion, body.importe
+        )
+    except ValueError as exc:
+        raise _error_linea_pdf(exc) from exc
+
+
+@router.patch(
+    "/proyectos/{proyecto_id}/lineas-pdf/{linea_id}",
+    response_model=ContrastarClienteOut,
+)
+def editar_linea_pdf_manual(
+    proyecto_id: int,
+    linea_id: int,
+    body: LineaPdfManualIn,
+    db: Session = Depends(get_db),
+) -> ContrastarClienteOut:
+    try:
+        return linea_pdf_manual_svc.editar(
+            db, proyecto_id, linea_id, body.codigo, body.descripcion, body.importe
+        )
+    except ValueError as exc:
+        raise _error_linea_pdf(exc) from exc
+
+
+@router.delete(
+    "/proyectos/{proyecto_id}/lineas-pdf/{linea_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def borrar_linea_pdf_manual(
+    proyecto_id: int,
+    linea_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        linea_pdf_manual_svc.borrar(db, proyecto_id, linea_id)
+    except ValueError as exc:
+        raise _error_linea_pdf(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _error_valor(exc: ValueError) -> HTTPException:

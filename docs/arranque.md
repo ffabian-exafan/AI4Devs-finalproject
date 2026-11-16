@@ -119,7 +119,7 @@ python -m alembic upgrade head
 
 Alembic lee `DATABASE_URL` desde `app.config` (ignora la URL de ejemplo de `alembic.ini`) y, antes de las tablas, ejecuta `CREATE EXTENSION` de `vector` y `pg_trgm`.
 
-`python -m app.seed` hoy lanza `NotImplementedError`. Las semillas no forman parte del arranque.
+`python -m app.seed` crea un usuario ficticio si todavía no existe: `ana.ejemplo@example.com` / `clave-ficticia` (rol dirección). Sirve para entrar la primera vez. No es una persona real.
 
 ## 6. Arrancar la aplicación
 

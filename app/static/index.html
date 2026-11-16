@@ -6,10 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cuadra</title>
   <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261116d" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261116i" />
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/obras.js?v=20261116g"></script>
+  <script src="/js/api.js?v=20261116g"></script>
+  <script src="/js/sesion.js?v=20261116i"></script>
+  <script src="/js/obras.js?v=20261116j"></script>
 </head>
 
 <body>
@@ -30,7 +31,20 @@
           <span class="nav-etiqueta">Bandeja de facturas</span>
           <span class="cuenta" x-show="navIncidencias && !menuCompacto" x-text="navIncidencias"></span>
         </button>
+        <a class="nav-enlace" href="/usuarios.html" title="Usuarios">
+          <span class="nav-marca" aria-hidden="true">U</span>
+          <span class="nav-etiqueta">Usuarios</span>
+        </a>
       </nav>
+      <div class="sesion" x-show="yo">
+        <div class="sesion-quien" :title="yo ? yo.nombre : ''">
+          <span class="sesion-inicial" x-text="inicialSesion()" aria-hidden="true"></span>
+          <span class="sesion-nombre" x-text="yo ? yo.nombre : ''"></span>
+        </div>
+        <button type="button" class="sesion-salir" @click="salir()" aria-label="Cerrar sesión">
+          <span class="sesion-salir-texto">Cerrar sesión</span>
+        </button>
+      </div>
       <button type="button" class="menu-toggle" @click="toggleMenu()"
         :title="menuCompacto ? 'Expandir menú' : 'Compactar menú'" :aria-expanded="(!menuCompacto).toString()"
         :aria-label="menuCompacto ? 'Expandir menú' : 'Compactar menú'" x-text="menuCompacto ? '›' : '‹'"></button>
@@ -477,24 +491,48 @@
                 <button type="button" class="btn btn-secondary btn-sm"
                   @click="$refs.ficheroPresupuesto.click()">Cambiar PDF</button>
               </div>
-              <p class="sub" x-show="!contraste.sugerencias.length">El PDF no trae importes para contrastar.</p>
-              <div class="cruce" x-show="contraste.sugerencias.length">
+              <div class="cruce">
                 <section class="cruce-lista" aria-label="Importes del PDF">
                   <div class="cruce-cab">
                     <h2 class="h2">Importes del PDF</h2>
                     <span class="meta" x-text="progresoContraste()"></span>
+                    <button type="button" class="btn btn-secondary btn-sm" @click="abrirLineaPdf()">Añadir
+                      apartado</button>
                   </div>
-                  <template x-for="(fila, i) in contraste.sugerencias" :key="fila.codigo_pdf + '-' + i">
-                    <button type="button" class="cruce-linea"
-                      :class="{ activa: contrasteIndice === i, hecha: fila.confirmada || fila.solo_gestion }"
-                      :aria-current="contrasteIndice === i ? 'true' : null" @click="contrasteIndice = i">
-                      <span class="cruce-punto" :class="estadoContraste(fila)" aria-hidden="true"></span>
-                      <span class="cruce-linea-texto">
-                        <strong x-text="fila.descripcion_pdf"></strong>
-                        <span class="meta" x-text="fila.codigo_pdf + ' · ' + etiquetaEstadoContraste(fila)"></span>
-                      </span>
-                      <span class="num" x-text="euro(fila.importe_pdf)"></span>
-                    </button>
+                  <template x-if="lineaPdfForm">
+                    <div class="cruce-form">
+                      <input class="campo" type="text" placeholder="Código" x-model="lineaPdfForm.codigo">
+                      <input class="campo" type="text" placeholder="Descripción" x-model="lineaPdfForm.descripcion">
+                      <input class="campo" type="text" inputmode="decimal" placeholder="Importe"
+                        x-model="lineaPdfForm.importe">
+                      <div class="cruce-form-acciones">
+                        <button type="button" class="btn btn-primary btn-sm" @click="guardarLineaPdf()"
+                          x-text="lineaPdfForm.id ? 'Guardar' : 'Añadir'"></button>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                          @click="lineaPdfForm = null">Cancelar</button>
+                      </div>
+                    </div>
+                  </template>
+                  <p class="sub cruce-vacio" x-show="!contraste.sugerencias.length">El PDF no trae importes para
+                    contrastar.</p>
+                  <template x-for="(fila, i) in contraste.sugerencias" :key="fila.id || (fila.codigo_pdf + '-' + i)">
+                    <div class="cruce-item"
+                      :class="{ activa: contrasteIndice === i, hecha: fila.confirmada || fila.solo_gestion }">
+                      <button type="button" class="cruce-linea"
+                        :aria-current="contrasteIndice === i ? 'true' : null" @click="contrasteIndice = i">
+                        <span class="cruce-punto" :class="estadoContraste(fila)" aria-hidden="true"></span>
+                        <span class="cruce-linea-texto">
+                          <strong x-text="fila.descripcion_pdf"></strong>
+                          <span class="meta" x-text="metaContraste(fila)"></span>
+                        </span>
+                        <span class="num" x-text="euro(fila.importe_pdf)"></span>
+                      </button>
+                      <div class="cruce-item-acciones" x-show="fila.es_manual">
+                        <button type="button" class="btn-linea" @click="editarLineaPdf(fila, i)">Editar</button>
+                        <button type="button" class="btn-linea btn-linea-peligro"
+                          @click="borrarLineaPdf(fila)">Borrar</button>
+                      </div>
+                    </div>
                   </template>
                 </section>
                 <template x-if="filaContraste()">
@@ -628,15 +666,15 @@
                 <h2 class="h2" style="font-size: 15px">Resumen por apartado</h2>
                 <div class="grid-resumen th">
                   <span>Apartado</span>
-                  <span class="der">Excel</span>
-                  <span class="der">PDF</span>
+                  <span class="der">Contrato cliente</span>
+                  <span class="der">Presupuesto</span>
                   <span class="der">Diferencia</span>
                 </div>
                 <template x-for="fila in resumenContraste().filas" :key="'res-' + fila.id">
                   <div class="grid-resumen td">
                     <span x-text="fila.nombre"></span>
-                    <span class="der num" x-text="fila.excel"></span>
                     <span class="der num" x-text="fila.pdf"></span>
+                    <span class="der num" x-text="fila.excel"></span>
                     <strong class="der num" :class="fila.supera ? 'rojo' : 'verde'" x-text="fila.diferencia"></strong>
                   </div>
                 </template>
@@ -645,20 +683,20 @@
                     <input type="checkbox" :checked="pdfSinBloque" @change="alternarPdfSinBloque()">
                     <span>PDF sin bloque</span>
                   </label>
-                  <span class="der num">—</span>
                   <span class="der num" x-text="resumenContraste().pdfSinAsignar"></span>
+                  <span class="der num">—</span>
                   <span class="der num">—</span>
                 </div>
                 <div class="grid-resumen td" x-show="resumenContraste().hayDescuento">
                   <span>Descuentos del cierre</span>
-                  <span class="der num">—</span>
                   <span class="der num" x-text="resumenContraste().descuento"></span>
+                  <span class="der num">—</span>
                   <span class="der num">—</span>
                 </div>
                 <div class="grid-resumen td resumen-total">
                   <strong>Total</strong>
-                  <strong class="der num" x-text="resumenContraste().excel"></strong>
                   <strong class="der num" x-text="resumenContraste().pdf"></strong>
+                  <strong class="der num" x-text="resumenContraste().excel"></strong>
                   <strong class="der num" :class="resumenContraste().supera ? 'rojo' : 'verde'"
                     x-text="resumenContraste().diferencia"></strong>
                 </div>

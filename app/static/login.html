@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Entrar — Cuadra</title>
+  <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261116k" />
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <script src="/js/api.js?v=20261116g"></script>
+  <script src="/js/login.js?v=20261116f"></script>
+</head>
+
+<body>
+  <div class="login-pagina" x-data="entrar()" x-init="init()" x-cloak>
+    <div class="login-caja">
+      <img class="login-marca" src="/assets/cuadra-logo.png?v=20261111g" alt="Cuadra" width="248" height="74" />
+      <div>
+        <h1 class="h1 h1-lista">Entra para continuar</h1>
+        <p class="sub">La app pide un usuario. Los datos de obra no se abren sin sesión.</p>
+      </div>
+      <p class="estado-msg" x-show="error" x-text="error"></p>
+      <form @submit.prevent="enviar()">
+        <label>
+          Correo
+          <input class="campo" type="email" autocomplete="username" required x-model="email" />
+        </label>
+        <label>
+          Clave
+          <input class="campo" type="password" autocomplete="current-password" required x-model="password" />
+        </label>
+        <button class="btn btn-primary btn-md" type="submit" :disabled="enviando">Entrar</button>
+      </form>
+    </div>
+  </div>
+</body>
+
+</html>

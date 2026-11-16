@@ -3,7 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.tipos import Money
 
@@ -78,6 +78,23 @@ class SugerenciaContrasteOut(BaseModel):
     # La línea es un apartado de solo gestión. confirmada sigue siendo el bloque de Excel.
     solo_gestion: bool = False
     apartado_gestion_id: int | None = None
+    # True si la línea la añadió una persona. Las leídas del PDF van en false.
+    es_manual: bool = False
+
+
+class LineaPdfManualIn(BaseModel):
+    """Alta o edición de un importe del PDF que la lectura no trajo."""
+
+    codigo: str = Field(min_length=1, max_length=128)
+    descripcion: str = Field(min_length=2, max_length=512)
+    importe: Money = Field(ge=0)
+
+    @field_validator("codigo", "descripcion", mode="before")
+    @classmethod
+    def _recortar(cls, valor: object) -> object:
+        if isinstance(valor, str):
+            return valor.strip()
+        return valor
 
 
 class DescuentoContrasteOut(BaseModel):

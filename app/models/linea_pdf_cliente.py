@@ -27,6 +27,10 @@ class LineaPdfCliente(Base):
     importe: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     importe_bruto: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     es_manuscrito: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # True si una persona añadió la línea. Las leídas del PDF quedan en false.
+    es_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     # True cuando ya se pidió una propuesta de bloques, aunque no hubiera ninguna clara.
     relacion_intentada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Apartado creado al marcar la línea como solo gestión. Una línea, un apartado.

@@ -216,6 +216,9 @@ def contrastar_presupuesto_cliente(
 
     sugerencias, descuentos = _construir_sugerencias(extraido)
     _persistir_lineas(db, presupuesto.id, sugerencias, descuentos)
+    from app.services.linea_pdf_manual import copiar_al_presupuesto
+
+    copiar_al_presupuesto(db, proyecto_id, presupuesto.id)
     _proponer_relaciones(db, proyecto_id, presupuesto.id)
     db.commit()
     return _salida_contraste(db, presupuesto)
@@ -487,6 +490,7 @@ def _salida_contraste(db: Session, presupuesto: Presupuesto) -> ContrastarClient
                 sugerida=sugerida,
                 solo_gestion=fila.apartado_gestion_id is not None,
                 apartado_gestion_id=fila.apartado_gestion_id,
+                es_manual=bool(fila.es_manual),
             )
         )
     return ContrastarClienteOut(
