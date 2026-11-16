@@ -278,3 +278,123 @@ def test_la_casilla_del_formulario_fuerza_sonnet_en_el_contrato(client, monkeypa
     )
     assert response.status_code == 201, response.text
     assert visto["sonnet"] is True
+
+
+def test_releer_el_contraste_respeta_la_casilla(client, db, monkeypatch):
+    from app.models import Nave, Presupuesto, Proyecto, Tarea
+    from app.schemas.extraccion import ApartadoExtraido, NaveExtraida, PresupuestoExtraido
+
+    monkeypatch.setattr("app.services.ingesta.llm_svc.hay_llm", lambda _s: True)
+    monkeypatch.setattr("app.services.ingesta.llm_svc.es_anthropic", lambda _s: True)
+    monkeypatch.setattr(
+        "app.services.ingesta.detectar_manuscrito_haiku",
+        lambda _contenido: False,
+    )
+    visto = {"n": 0}
+
+    def transcribe(_contenido: bytes) -> str:
+        visto["n"] += 1
+        return "Cubierta 80000"
+
+    monkeypatch.setattr("app.services.ingesta.transcribir_pdf_a_markdown", transcribe)
+    monkeypatch.setattr(
+        "app.services.presupuesto_excel.extraccion_svc.extraer_presupuesto",
+        lambda _texto: PresupuestoExtraido(
+            nombre_proyecto="Obra relectura",
+            naves=[
+                NaveExtraida(
+                    codigo="01",
+                    descripcion="Nave",
+                    apartados=[
+                        ApartadoExtraido(
+                            codigo="1.1",
+                            descripcion="Cubierta",
+                            importe=Decimal("80000"),
+                        )
+                    ],
+                )
+            ],
+            total_impreso=Decimal("80000"),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.presupuesto_excel._relacionar_pdf_llm",
+        lambda *_args, **_kwargs: None,
+    )
+
+    proyecto = Proyecto(nombre="Obra relectura", tipo="reforma", estado="activa")
+    db.add(proyecto)
+    db.flush()
+    nave = Nave(
+        proyecto_id=proyecto.id,
+        codigo="01",
+        descripcion="Nave",
+        importe_presupuestado=Decimal("0"),
+    )
+    db.add(nave)
+    db.flush()
+    excel = Presupuesto(
+        proyecto_id=proyecto.id,
+        version=1,
+        fichero_origen="cubierta.xlsx",
+        estado_extraccion="extraido",
+        es_escaneado=False,
+        formato="excel_expertis",
+    )
+    db.add(excel)
+    db.flush()
+    db.add(
+        Tarea(
+            nave_id=nave.id,
+            presupuesto_id=excel.id,
+            codigo="01.01",
+            nivel="subapartado",
+            descripcion="Cubierta",
+            importe_presupuestado=Decimal("100"),
+            estado_revision="pendiente",
+            estado="no_iniciada",
+            avance_fisico_pct=Decimal("0"),
+        )
+    )
+    db.commit()
+
+    frase = "PDF de cliente con texto seleccionable y un importe de cubierta."
+    alta = client.post(
+        f"/proyectos/{proyecto.id}/contrastar-presupuesto-cliente",
+        files={"fichero": ("cliente.pdf", _pdf(frase), "application/pdf")},
+        data={"ver_pagina": "1"},
+    )
+    assert alta.status_code == 201, alta.text
+    assert visto["n"] == 1
+
+    from app.models import LineaPdfCliente, LineaPdfClienteTarea
+    from app.services.presupuesto_excel import obtener_contraste_cliente
+
+    db.expire_all()
+    pdf_cliente = (
+        db.query(Presupuesto)
+        .filter(
+            Presupuesto.proyecto_id == proyecto.id,
+            Presupuesto.formato == "pdf_cliente",
+        )
+        .one()
+    )
+    lineas = (
+        db.query(LineaPdfCliente.id)
+        .filter(
+            LineaPdfCliente.presupuesto_id == pdf_cliente.id,
+            LineaPdfCliente.tipo == "importe",
+        )
+        .all()
+    )
+    ids = [fila.id for fila in lineas]
+    if ids:
+        db.query(LineaPdfClienteTarea).filter(LineaPdfClienteTarea.linea_id.in_(ids)).delete()
+    db.query(LineaPdfCliente).filter(
+        LineaPdfCliente.presupuesto_id == pdf_cliente.id,
+        LineaPdfCliente.tipo == "importe",
+    ).delete()
+    db.commit()
+
+    obtener_contraste_cliente(db, proyecto.id)
+    assert visto["n"] == 2

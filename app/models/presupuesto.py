@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -32,6 +32,13 @@ class Presupuesto(Base):
     estado_extraccion: Mapped[str] = mapped_column(String(50), nullable=False)
     # True si el origen fue imagen o PDF sin texto (pasó por OCR)
     es_escaneado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # True si quien subió el PDF pidió que el modelo viera la página (tachón).
+    ver_pagina: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
     # excel_expertis | pdf_cliente. Las filas anteriores al Excel son pdf_cliente.
     formato: Mapped[str] = mapped_column(
         String(50),

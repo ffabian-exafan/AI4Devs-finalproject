@@ -202,6 +202,7 @@ def contrastar_presupuesto_cliente(
         estado_extraccion="extraido",
         es_escaneado=leido.es_escaneado,
         formato="pdf_cliente",
+        ver_pagina=forzar_vision,
     )
     db.add(presupuesto)
     db.flush()
@@ -234,7 +235,11 @@ def obtener_contraste_cliente(db: Session, proyecto_id: int) -> ContrastarClient
         if ruta is None:
             raise ValueError("El PDF del cliente no está guardado")
         contenido = ruta.read_bytes()
-        leido = leer_presupuesto(contenido, presupuesto.fichero_origen)
+        leido = leer_presupuesto(
+            contenido,
+            presupuesto.fichero_origen,
+            forzar_vision=bool(presupuesto.ver_pagina),
+        )
         extraido = extraccion_svc.extraer_presupuesto(leido.texto)
         sugerencias, descuentos = _construir_sugerencias(extraido)
         _persistir_lineas(db, presupuesto.id, sugerencias, descuentos)

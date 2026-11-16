@@ -117,6 +117,7 @@ def importar_presupuesto(
         nombre_fichero,
         contenido,
         es_escaneado=leido.es_escaneado,
+        ver_pagina=forzar_vision,
     )
 
 
@@ -127,6 +128,7 @@ def persistir_presupuesto(
     contenido: bytes,
     *,
     es_escaneado: bool = False,
+    ver_pagina: bool = False,
 ) -> ImportarPresupuestoOut:
     fecha = _parse_fecha(extraido.fecha)
     requiere = bool(extraido.requiere_revision or es_escaneado)
@@ -148,6 +150,7 @@ def persistir_presupuesto(
         estado_extraccion="pendiente_revision" if requiere else "extraido",
         es_escaneado=es_escaneado,
         formato="pdf_cliente",
+        ver_pagina=ver_pagina,
     )
     db.add(presupuesto)
     db.flush()
