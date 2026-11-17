@@ -10,9 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Contratista, Contrato, Factura, Nave, Presupuesto, Proyecto, Tarea
+from app.models import (
+    Contratista,
+    Contrato,
+    Factura,
+    Nave,
+    Presupuesto,
+    Proyecto,
+    RegistroAccion,
+    Tarea,
+)
 from app.services.facturas import _contratista_por_nif, _parsear_factura
 from app.services.ocr import ResultadoOcr
+from tests.sesion import entrar
 
 FIXTURE = (
     Path(__file__).resolve().parents[1]
@@ -133,6 +143,7 @@ def test_contratista_casa_aunque_el_nif_guarde_guiones(db: Session):
 
 def test_borrar_factura_y_permite_volver_a_subirla(
     client: TestClient,
+    db: Session,
     escenario_factura: dict,
 ):
     proyecto_id = escenario_factura["proyecto_id"]
@@ -144,10 +155,22 @@ def test_borrar_factura_y_permite_volver_a_subirla(
     )
     assert alta.status_code == 201, alta.text
     factura_id = alta.json()["factura_id"]
+    numero = client.get(f"/facturas/{factura_id}").json()["numero"]
 
+    entrar(client, db, rol="administracion")
     borrada = client.delete(f"/facturas/{factura_id}")
     assert borrada.status_code == 204, borrada.text
     assert client.get(f"/facturas/{factura_id}").status_code == 404
+    borradas = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "borrar_factura",
+            RegistroAccion.documento_id == factura_id,
+        )
+        .all()
+    )
+    assert len(borradas) == 1
+    assert numero in borradas[0].etiqueta
 
     otra = client.post(
         "/facturas",
@@ -191,6 +214,7 @@ def test_factura_enlaza_el_contrato_del_proveedor_aunque_siga_pendiente(
     assert fila["contrato_etiqueta"] == "SUBCONTRATISTA_1"
 
     detalle = client.get(f"/facturas/{cuerpo['factura_id']}").json()
+    entrar(client, db, rol="administracion")
     confirmar = client.post(
         f"/facturas/{cuerpo['factura_id']}/confirmar",
         json={
@@ -233,6 +257,7 @@ Total (Euro)
 
 def test_factura_pendiente_no_suma_y_confirmada_actualiza_seguimiento(
     client: TestClient,
+    db: Session,
     escenario_factura: dict,
 ):
     proyecto_id = escenario_factura["proyecto_id"]
@@ -258,6 +283,7 @@ def test_factura_pendiente_no_suma_y_confirmada_actualiza_seguimiento(
     assert datos["es_escaneada"] is False
     assert len(datos["contratos_candidatos"]) == 1
 
+    entrar(client, db, rol="administracion")
     confirmar = client.post(
         f"/facturas/{factura_id}/confirmar",
         json={
@@ -281,6 +307,16 @@ def test_factura_pendiente_no_suma_y_confirmada_actualiza_seguimiento(
         },
     )
     assert confirmar.status_code == 200, confirmar.text
+    confirmadas = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_factura",
+            RegistroAccion.documento_id == factura_id,
+        )
+        .all()
+    )
+    assert len(confirmadas) == 1
+    assert "·" in confirmadas[0].etiqueta
 
     control = client.get(f"/proyectos/{proyecto_id}/control-economico").json()
     assert Decimal(str(control["por_contrato"][0]["facturado"])) == Decimal(
@@ -345,6 +381,7 @@ def test_confirmacion_rechaza_contrato_ajeno(
         files={"fichero": (FIXTURE.name, FIXTURE.read_bytes(), "text/markdown")},
     ).json()
     datos = client.get(f"/facturas/{importada['factura_id']}").json()
+    entrar(client, db, rol="administracion")
     respuesta = client.post(
         f"/facturas/{importada['factura_id']}/confirmar",
         json={
@@ -362,6 +399,15 @@ def test_confirmacion_rechaza_contrato_ajeno(
     )
     assert respuesta.status_code == 422
     assert "no pertenece al proyecto" in respuesta.text
+    assert (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_factura",
+            RegistroAccion.documento_id == importada["factura_id"],
+        )
+        .count()
+        == 0
+    )
 
     otro_contratista = Contratista(
         nif=f"Q{escenario_factura['proyecto_id']:08d}",
@@ -380,6 +426,7 @@ def test_confirmacion_rechaza_contrato_ajeno(
     db.add(contrato_otro_contratista)
     db.commit()
 
+    entrar(client, db, rol="administracion")
     respuesta = client.post(
         f"/facturas/{importada['factura_id']}/confirmar",
         json={
@@ -397,6 +444,15 @@ def test_confirmacion_rechaza_contrato_ajeno(
     )
     assert respuesta.status_code == 422
     assert "no pertenece al contratista" in respuesta.text
+    assert (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_factura",
+            RegistroAccion.documento_id == importada["factura_id"],
+        )
+        .count()
+        == 0
+    )
 
 
 def test_factura_escaneada_siempre_queda_pendiente(

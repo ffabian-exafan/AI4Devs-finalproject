@@ -10,7 +10,16 @@ from pathlib import Path
 import pymupdf
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Asignacion, Contratista, Contrato, Factura, LineaFactura, Proyecto
+from app.models import (
+    Asignacion,
+    Contratista,
+    Contrato,
+    Factura,
+    LineaFactura,
+    Proyecto,
+    Usuario,
+)
+from app.services.registro import registrar
 from app.schemas.factura import (
     ConfirmarFacturaIn,
     ConfirmarFacturaOut,
@@ -168,6 +177,7 @@ def confirmar_factura(
     db: Session,
     factura_id: int,
     payload: ConfirmarFacturaIn,
+    usuario: Usuario,
 ) -> ConfirmarFacturaOut:
     factura = db.get(Factura, factura_id)
     if factura is None:
@@ -208,6 +218,15 @@ def confirmar_factura(
                 importe=linea.importe,
             )
         )
+    proyecto = db.get(Proyecto, factura.proyecto_id)
+    registrar(
+        db,
+        usuario,
+        "confirmar_factura",
+        tipo_documento="factura",
+        documento_id=factura.id,
+        etiqueta=f"{payload.numero} · {proyecto.nombre}",
+    )
     db.commit()
 
     return ConfirmarFacturaOut(
@@ -250,10 +269,20 @@ def enlazar_contrato(
     return _a_resumen(factura)
 
 
-def borrar_factura(db: Session, factura_id: int) -> None:
+def borrar_factura(db: Session, factura_id: int, usuario: Usuario) -> None:
     factura = db.get(Factura, factura_id)
     if factura is None:
         raise ValueError(f"Factura {factura_id} no encontrada")
+    numero = factura.numero
+    proyecto = db.get(Proyecto, factura.proyecto_id)
+    registrar(
+        db,
+        usuario,
+        "borrar_factura",
+        tipo_documento="factura",
+        documento_id=factura.id,
+        etiqueta=f"{numero} · {proyecto.nombre}",
+    )
     ruta = factura.ruta_almacen
     db.query(Factura).filter(Factura.duplicado_de_id == factura.id).update(
         {Factura.duplicado_de_id: None},

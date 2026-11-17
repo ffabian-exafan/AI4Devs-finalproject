@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import usuario_actual
+from app.models import Usuario
 from app.schemas.factura import (
     ConfirmarFacturaIn,
     ConfirmarFacturaOut,
@@ -99,9 +101,13 @@ def enlazar_contrato(
 
 
 @router.delete("/{factura_id}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar_factura(factura_id: int, db: Session = Depends(get_db)) -> None:
+def borrar_factura(
+    factura_id: int,
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+) -> None:
     try:
-        facturas_svc.borrar_factura(db, factura_id)
+        facturas_svc.borrar_factura(db, factura_id, actual)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -114,9 +120,10 @@ def confirmar_factura(
     factura_id: int,
     payload: ConfirmarFacturaIn,
     db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
 ) -> ConfirmarFacturaOut:
     try:
-        return facturas_svc.confirmar_factura(db, factura_id, payload)
+        return facturas_svc.confirmar_factura(db, factura_id, payload, actual)
     except ValueError as exc:
         detail = str(exc)
         codigo = (
