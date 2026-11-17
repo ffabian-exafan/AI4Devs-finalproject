@@ -1,5 +1,6 @@
 """Línea de importe añadida a mano en el PDF del cliente."""
 
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -18,6 +19,7 @@ from app.models import (
     Proyecto,
     RegistroAccion,
     Tarea,
+    Usuario,
 )
 from app.schemas.extraccion import ApartadoExtraido, NaveExtraida, PresupuestoExtraido
 from app.services.proyectos import borrar_proyecto
@@ -37,6 +39,19 @@ def db() -> Session:
         yield session
     finally:
         session.close()
+
+
+def _usuario_limpieza(db: Session) -> Usuario:
+    usuario = Usuario(
+        nombre="Ana Ejemplo",
+        email=f"ana.{uuid.uuid4().hex}@example.com",
+        rol="direccion",
+        password_hash="hash-ficticio",
+    )
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
 
 
 def _obra(db: Session) -> dict:
@@ -166,9 +181,9 @@ def test_alta_manual_queda_al_final_y_rechaza_datos_malos(client: TestClient, db
             )
             assert falta.status_code == 404
         finally:
-            borrar_proyecto(db, sin_pdf.id)
+            borrar_proyecto(db, sin_pdf.id, _usuario_limpieza(db))
     finally:
-        borrar_proyecto(db, pid)
+        borrar_proyecto(db, pid, _usuario_limpieza(db))
 
 
 def test_editar_manual_confirmada_reparte_y_la_leida_no_se_toca(client: TestClient, db: Session):
@@ -247,7 +262,7 @@ def test_editar_manual_confirmada_reparte_y_la_leida_no_se_toca(client: TestClie
         )
         assert rechazada.status_code == 422
     finally:
-        borrar_proyecto(db, pid)
+        borrar_proyecto(db, pid, _usuario_limpieza(db))
 
 
 def test_editar_solo_gestion_no_cambia_el_codigo_del_apartado(client: TestClient, db: Session):
@@ -277,7 +292,7 @@ def test_editar_solo_gestion_no_cambia_el_codigo_del_apartado(client: TestClient
         assert apartado.importe_presupuestado == Decimal("80.00")
         assert apartado.importe_contrato_cliente == Decimal("80.00")
     finally:
-        borrar_proyecto(db, pid)
+        borrar_proyecto(db, pid, _usuario_limpieza(db))
 
 
 def test_borrar_manual_suelta_el_excel_y_respeta_el_contrato(client: TestClient, db: Session):
@@ -359,7 +374,7 @@ def test_borrar_manual_suelta_el_excel_y_respeta_el_contrato(client: TestClient,
         assert db.get(LineaPdfCliente, gestion_id) is None
     finally:
         db.rollback()
-        borrar_proyecto(db, pid)
+        borrar_proyecto(db, pid, _usuario_limpieza(db))
 
 
 def test_un_pdf_nuevo_conserva_las_lineas_manuales(
@@ -436,4 +451,4 @@ def test_un_pdf_nuevo_conserva_las_lineas_manuales(
         assert db.get(Tarea, obra["uno"].id).importe_contrato_cliente == Decimal("40.00")
     finally:
         get_settings.cache_clear()
-        borrar_proyecto(db, pid)
+        borrar_proyecto(db, pid, _usuario_limpieza(db))

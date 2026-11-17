@@ -1,5 +1,6 @@
 """Línea del PDF marcada como solo gestión: apartado sin Excel para contratistas."""
 
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -19,6 +20,7 @@ from app.models import (
     Proyecto,
     RegistroAccion,
     Tarea,
+    Usuario,
 )
 from app.services.proyectos import borrar_proyecto
 from tests.sesion import entrar
@@ -37,6 +39,19 @@ def db() -> Session:
         yield session
     finally:
         session.close()
+
+
+def _usuario_limpieza(db: Session) -> Usuario:
+    usuario = Usuario(
+        nombre="Ana Ejemplo",
+        email=f"ana.{uuid.uuid4().hex}@example.com",
+        rol="direccion",
+        password_hash="hash-ficticio",
+    )
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
 
 
 def _contratista(db: Session, nif: str, nombre: str) -> Contratista:
@@ -178,7 +193,7 @@ def test_marcar_linea_crea_apartado_y_sale_de_sin_bloque(client: TestClient, db:
         assert fila["confirmada"] is False
         assert fila["tarea_ids"] == []
     finally:
-        borrar_proyecto(db, obra["proyecto"].id)
+        borrar_proyecto(db, obra["proyecto"].id, _usuario_limpieza(db))
 
 
 def test_codigo_vacio_o_repetido_usa_el_id_de_la_linea(client: TestClient, db: Session):
@@ -213,7 +228,7 @@ def test_codigo_vacio_o_repetido_usa_el_id_de_la_linea(client: TestClient, db: S
         assert choca.status_code == 201, choca.text
         assert choca.json()["codigo"] == f"pdf.{repetida.id}"
     finally:
-        borrar_proyecto(db, obra["proyecto"].id)
+        borrar_proyecto(db, obra["proyecto"].id, _usuario_limpieza(db))
 
 
 def test_rechaza_descuento_excel_confirmado_y_segunda_marca(client: TestClient, db: Session):
@@ -252,7 +267,7 @@ def test_rechaza_descuento_excel_confirmado_y_segunda_marca(client: TestClient, 
         mal = client.post(f"/proyectos/{pid}/lineas-pdf/no-es-numero/solo-gestion")
         assert mal.status_code == 422
     finally:
-        borrar_proyecto(db, obra["proyecto"].id)
+        borrar_proyecto(db, obra["proyecto"].id, _usuario_limpieza(db))
 
 
 def test_desmarcar_borra_y_con_contrato_no(client: TestClient, db: Session):
@@ -289,7 +304,7 @@ def test_desmarcar_borra_y_con_contrato_no(client: TestClient, db: Session):
         sin_marca = client.delete(f"/proyectos/{pid}/lineas-pdf/{linea.id}/solo-gestion")
         assert sin_marca.status_code == 422
     finally:
-        borrar_proyecto(db, obra["proyecto"].id)
+        borrar_proyecto(db, obra["proyecto"].id, _usuario_limpieza(db))
 
 
 def test_dos_contratos_se_suman_contra_el_importe_del_pdf(client: TestClient, db: Session):
@@ -318,7 +333,7 @@ def test_dos_contratos_se_suman_contra_el_importe_del_pdf(client: TestClient, db
         assert Decimal(str(fila["presupuestado"])) == Decimal("1000.00")
         assert Decimal(str(fila["contrato_cliente"])) == Decimal("1000.00")
     finally:
-        borrar_proyecto(db, obra["proyecto"].id)
+        borrar_proyecto(db, obra["proyecto"].id, _usuario_limpieza(db))
 
 
 def _filas_gestion(db: Session, tarea_id: int) -> int:
@@ -431,4 +446,4 @@ def test_manuscrito_queda_pendiente_hasta_confirmar(client: TestClient, db: Sess
         assert marcado["solo_gestion"] is True
         assert marcado["estado_revision"] == "confirmada"
     finally:
-        borrar_proyecto(db, obra["proyecto"].id)
+        borrar_proyecto(db, obra["proyecto"].id, _usuario_limpieza(db))

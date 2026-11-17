@@ -1,5 +1,6 @@
 """Presupuesto Excel Expertis: lectura, alta de obra y contraste con el PDF del cliente."""
 
+import uuid
 from decimal import Decimal
 from io import BytesIO
 
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Nave, Presupuesto, Proyecto, RegistroAccion, Tarea
+from app.models import Nave, Presupuesto, Proyecto, RegistroAccion, Tarea, Usuario
 from app.schemas.extraccion import ApartadoExtraido, NaveExtraida, PresupuestoExtraido
 from app.services.excel_expertis import leer_excel_expertis
 from tests.sesion import entrar
@@ -30,6 +31,19 @@ def db() -> Session:
         yield session
     finally:
         session.close()
+
+
+def _usuario_limpieza(db: Session) -> Usuario:
+    usuario = Usuario(
+        nombre="Ana Ejemplo",
+        email=f"ana.{uuid.uuid4().hex}@example.com",
+        rol="direccion",
+        password_hash="hash-ficticio",
+    )
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
 
 
 def _libro_descuadre() -> bytes:
@@ -984,7 +998,7 @@ def test_no_guarda_dos_veces_el_mismo_excel(client: TestClient, db: Session, mon
         assert db.query(Proyecto).filter(Proyecto.nombre == "Obra ficticia duplicada").count() == 0
     finally:
         if proyecto_id is not None:
-            borrar_proyecto(db, proyecto_id)
+            borrar_proyecto(db, proyecto_id, _usuario_limpieza(db))
         get_settings.cache_clear()
 
 
@@ -1479,7 +1493,7 @@ def test_la_propuesta_marca_el_bloque_sin_confirmar(db: Session, monkeypatch):
         assert cerrada.sugerida is False
         assert cerrada.tarea_ids == [hojas.id]
     finally:
-        borrar_proyecto(db, proyecto.id)
+        borrar_proyecto(db, proyecto.id, _usuario_limpieza(db))
 
 
 def test_el_contraste_suma_el_montaje_en_el_apartado(db: Session):
@@ -1586,7 +1600,7 @@ def test_el_contraste_suma_el_montaje_en_el_apartado(db: Session):
         assert asignado[ventanas.id] == Decimal("16.00")
         assert asignado[chimeneas.id] == Decimal("15.00")
     finally:
-        borrar_proyecto(db, proyecto.id)
+        borrar_proyecto(db, proyecto.id, _usuario_limpieza(db))
 
 
 def test_el_nombre_elige_la_parte_y_no_repite_el_bloque():

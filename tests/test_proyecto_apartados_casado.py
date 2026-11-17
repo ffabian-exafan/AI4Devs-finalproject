@@ -1,5 +1,6 @@
 """Tests: detalle de proyecto con apartados y enlace contrato↔apartado."""
 
+import uuid
 from decimal import Decimal
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Contrato, Nave, Proyecto, Tarea
+from app.models import Contrato, Nave, Proyecto, Tarea, Usuario
 
 FIXTURE_PRESUPUESTO = (
     Path(__file__).resolve().parents[1]
@@ -36,6 +37,19 @@ def db() -> Session:
         yield session
     finally:
         session.close()
+
+
+def _usuario_limpieza(db: Session) -> Usuario:
+    usuario = Usuario(
+        nombre="Ana Ejemplo",
+        email=f"ana.{uuid.uuid4().hex}@example.com",
+        rol="direccion",
+        password_hash="hash-ficticio",
+    )
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
 
 
 def test_detalle_incluye_apartados_tras_importar_presupuesto(
@@ -197,7 +211,7 @@ def test_importe_montaje_no_incluye_material(client: TestClient, db: Session):
             str(fila["importe_presupuestado"])
         )
     finally:
-        borrar_proyecto(db, proyecto.id)
+        borrar_proyecto(db, proyecto.id, _usuario_limpieza(db))
 
 
 def test_enlazar_apartado_rechaza_tarea_de_contrato(client: TestClient, db: Session):
@@ -387,7 +401,7 @@ def test_contrato_enlaza_varios_apartados(client: TestClient, db: Session):
         solo_b = next(ap for ap in detalle_uno["apartados"] if ap["id"] == apartado_b.id)
         assert solo_b["contratos"] == []
     finally:
-        borrar_proyecto(db, proyecto.id)
+        borrar_proyecto(db, proyecto.id, _usuario_limpieza(db))
 
 
 def test_apartado_de_contrato_exige_explicacion_y_no_descuadra_el_excel(
@@ -615,4 +629,4 @@ def test_apartado_de_contrato_exige_explicacion_y_no_descuadra_el_excel(
         )
         assert corto.status_code == 422
     finally:
-        borrar_proyecto(db, proyecto.id)
+        borrar_proyecto(db, proyecto.id, _usuario_limpieza(db))
