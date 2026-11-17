@@ -10,7 +10,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js?v=20261116g"></script>
   <script src="/js/sesion.js?v=20261116i"></script>
-  <script src="/js/obras.js?v=20261116j"></script>
+  <script src="/js/obras.js?v=20261117a"></script>
 </head>
 
 <body>
@@ -825,6 +825,7 @@
                     <button type="button" class="btn-texto" @click="asociar(c.id, false)">Quitar enlace</button>
                   </div>
                 </template>
+                <button type="button" class="btn-linea btn-linea-peligro" @click="quitarContrato(c)">Quitar contrato</button>
               </div>
             </article>
           </template>

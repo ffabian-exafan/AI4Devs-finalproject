@@ -2148,6 +2148,30 @@ function gestionObras() {
       this._pintarBaseContrato(fila, this.vista.contratos.apartados_contrato || []);
     },
 
+    async quitarContrato(fila) {
+      if (!fila || !fila.id || !this.proyectoId) return;
+      const nombre = fila.gremio || fila.archivo || "este proveedor";
+      if (
+        !window.confirm(
+          "¿Quitar el contrato de " +
+            nombre +
+            "? Las facturas se quedan en la obra y dejan de apuntar a este contrato."
+        )
+      ) {
+        return;
+      }
+      this.error = "";
+      try {
+        await GestorApi.borrar(
+          "/proyectos/" + this.proyectoId + "/contratos/" + fila.id
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.error = err.message || "No se ha podido quitar el contrato";
+      }
+    },
+
     async asociar(id, asociado) {
       if (this.proyectoId && this.vista) {
         const fila = this.vista.contratos.filas.find((c) => c.id === id);

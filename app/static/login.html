@@ -16,10 +16,6 @@
   <div class="login-pagina" x-data="entrar()" x-init="init()" x-cloak>
     <div class="login-caja">
       <img class="login-marca" src="/assets/cuadra-logo.png?v=20261111g" alt="Cuadra" width="248" height="74" />
-      <div>
-        <h1 class="h1 h1-lista">Entra para continuar</h1>
-        <p class="sub">La app pide un usuario. Los datos de obra no se abren sin sesión.</p>
-      </div>
       <p class="estado-msg" x-show="error" x-text="error"></p>
       <form @submit.prevent="enviar()">
         <label>

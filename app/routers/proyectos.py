@@ -456,6 +456,25 @@ def confirmar_solo_gestion(
         raise _error_valor(exc) from exc
 
 
+@router.delete(
+    "/proyectos/{proyecto_id}/contratos/{contrato_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def borrar_contrato(
+    proyecto_id: int,
+    contrato_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    try:
+        proyectos_svc.borrar_contrato(db, proyecto_id, contrato_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/proyectos/{proyecto_id}/contratos/{contrato_id}/desenlazar-apartado",
     response_model=DesenlazarApartadoOut,

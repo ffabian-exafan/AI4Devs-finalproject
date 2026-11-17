@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from sqlalchemy import func, text
+from sqlalchemy import bindparam, func, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
@@ -429,6 +429,87 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         contratos=contratos_out,
         documentos=documentos,
         contraste_cliente=contraste_guardado(db, proyecto_id),
+    )
+
+
+def borrar_contrato(db: Session, proyecto_id: int, contrato_id: int) -> None:
+    """Quita el contrato del proveedor.
+
+    Las facturas se quedan y dejan de apuntar a él. Se borran el fichero,
+    los enlaces a apartados y las partidas que nacieron solo de ese contrato.
+    Los apartados del presupuesto se quedan. El contratista también.
+    """
+    contrato = db.get(Contrato, contrato_id)
+    if contrato is None or contrato.proyecto_id != proyecto_id:
+        raise ValueError(f"Contrato {contrato_id} no encontrado")
+
+    ruta = contrato.ruta_almacen
+    propias = _ids_tareas_propias_del_contrato(db, contrato_id)
+    db.execute(
+        text("UPDATE factura SET contrato_id = NULL WHERE contrato_id = :cid"),
+        {"cid": contrato_id},
+    )
+    if propias:
+        _en_ids(
+            db,
+            "UPDATE contrato SET tarea_apartado_id = NULL WHERE tarea_apartado_id IN :ids",
+            propias,
+        )
+        _en_ids(db, "DELETE FROM contrato_apartado WHERE tarea_id IN :ids", propias)
+        _en_ids(
+            db,
+            "DELETE FROM linea_pdf_cliente_tarea WHERE tarea_id IN :ids",
+            propias,
+        )
+        _en_ids(
+            db,
+            "UPDATE linea_factura SET tarea_id = NULL WHERE tarea_id IN :ids",
+            propias,
+        )
+        _en_ids(db, "DELETE FROM asignacion WHERE tarea_id IN :ids", propias)
+        _en_ids(
+            db,
+            "UPDATE tarea SET tarea_padre_id = NULL WHERE tarea_padre_id IN :ids",
+            propias,
+        )
+        _en_ids(db, "DELETE FROM tarea WHERE id IN :ids", propias)
+    db.execute(
+        text("UPDATE tarea SET contrato_id = NULL WHERE contrato_id = :cid"),
+        {"cid": contrato_id},
+    )
+    db.execute(text("DELETE FROM contrato WHERE id = :cid"), {"cid": contrato_id})
+    db.commit()
+    almacen_svc.borrar_fichero(ruta)
+
+
+def _ids_tareas_propias_del_contrato(db: Session, contrato_id: int) -> list[int]:
+    """Partidas nacidas del contrato, y lo que cuelga de ellas si no es del presupuesto."""
+    filas = db.execute(
+        text(
+            """
+            WITH RECURSIVE propias AS (
+                SELECT id
+                FROM tarea
+                WHERE contrato_id = :cid
+                  AND presupuesto_id IS NULL
+                UNION
+                SELECT tarea.id
+                FROM tarea
+                JOIN propias ON tarea.tarea_padre_id = propias.id
+                WHERE tarea.presupuesto_id IS NULL
+            )
+            SELECT id FROM propias
+            """
+        ),
+        {"cid": contrato_id},
+    ).scalars()
+    return list(filas)
+
+
+def _en_ids(db: Session, sql: str, ids: list[int]) -> None:
+    db.execute(
+        text(sql).bindparams(bindparam("ids", expanding=True)),
+        {"ids": ids},
     )
 
 
