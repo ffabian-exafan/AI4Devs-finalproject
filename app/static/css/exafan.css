@@ -356,6 +356,11 @@ a:focus-visible {
   background: var(--p50);
 }
 
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .obra-acciones {
   display: flex;
   align-items: center;
@@ -447,7 +452,7 @@ a:focus-visible {
 }
 
 .cols-obras {
-  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr) 150px;
+  grid-template-columns: 36px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr) 180px;
 }
 
 .cols-facturas {
@@ -463,8 +468,159 @@ a:focus-visible {
 }
 
 .fila-obra:hover,
-.fila-factura:hover {
+.fila-factura:hover,
+.fila-obra.marcada,
+.fila-usuario.marcada {
   background: var(--p100);
+}
+
+.marca-fila {
+  display: grid;
+  place-items: center;
+}
+
+.marca-fila input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--p700);
+}
+
+.enlace-fila {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: start;
+}
+
+.enlace-fila:hover {
+  text-decoration: underline;
+}
+
+.btn-menu {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.btn-menu svg {
+  display: block;
+  fill: currentColor;
+}
+
+.btn-menu:hover,
+.btn-menu[aria-expanded="true"],
+.btn-menu:has(+ .menu-popover:is(:popover-open, .\:popover-open)) {
+  background: var(--p50);
+  border-color: var(--p300);
+}
+
+.btn-menu:focus-visible,
+.enlace-fila:focus-visible,
+.menu-popover [focusgroup~="menu"] > button:focus-visible {
+  outline: 2px solid var(--ambar);
+  outline-offset: 2px;
+}
+
+.menu-fila {
+  display: inline-flex;
+}
+
+.menu-popover {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(31, 28, 25, 0.16);
+  min-width: 148px;
+}
+
+.menu-popover [focusgroup~="menu"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-popover [focusgroup~="menu"] > button {
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.menu-popover [focusgroup~="menu"] > button:hover,
+.menu-popover [focusgroup~="menu"] > button:focus-visible {
+  background: var(--p50);
+}
+
+.menu-popover [focusgroup~="menu"] > button.menu-peligro {
+  color: var(--err-text);
+}
+
+.menu-popover [focusgroup~="menu"] > button.menu-peligro:hover,
+.menu-popover [focusgroup~="menu"] > button.menu-peligro:focus-visible {
+  background: var(--err-bg);
+}
+
+@supports (position-area: block-end) {
+  .menu-popover {
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    inset: auto;
+    margin: 0;
+  }
+}
+
+@supports not (position-area: block-end) {
+  .menu-popover {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-popover {
+    opacity: 0;
+    translate: 0 -0.25rem;
+    transition: opacity, translate, display, overlay;
+    transition-duration: 0.15s;
+    transition-behavior: allow-discrete;
+  }
+
+  .menu-popover:is(:popover-open, .\:popover-open) {
+    opacity: 1;
+    translate: 0 0;
+    transition-duration: 0.1s;
+
+    @starting-style {
+      opacity: 0;
+      translate: 0 -0.25rem;
+    }
+  }
+}
+
+.paginas {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .fila-factura.sel {
@@ -2117,7 +2273,7 @@ select.apartado {
 }
 
 .cols-usuarios {
-  grid-template-columns: minmax(140px, 1.4fr) minmax(220px, 2.2fr) minmax(120px, 1fr) 168px;
+  grid-template-columns: 36px minmax(140px, 1.4fr) minmax(220px, 2.2fr) minmax(120px, 1fr) 56px;
 }
 
 .cabecera.cols-usuarios > *,

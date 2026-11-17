@@ -15,7 +15,8 @@ function gestionObras() {
     error: "",
     cargando: true,
     proyectos: [],
-    nPendientes: 0,
+    marcadas: [],
+    borrando: false,
     lectura: null,
     lineaForm: null,
     lineaPdfForm: null,
@@ -56,12 +57,10 @@ function gestionObras() {
       this.cargando = true;
       this.error = "";
       try {
-        const [proyectos, pendientes] = await Promise.all([
-          GestorApi.getJson("/proyectos"),
-          GestorApi.getJson("/revisiones/pendientes"),
-        ]);
+        const proyectos = await GestorApi.getJson("/proyectos");
         this.proyectos = proyectos;
-        this.nPendientes = pendientes.length;
+        const ids = new Set(proyectos.map((p) => p.id));
+        this.marcadas = this.marcadas.filter((id) => ids.has(id));
       } catch (err) {
         this.error = err.message || "No se han podido cargar las obras";
       } finally {
@@ -107,13 +106,6 @@ function gestionObras() {
       const n = this.proyectos.length;
       const pend = this.proyectos.filter((p) => p.estado === "pendiente_revision").length;
       return n + " obras · " + pend + " pendientes de revisión";
-    },
-
-    get navIncidencias() {
-      if (this.vista && this.vista.facturas) {
-        return this.vista.facturas.filter((f) => f.kind !== "ok").length;
-      }
-      return this.nPendientes;
     },
 
     get tituloObra() {
@@ -204,27 +196,83 @@ function gestionObras() {
       }
     },
 
+    estaMarcada(id) {
+      return this.marcadas.includes(id);
+    },
+
+    todasMarcadas() {
+      return this.proyectos.length > 0 && this.proyectos.every((p) => this.marcadas.includes(p.id));
+    },
+
+    algunaMarcada() {
+      return this.proyectos.some((p) => this.marcadas.includes(p.id));
+    },
+
+    marcarObra(id, marcada) {
+      if (marcada) {
+        if (!this.marcadas.includes(id)) this.marcadas = this.marcadas.concat(id);
+        return;
+      }
+      this.marcadas = this.marcadas.filter((item) => item !== id);
+    },
+
+    marcarTodas(marcada) {
+      this.marcadas = marcada ? this.proyectos.map((p) => p.id) : [];
+    },
+
+    etiquetaBorrarSeleccion() {
+      const n = this.marcadas.length;
+      return "Borrar " + n + (n === 1 ? " obra" : " obras");
+    },
+
     async borrarObra(obra) {
       if (!obra || !obra.id) return;
       const nombre = obra.nombre || "#" + obra.id;
       if (!window.confirm("¿Borrar la obra «" + nombre + "»? Se eliminan su presupuesto, contratos y facturas.")) {
         return;
       }
+      await this._borrarObras([obra]);
+    },
+
+    async borrarSeleccion() {
+      if (this.borrando || !this.marcadas.length) return;
+      const elegidas = this.proyectos.filter((p) => this.marcadas.includes(p.id));
+      if (!elegidas.length) return;
+      const n = elegidas.length;
+      const texto =
+        n === 1
+          ? "¿Borrar la obra «" + (elegidas[0].nombre || "#" + elegidas[0].id) + "»? Se eliminan su presupuesto, contratos y facturas."
+          : "¿Borrar " + n + " obras? Se eliminan sus presupuestos, contratos y facturas.";
+      if (!window.confirm(texto)) return;
+      await this._borrarObras(elegidas);
+    },
+
+    async _borrarObras(obras) {
+      this.borrando = true;
       this.error = "";
+      const fallos = [];
       try {
-        await GestorApi.borrar("/proyectos/" + obra.id);
-        if (this.proyectoId === obra.id) {
-          this.proyecto = null;
-          this.proyectoId = null;
-          this.vista = null;
-          this.lectura = null;
-          this.altaLectura = false;
-          this.screen = "obras";
-          this.up = "done";
+        for (const obra of obras) {
+          try {
+            await GestorApi.borrar("/proyectos/" + obra.id);
+            this.marcadas = this.marcadas.filter((id) => id !== obra.id);
+            if (this.proyectoId === obra.id) {
+              this.proyecto = null;
+              this.proyectoId = null;
+              this.vista = null;
+              this.lectura = null;
+              this.altaLectura = false;
+              this.screen = "obras";
+              this.up = "done";
+            }
+          } catch (err) {
+            fallos.push((obra.nombre || "#" + obra.id) + ": " + (err.message || "no se ha podido borrar"));
+          }
         }
         await this.cargarObras();
-      } catch (err) {
-        this.error = err.message || "No se ha podido borrar la obra";
+        if (fallos.length) this.error = fallos.join(" · ");
+      } finally {
+        this.borrando = false;
       }
     },
 
@@ -2030,8 +2078,6 @@ function gestionObras() {
       const esEscaneado = Boolean(this.lectura && this.lectura.esEscaneado);
       const abierto = this.open;
       await this._cargarVistaProyecto(id);
-      const pendientes = await GestorApi.getJson("/revisiones/pendientes");
-      this.nPendientes = pendientes.length;
       if (!enLectura) return;
       await this._cargarLecturaPresupuestos(id);
       if (!this.lectura) return;

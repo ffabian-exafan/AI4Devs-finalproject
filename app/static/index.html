@@ -6,11 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cuadra</title>
   <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261116i" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261117c" />
+  <script src="/js/menu-acciones.js?v=20261117c"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js?v=20261116g"></script>
   <script src="/js/sesion.js?v=20261116i"></script>
-  <script src="/js/obras.js?v=20261117a"></script>
+  <script src="/js/obras.js?v=20261117e"></script>
 </head>
 
 <body>
@@ -24,12 +25,6 @@
         <button type="button" :class="navActivo('obras') && 'activo'" @click="ir('obras')" title="Obras">
           <span class="nav-marca" aria-hidden="true">O</span>
           <span class="nav-etiqueta">Obras</span>
-        </button>
-        <button type="button" :class="navActivo('facturas') && 'activo'" @click="ir('facturas')"
-          title="Bandeja de facturas">
-          <span class="nav-marca" aria-hidden="true">F</span>
-          <span class="nav-etiqueta">Bandeja de facturas</span>
-          <span class="cuenta" x-show="navIncidencias && !menuCompacto" x-text="navIncidencias"></span>
         </button>
         <a class="nav-enlace" href="/usuarios.html" title="Usuarios">
           <span class="nav-marca" aria-hidden="true">U</span>
@@ -78,11 +73,21 @@
               <h1 class="h1 h1-lista">Obras</h1>
               <p class="sub" x-text="resumenObras"></p>
             </div>
-            <button type="button" class="btn btn-primary btn-md" @click="nuevaObra()">+ Nueva obra</button>
+            <div class="obra-acciones">
+              <button type="button" class="btn btn-secondary btn-md" x-show="marcadas.length" :disabled="borrando"
+                @click="borrarSeleccion()" x-text="etiquetaBorrarSeleccion()"></button>
+              <button type="button" class="btn btn-primary btn-md" @click="nuevaObra()">+ Nueva obra</button>
+            </div>
           </div>
           <div class="card scroll">
             <div class="tabla-obras">
               <div class="cabecera cols-obras">
+                <span class="marca-fila">
+                  <input type="checkbox" aria-label="Seleccionar todas las obras" :checked="todasMarcadas()"
+                    :disabled="proyectos.length === 0"
+                    x-effect="$el.indeterminate = algunaMarcada() && !todasMarcadas()" @click.stop
+                    @change="marcarTodas($event.target.checked)" />
+                </span>
                 <span>Obra</span><span>Presupuesto</span><span>Facturado</span><span>Fase</span><span>Estado</span>
               </div>
               <template x-if="proyectos.length === 0">
@@ -90,10 +95,17 @@
                   primera.</p>
               </template>
               <template x-for="obra in proyectos" :key="obra.id">
-                <div class="fila-obra cols-obras" role="button" tabindex="0" @click="abrirObra(obra)">
+                <div class="fila-obra cols-obras" :class="estaMarcada(obra.id) && 'marcada'" @click="abrirObra(obra)">
+                  <label class="marca-fila" @click.stop>
+                    <input type="checkbox" :checked="estaMarcada(obra.id)"
+                      @change="marcarObra(obra.id, $event.target.checked)"
+                      :aria-label="'Seleccionar ' + obra.nombre" />
+                  </label>
                   <div class="obra-nombre">
                     <div>
-                      <strong x-text="obra.nombre"></strong><br />
+                      <button type="button" class="enlace-fila" @click.stop="abrirObra(obra)">
+                        <strong x-text="obra.nombre"></strong>
+                      </button><br />
                       <span class="meta" x-text="'#' + obra.id + ' · ' + obra.tipo"></span>
                     </div>
                   </div>
@@ -106,8 +118,22 @@
                   <div class="obra-acciones">
                     <span class="badge" :class="'badge-' + tonoEstado(obra.estado)"
                       x-text="etiquetaEstado(obra.estado)"></span>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                      @click.stop="borrarObra(obra)">Borrar</button>
+                    <span class="menu-fila" @click.stop>
+                      <button type="button" class="btn-menu" :id="'acc-obra-' + obra.id" aria-haspopup="menu"
+                        aria-expanded="false" :commandfor="'menu-obra-' + obra.id" command="toggle-popover"
+                        :aria-label="'Acciones de ' + obra.nombre">
+                        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                          <circle cx="8" cy="3.2" r="1.35"></circle>
+                          <circle cx="8" cy="8" r="1.35"></circle>
+                          <circle cx="8" cy="12.8" r="1.35"></circle>
+                        </svg>
+                      </button>
+                      <div class="menu-popover" popover="auto" :id="'menu-obra-' + obra.id">
+                        <div focusgroup="menu nomemory" :aria-labelledby="'acc-obra-' + obra.id">
+                          <button type="button" class="menu-peligro" @click="borrarObra(obra)">Borrar</button>
+                        </div>
+                      </div>
+                    </span>
                   </div>
                 </div>
               </template>
@@ -280,10 +306,23 @@
                     <button type="button" class="pill-ok" x-show="ap.revisado" @click="revisar(i)">✓ Revisado</button>
                     <button type="button" class="btn btn-secondary btn-sm" x-show="!ap.revisado"
                       @click="revisar(i)">Revisar</button>
-                    <button type="button" class="btn-linea" x-show="!ap.solo_gestion"
-                      @click.stop="editarLinea(ap)">Editar</button>
-                    <button type="button" class="btn-linea btn-linea-peligro" x-show="!ap.solo_gestion"
-                      @click.stop="borrarLinea(ap)">Borrar</button>
+                    <span class="menu-fila" x-show="!ap.solo_gestion" @click.stop>
+                      <button type="button" class="btn-menu" :id="'acc-ap-' + (ap.id || i)" aria-haspopup="menu"
+                        aria-expanded="false" :commandfor="'menu-ap-' + (ap.id || i)" command="toggle-popover"
+                        :aria-label="'Acciones de ' + ap.nombre">
+                        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                          <circle cx="8" cy="3.2" r="1.35"></circle>
+                          <circle cx="8" cy="8" r="1.35"></circle>
+                          <circle cx="8" cy="12.8" r="1.35"></circle>
+                        </svg>
+                      </button>
+                      <div class="menu-popover" popover="auto" :id="'menu-ap-' + (ap.id || i)">
+                        <div focusgroup="menu nomemory" :aria-labelledby="'acc-ap-' + (ap.id || i)">
+                          <button type="button" @click="editarLinea(ap)">Editar</button>
+                          <button type="button" class="menu-peligro" @click="borrarLinea(ap)">Borrar</button>
+                        </div>
+                      </div>
+                    </span>
                   </div>
                 </div>
                 <div class="partidas" x-show="open === i && (ap.partidas.length || (ap.grupos && ap.grupos.length))">
@@ -303,9 +342,23 @@
                             <span class="meta" x-show="p.apartado" x-text="p.apartado"></span>
                             <span class="badge badge-warning" x-show="p.duda" x-text="p.duda"></span>
                             <span class="linea-mini" x-show="p.id && p.id !== ap.id">
-                              <button type="button" class="btn-linea" @click.stop="editarLinea(p)">Editar</button>
-                              <button type="button" class="btn-linea btn-linea-peligro"
-                                @click.stop="borrarLinea(p)">Borrar</button>
+                              <span class="menu-fila" @click.stop>
+                                <button type="button" class="btn-menu" :id="'acc-lin-' + p.id" aria-haspopup="menu"
+                                  aria-expanded="false" :commandfor="'menu-lin-' + p.id" command="toggle-popover"
+                                  :aria-label="'Acciones de ' + p.descripcion">
+                                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                                    <circle cx="8" cy="3.2" r="1.35"></circle>
+                                    <circle cx="8" cy="8" r="1.35"></circle>
+                                    <circle cx="8" cy="12.8" r="1.35"></circle>
+                                  </svg>
+                                </button>
+                                <div class="menu-popover" popover="auto" :id="'menu-lin-' + p.id">
+                                  <div focusgroup="menu nomemory" :aria-labelledby="'acc-lin-' + p.id">
+                                    <button type="button" @click="editarLinea(p)">Editar</button>
+                                    <button type="button" class="menu-peligro" @click="borrarLinea(p)">Borrar</button>
+                                  </div>
+                                </div>
+                              </span>
                             </span>
                           </span>
                           <span x-text="p.unidad"></span>
@@ -344,9 +397,23 @@
                                   <span class="meta" x-show="p.apartado" x-text="p.apartado"></span>
                                   <span class="badge badge-warning" x-show="p.duda" x-text="p.duda"></span>
                                   <span class="linea-mini" x-show="p.id">
-                                    <button type="button" class="btn-linea" @click.stop="editarLinea(p)">Editar</button>
-                                    <button type="button" class="btn-linea btn-linea-peligro"
-                                      @click.stop="borrarLinea(p)">Borrar</button>
+                                    <span class="menu-fila" @click.stop>
+                                      <button type="button" class="btn-menu" :id="'acc-lin-' + p.id" aria-haspopup="menu"
+                                        aria-expanded="false" :commandfor="'menu-lin-' + p.id" command="toggle-popover"
+                                        :aria-label="'Acciones de ' + p.descripcion">
+                                        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                                          <circle cx="8" cy="3.2" r="1.35"></circle>
+                                          <circle cx="8" cy="8" r="1.35"></circle>
+                                          <circle cx="8" cy="12.8" r="1.35"></circle>
+                                        </svg>
+                                      </button>
+                                      <div class="menu-popover" popover="auto" :id="'menu-lin-' + p.id">
+                                        <div focusgroup="menu nomemory" :aria-labelledby="'acc-lin-' + p.id">
+                                          <button type="button" @click="editarLinea(p)">Editar</button>
+                                          <button type="button" class="menu-peligro" @click="borrarLinea(p)">Borrar</button>
+                                        </div>
+                                      </div>
+                                    </span>
                                   </span>
                                 </span>
                                 <span x-text="p.unidad"></span>
@@ -383,10 +450,23 @@
                                     <span class="meta" x-show="p.apartado" x-text="p.apartado"></span>
                                     <span class="badge badge-warning" x-show="p.duda" x-text="p.duda"></span>
                                     <span class="linea-mini" x-show="p.id">
-                                      <button type="button" class="btn-linea"
-                                        @click.stop="editarLinea(p)">Editar</button>
-                                      <button type="button" class="btn-linea btn-linea-peligro"
-                                        @click.stop="borrarLinea(p)">Borrar</button>
+                                      <span class="menu-fila" @click.stop>
+                                        <button type="button" class="btn-menu" :id="'acc-lin-' + p.id" aria-haspopup="menu"
+                                          aria-expanded="false" :commandfor="'menu-lin-' + p.id" command="toggle-popover"
+                                          :aria-label="'Acciones de ' + p.descripcion">
+                                          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                                            <circle cx="8" cy="3.2" r="1.35"></circle>
+                                            <circle cx="8" cy="8" r="1.35"></circle>
+                                            <circle cx="8" cy="12.8" r="1.35"></circle>
+                                          </svg>
+                                        </button>
+                                        <div class="menu-popover" popover="auto" :id="'menu-lin-' + p.id">
+                                          <div focusgroup="menu nomemory" :aria-labelledby="'acc-lin-' + p.id">
+                                            <button type="button" @click="editarLinea(p)">Editar</button>
+                                            <button type="button" class="menu-peligro" @click="borrarLinea(p)">Borrar</button>
+                                          </div>
+                                        </div>
+                                      </span>
                                     </span>
                                   </span>
                                   <span x-text="p.unidad"></span>
@@ -422,9 +502,24 @@
                         </div>
                         <div class="dto-acciones">
                           <strong class="num" x-text="g.importe"></strong>
-                          <button type="button" class="btn-linea" @click="editarLinea(g)">Editar</button>
-                          <button type="button" class="btn-linea btn-linea-peligro"
-                            @click="borrarLinea(g)">Borrar</button>
+                          <span class="menu-fila">
+                            <button type="button" class="btn-menu" :id="'acc-ges-' + (g.id || g.codigo)"
+                              aria-haspopup="menu" aria-expanded="false"
+                              :commandfor="'menu-ges-' + (g.id || g.codigo)" command="toggle-popover"
+                              :aria-label="'Acciones de ' + g.descripcion">
+                              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                                <circle cx="8" cy="3.2" r="1.35"></circle>
+                                <circle cx="8" cy="8" r="1.35"></circle>
+                                <circle cx="8" cy="12.8" r="1.35"></circle>
+                              </svg>
+                            </button>
+                            <div class="menu-popover" popover="auto" :id="'menu-ges-' + (g.id || g.codigo)">
+                              <div focusgroup="menu nomemory" :aria-labelledby="'acc-ges-' + (g.id || g.codigo)">
+                                <button type="button" @click="editarLinea(g)">Editar</button>
+                                <button type="button" class="menu-peligro" @click="borrarLinea(g)">Borrar</button>
+                              </div>
+                            </div>
+                          </span>
                         </div>
                       </div>
                     </template>
@@ -446,9 +541,24 @@
                         </div>
                         <div class="dto-acciones">
                           <strong class="num" x-text="d.importe"></strong>
-                          <button type="button" class="btn-linea" @click="editarLinea(d)">Editar</button>
-                          <button type="button" class="btn-linea btn-linea-peligro"
-                            @click="borrarLinea(d)">Borrar</button>
+                          <span class="menu-fila">
+                            <button type="button" class="btn-menu" :id="'acc-dto-' + (d.id || d.codigo)"
+                              aria-haspopup="menu" aria-expanded="false"
+                              :commandfor="'menu-dto-' + (d.id || d.codigo)" command="toggle-popover"
+                              :aria-label="'Acciones de ' + d.descripcion">
+                              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                                <circle cx="8" cy="3.2" r="1.35"></circle>
+                                <circle cx="8" cy="8" r="1.35"></circle>
+                                <circle cx="8" cy="12.8" r="1.35"></circle>
+                              </svg>
+                            </button>
+                            <div class="menu-popover" popover="auto" :id="'menu-dto-' + (d.id || d.codigo)">
+                              <div focusgroup="menu nomemory" :aria-labelledby="'acc-dto-' + (d.id || d.codigo)">
+                                <button type="button" @click="editarLinea(d)">Editar</button>
+                                <button type="button" class="menu-peligro" @click="borrarLinea(d)">Borrar</button>
+                              </div>
+                            </div>
+                          </span>
                         </div>
                       </div>
                     </template>
@@ -533,9 +643,23 @@
                         <span class="num" x-text="euro(fila.importe_pdf)"></span>
                       </button>
                       <div class="cruce-item-acciones" x-show="fila.es_manual">
-                        <button type="button" class="btn-linea" @click="editarLineaPdf(fila, i)">Editar</button>
-                        <button type="button" class="btn-linea btn-linea-peligro"
-                          @click="borrarLineaPdf(fila)">Borrar</button>
+                        <span class="menu-fila">
+                          <button type="button" class="btn-menu" :id="'acc-pdf-' + (fila.id || i)" aria-haspopup="menu"
+                            aria-expanded="false" :commandfor="'menu-pdf-' + (fila.id || i)" command="toggle-popover"
+                            :aria-label="'Acciones de ' + fila.descripcion_pdf">
+                            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                              <circle cx="8" cy="3.2" r="1.35"></circle>
+                              <circle cx="8" cy="8" r="1.35"></circle>
+                              <circle cx="8" cy="12.8" r="1.35"></circle>
+                            </svg>
+                          </button>
+                          <div class="menu-popover" popover="auto" :id="'menu-pdf-' + (fila.id || i)">
+                            <div focusgroup="menu nomemory" :aria-labelledby="'acc-pdf-' + (fila.id || i)">
+                              <button type="button" @click="editarLineaPdf(fila, i)">Editar</button>
+                              <button type="button" class="menu-peligro" @click="borrarLineaPdf(fila)">Borrar</button>
+                            </div>
+                          </div>
+                        </span>
                       </div>
                     </div>
                   </template>
@@ -830,7 +954,22 @@
                     <button type="button" class="btn-texto" @click="asociar(c.id, false)">Quitar enlace</button>
                   </div>
                 </template>
-                <button type="button" class="btn-linea btn-linea-peligro" @click="quitarContrato(c)">Quitar contrato</button>
+                <span class="menu-fila">
+                  <button type="button" class="btn-menu" :id="'acc-con-' + c.id" aria-haspopup="menu"
+                    aria-expanded="false" :commandfor="'menu-con-' + c.id" command="toggle-popover"
+                    :aria-label="'Acciones del contrato ' + c.id">
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                      <circle cx="8" cy="3.2" r="1.35"></circle>
+                      <circle cx="8" cy="8" r="1.35"></circle>
+                      <circle cx="8" cy="12.8" r="1.35"></circle>
+                    </svg>
+                  </button>
+                  <div class="menu-popover" popover="auto" :id="'menu-con-' + c.id">
+                    <div focusgroup="menu nomemory" :aria-labelledby="'acc-con-' + c.id">
+                      <button type="button" class="menu-peligro" @click="quitarContrato(c)">Quitar contrato</button>
+                    </div>
+                  </div>
+                </span>
               </div>
             </article>
           </template>
@@ -866,10 +1005,12 @@
                   <span>Factura</span><span>Contrato</span><span class="der">Importe</span><span>Resultado</span><span></span>
                 </div>
                 <template x-for="f in facturasVisibles" :key="f.id">
-                  <div class="fila-factura cols-facturas" role="button" tabindex="0" :class="sel === f.id && 'sel'"
+                  <div class="fila-factura cols-facturas" :class="sel === f.id && 'sel'"
                     @click="seleccionarFactura(f.id)">
                     <div>
-                      <strong x-text="f.proveedor"></strong><br />
+                      <button type="button" class="enlace-fila" @click.stop="seleccionarFactura(f.id)">
+                        <strong x-text="f.proveedor"></strong>
+                      </button><br />
                       <span class="meta" x-text="f.numero + ' · ' + f.fecha"></span>
                     </div>
                     <span class="meta" x-text="f.apartado"></span>
@@ -878,7 +1019,22 @@
                       <span class="badge" :class="'badge-' + f.tono" x-text="f.estado"></span>
                       <div class="rojo" style="font-size: 12px; font-weight: 600" x-text="f.diferencia"></div>
                     </div>
-                    <button type="button" class="btn-linea btn-linea-peligro" @click.stop="borrarFactura(f)">Borrar</button>
+                    <span class="menu-fila" @click.stop>
+                      <button type="button" class="btn-menu" :id="'acc-fac-' + f.id" aria-haspopup="menu"
+                        aria-expanded="false" :commandfor="'menu-fac-' + f.id" command="toggle-popover"
+                        :aria-label="'Acciones de ' + f.numero">
+                        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                          <circle cx="8" cy="3.2" r="1.35"></circle>
+                          <circle cx="8" cy="8" r="1.35"></circle>
+                          <circle cx="8" cy="12.8" r="1.35"></circle>
+                        </svg>
+                      </button>
+                      <div class="menu-popover" popover="auto" :id="'menu-fac-' + f.id">
+                        <div focusgroup="menu nomemory" :aria-labelledby="'acc-fac-' + f.id">
+                          <button type="button" class="menu-peligro" @click="borrarFactura(f)">Borrar</button>
+                        </div>
+                      </div>
+                    </span>
                   </div>
                 </template>
               </div>

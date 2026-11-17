@@ -6,11 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Usuarios — Cuadra</title>
   <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261116i" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261117d" />
+  <script src="/js/menu-acciones.js?v=20261117c"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js?v=20261116g"></script>
   <script src="/js/sesion.js?v=20261116i"></script>
-  <script src="/js/usuarios.js?v=20261116i"></script>
+  <script src="/js/usuarios.js?v=20261117d"></script>
 </head>
 
 <body>
@@ -59,7 +60,11 @@
               <h1 class="h1 h1-lista">Usuarios</h1>
               <p class="sub">Quién puede entrar en la app.</p>
             </div>
-            <button type="button" class="btn btn-primary btn-md" @click="nuevo()">+ Nuevo usuario</button>
+            <div class="obra-acciones">
+              <button type="button" class="btn btn-secondary btn-md" x-show="marcadas.length" :disabled="borrando"
+                @click="borrarMarcadas()" x-text="etiquetaBorrarMarcadas()"></button>
+              <button type="button" class="btn btn-primary btn-md" @click="nuevo()">+ Nuevo usuario</button>
+            </div>
           </div>
 
           <p class="estado-msg" x-show="error && !modalAbierto" x-text="error"></p>
@@ -67,22 +72,55 @@
           <div class="card scroll">
             <div class="tabla-usuarios">
               <div class="cabecera cols-usuarios">
+                <span class="marca-fila">
+                  <input type="checkbox" aria-label="Seleccionar los usuarios de esta página"
+                    :checked="todasMarcadas()" :disabled="borrablesVisibles().length === 0"
+                    x-effect="$el.indeterminate = algunaMarcada() && !todasMarcadas()"
+                    @change="marcarPagina($event.target.checked)" />
+                </span>
                 <span>Nombre</span><span>Correo</span><span>Rol</span><span></span>
               </div>
-              <template x-for="usuario in usuarios" :key="usuario.id">
-                <div class="fila-usuario cols-usuarios">
+              <template x-for="usuario in usuariosVisibles()" :key="usuario.id">
+                <div class="fila-usuario cols-usuarios" :class="estaMarcado(usuario.id) && 'marcada'">
+                  <label class="marca-fila">
+                    <input type="checkbox" :checked="estaMarcado(usuario.id)" :disabled="esPropio(usuario.id)"
+                      @change="marcarUsuario(usuario.id, $event.target.checked)"
+                      :aria-label="esPropio(usuario.id) ? 'No puedes seleccionarte' : 'Seleccionar ' + usuario.nombre"
+                      :title="esPropio(usuario.id) ? 'No puedes borrar tu usuario' : null" />
+                  </label>
                   <strong x-text="usuario.nombre"></strong>
                   <span x-text="usuario.email"></span>
                   <span x-text="etiquetaRol(usuario.rol)"></span>
                   <div class="obra-acciones">
-                    <button type="button" class="btn btn-secondary btn-sm" :aria-label="'Editar ' + usuario.nombre"
-                      @click="editar(usuario)">Editar</button>
-                    <button type="button" class="btn btn-secondary btn-sm" x-show="yo && usuario.id !== yo.id"
-                      :aria-label="'Borrar ' + usuario.nombre" @click="borrar(usuario)">Borrar</button>
+                    <span class="menu-fila">
+                      <button type="button" class="btn-menu" :id="'acc-usr-' + usuario.id" aria-haspopup="menu"
+                        aria-expanded="false" :commandfor="'menu-usr-' + usuario.id" command="toggle-popover"
+                        :aria-label="'Acciones de ' + usuario.nombre">
+                        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                          <circle cx="8" cy="3.2" r="1.35"></circle>
+                          <circle cx="8" cy="8" r="1.35"></circle>
+                          <circle cx="8" cy="12.8" r="1.35"></circle>
+                        </svg>
+                      </button>
+                      <div class="menu-popover" popover="auto" :id="'menu-usr-' + usuario.id">
+                        <div focusgroup="menu nomemory" :aria-labelledby="'acc-usr-' + usuario.id">
+                          <button type="button" @click="editar(usuario)">Editar</button>
+                          <button type="button" class="menu-peligro" x-show="yo && usuario.id !== yo.id"
+                            @click="borrar(usuario)">Borrar</button>
+                        </div>
+                      </div>
+                    </span>
                   </div>
                 </div>
               </template>
             </div>
+          </div>
+          <div class="paginas" x-show="usuarios.length">
+            <span class="sub" x-text="textoPagina()"></span>
+            <button type="button" class="btn btn-secondary btn-sm" @click="paginaAnterior()"
+              :disabled="page <= 1">Anterior</button>
+            <button type="button" class="btn btn-secondary btn-sm" @click="paginaSiguiente()"
+              :disabled="page >= totalPaginas()">Siguiente</button>
           </div>
         </div>
       </template>
