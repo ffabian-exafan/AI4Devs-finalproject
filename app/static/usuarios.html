@@ -29,6 +29,11 @@
           <span class="nav-marca" aria-hidden="true">U</span>
           <span class="nav-etiqueta">Usuarios</span>
         </a>
+        <a class="nav-enlace" href="/registro.html" title="Registro"
+          x-show="yo && (yo.rol === 'direccion' || yo.rol === 'superadministrador')">
+          <span class="nav-marca" aria-hidden="true">R</span>
+          <span class="nav-etiqueta">Registro</span>
+        </a>
       </nav>
       <div class="sesion" x-show="yo">
         <div class="sesion-quien" :title="yo ? yo.nombre : ''">
@@ -104,6 +109,7 @@
               <option value="jefe_obra">Jefe de obra</option>
               <option value="administracion">Administración</option>
               <option value="direccion">Dirección</option>
+              <option value="superadministrador">Superadministrador</option>
             </select>
           </label>
           <label>

@@ -199,6 +199,21 @@ def test_rol_invalido_y_email_duplicado(client: TestClient, db: Session):
     )
     assert rol.status_code == 422
 
+    alta = client.post(
+        "/usuarios",
+        json={
+            "nombre": "Super Ejemplo",
+            "email": _email(),
+            "rol": "superadministrador",
+            "password": CLAVE,
+        },
+    )
+    assert alta.status_code == 201
+    assert alta.json()["rol"] == "superadministrador"
+
+    pagina = client.get("/registro.html")
+    assert pagina.status_code == 200
+
     dup = client.post(
         "/usuarios",
         json={

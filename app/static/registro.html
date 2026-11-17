@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Registro — Cuadra</title>
+  <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261116i" />
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <script src="/js/api.js?v=20261116g"></script>
+  <script src="/js/sesion.js?v=20261116i"></script>
+  <script src="/js/registro.js?v=20261117a"></script>
+  <style>
+    .filtros-registro {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    .filtros-registro label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-weight: 600;
+    }
+
+    .cols-registro {
+      grid-template-columns: 168px minmax(140px, 1.1fr) minmax(200px, 1.5fr) minmax(180px, 2fr);
+    }
+
+    .cabecera.cols-registro > *,
+    .fila-usuario.cols-registro > * {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .paginas-registro {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    @media (max-width: 800px) {
+      .filtros-registro {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="shell" :class="{ 'menu-compacto': menuCompacto }" x-data="consultaRegistro()" x-init="init()" x-cloak>
+    <aside class="sidebar">
+      <a class="brand" href="/" :title="menuCompacto ? 'Cuadra' : null">
+        <img class="brand-logo" src="/assets/cuadra-logo.png?v=20261111g" alt="Cuadra" width="196" height="58" />
+        <img class="brand-icon" src="/assets/cuadra-mark.png?v=20261111g" alt="Cuadra" width="40" height="40" />
+      </a>
+      <nav class="nav">
+        <a class="nav-enlace" href="/" title="Obras">
+          <span class="nav-marca" aria-hidden="true">O</span>
+          <span class="nav-etiqueta">Obras</span>
+        </a>
+        <a class="nav-enlace" href="/usuarios.html" title="Usuarios">
+          <span class="nav-marca" aria-hidden="true">U</span>
+          <span class="nav-etiqueta">Usuarios</span>
+        </a>
+        <a class="nav-enlace activo" href="/registro.html" title="Registro"
+          x-show="yo && (yo.rol === 'direccion' || yo.rol === 'superadministrador')">
+          <span class="nav-marca" aria-hidden="true">R</span>
+          <span class="nav-etiqueta">Registro</span>
+        </a>
+      </nav>
+      <div class="sesion" x-show="yo">
+        <div class="sesion-quien" :title="yo ? yo.nombre : ''">
+          <span class="sesion-inicial" x-text="inicialSesion()" aria-hidden="true"></span>
+          <span class="sesion-nombre" x-text="yo ? yo.nombre : ''"></span>
+        </div>
+        <button type="button" class="sesion-salir" @click="salir()" aria-label="Cerrar sesión">
+          <span class="sesion-salir-texto">Cerrar sesión</span>
+        </button>
+      </div>
+      <button type="button" class="menu-toggle" @click="toggleMenu()"
+        :title="menuCompacto ? 'Expandir menú' : 'Compactar menú'" :aria-expanded="(!menuCompacto).toString()"
+        :aria-label="menuCompacto ? 'Expandir menú' : 'Compactar menú'" x-text="menuCompacto ? '›' : '‹'"></button>
+    </aside>
+
+    <main class="main">
+      <p class="sub" x-show="cargando">Cargando el registro…</p>
+
+      <template x-if="!cargando && yo">
+        <div class="stack">
+          <div class="fila-titulo">
+            <div>
+              <h1 class="h1 h1-lista">Registro</h1>
+              <p class="sub">Consulta de solo lectura.</p>
+            </div>
+          </div>
+
+          <p class="estado-msg" x-show="error" x-text="error"></p>
+
+          <div class="filtros-registro" x-show="!prohibido">
+            <label>
+              Persona
+              <select class="campo" x-model="filtro.usuario_id" @change="cambiarFiltro()">
+                <option value="">Todas</option>
+                <template x-for="persona in personas" :key="persona.id">
+                  <option :value="persona.id" x-text="persona.nombre"></option>
+                </template>
+              </select>
+            </label>
+            <label>
+              Acción
+              <select class="campo" x-model="filtro.accion" @change="cambiarFiltro()">
+                <option value="">Todas</option>
+                <template x-for="accion in acciones" :key="accion[0]">
+                  <option :value="accion[0]" x-text="accion[1]"></option>
+                </template>
+              </select>
+            </label>
+            <label>
+              Tipo de documento
+              <select class="campo" x-model="filtro.tipo_documento" @change="cambiarFiltro()">
+                <option value="">Todos</option>
+                <template x-for="tipo in tipos" :key="tipo[0]">
+                  <option :value="tipo[0]" x-text="tipo[1]"></option>
+                </template>
+              </select>
+            </label>
+            <label>
+              Día
+              <input class="campo" type="date" x-model="filtro.dia" @change="cambiarFiltro()" />
+            </label>
+          </div>
+
+          <div class="card scroll" x-show="!prohibido && items.length">
+            <div class="tabla-usuarios">
+              <div class="cabecera cols-registro">
+                <span>Día y hora</span><span>Nombre</span><span>Acción</span><span>Etiqueta</span>
+              </div>
+              <template x-for="fila in items" :key="fila.id">
+                <div class="fila-usuario cols-registro">
+                  <span x-text="fila.dia_hora"></span>
+                  <strong x-text="fila.nombre"></strong>
+                  <span x-text="fila.accion_etiqueta"></span>
+                  <span x-text="fila.etiqueta || ''"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <p class="sub" x-show="!prohibido && !error && !items.length">No hay filas.</p>
+
+          <div class="paginas-registro" x-show="!prohibido && total > pageSize && pageSize">
+            <span class="sub" x-text="'Página ' + page"></span>
+            <button type="button" class="btn btn-secondary btn-sm" @click="paginaAnterior()"
+              :disabled="page <= 1">Anterior</button>
+            <button type="button" class="btn btn-secondary btn-sm" @click="paginaSiguiente()"
+              :disabled="page * pageSize >= total">Siguiente</button>
+          </div>
+        </div>
+      </template>
+    </main>
+  </div>
+</body>
+
+</html>

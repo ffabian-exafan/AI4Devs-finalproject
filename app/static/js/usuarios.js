@@ -4,6 +4,7 @@ function gestionUsuarios() {
     jefe_obra: "Jefe de obra",
     administracion: "Administración",
     direccion: "Dirección",
+    superadministrador: "Superadministrador",
   };
 
   return {

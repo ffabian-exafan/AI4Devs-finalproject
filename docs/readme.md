@@ -364,7 +364,8 @@ erDiagram
 
 ### **3.2. Descripción de entidades principales:**
 
-- **USUARIO.** Quien usa la app. `rol` define permisos (jefe de obra, administración, dirección). `email` único, contraseña con hash.
+- **USUARIO.** Quien usa la app. `rol` define permisos (jefe de obra, administración, dirección, superadministrador). `email` único, contraseña con hash.
+- **REGISTRO_ACCION.** Una fila por cada gesto de una persona. Columnas: `usuario_id` (entero suelto, sin clave ajena), `nombre_en_el_momento`, `accion`, `tipo_documento`, `documento_id`, `etiqueta`, `ocurrido_en`. No hay columnas de importe. `GET /registro` es para dirección y superadministrador. [VERIFICAR] quién puede asignar el rol superadministrador: quien ya puede hacer `PATCH /usuarios` puede hacerlo hoy, y eso no es una regla nueva que se decida aquí.
 - **PROYECTO.** Una obra. Cabecera de todo. `tipo` distingue llave en mano de reforma.
 - **PRESUPUESTO.** El fichero de origen y su versión. `formato` vale `excel_expertis` (origen de la obra, plantilla Expertis) o `pdf_cliente` (PDF de contraste o presupuestos anteriores). `es_escaneado` marca baja fiabilidad por OCR en el PDF. `ruta_almacen` apunta al fichero en `uploads/` (null en obras antiguas). Permite gestionar revisiones sin perder el histórico (los presupuestos reales llevan sufijo de versión, ej. "V2"). Enlaza con el proyecto.
 - **NAVE.** Unidad de desglose del presupuesto. Guarda su importe presupuestado.

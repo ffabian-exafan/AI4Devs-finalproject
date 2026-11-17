@@ -2,8 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-# jefe_obra | administracion | direccion — docs/readme.md, entidad USUARIO
-ROLES = ("jefe_obra", "administracion", "direccion")
+# jefe_obra | administracion | direccion | superadministrador — docs/readme.md, entidad USUARIO
+ROLES = ("jefe_obra", "administracion", "direccion", "superadministrador")
 
 
 def _email_normalizado(valor: str) -> str:
@@ -12,7 +12,9 @@ def _email_normalizado(valor: str) -> str:
 
 def _rol_conocido(valor: str) -> str:
     if valor not in ROLES:
-        raise ValueError("El rol tiene que ser jefe de obra, administración o dirección.")
+        raise ValueError(
+            "El rol tiene que ser jefe de obra, administración, dirección o superadministrador."
+        )
     return valor
 
 
