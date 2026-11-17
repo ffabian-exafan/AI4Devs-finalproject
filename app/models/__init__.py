@@ -8,6 +8,7 @@ from app.models.linea_pdf_cliente import LineaPdfCliente, LineaPdfClienteTarea
 from app.models.nave import Nave
 from app.models.presupuesto import Presupuesto
 from app.models.proyecto import Proyecto
+from app.models.registro_accion import RegistroAccion
 from app.models.tarea import Tarea
 from app.models.usuario import Usuario
 
@@ -23,6 +24,7 @@ __all__ = [
     "Nave",
     "Presupuesto",
     "Proyecto",
+    "RegistroAccion",
     "Tarea",
     "Usuario",
 ]
