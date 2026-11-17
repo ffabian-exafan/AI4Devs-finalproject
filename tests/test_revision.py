@@ -4,8 +4,11 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from app.db import SessionLocal
 from app.main import app
+from app.models import RegistroAccion
 
 FIXTURE = (
     Path(__file__).resolve().parents[1]
@@ -20,6 +23,15 @@ def client():
         yield c
 
 
+@pytest.fixture
+def db() -> Session:
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
 def _aplanar(nodos):
     out = []
     for n in nodos:
@@ -28,7 +40,7 @@ def _aplanar(nodos):
     return out
 
 
-def test_flujo_revision_presupuesto(client: TestClient):
+def test_flujo_revision_presupuesto(client: TestClient, db: Session):
     with FIXTURE.open("rb") as fh:
         imp = client.post(
             "/proyectos/importar-presupuesto",
@@ -55,6 +67,9 @@ def test_flujo_revision_presupuesto(client: TestClient):
     assert any(f["tiene_anotacion_manual"] for f in filas)
 
     # Confirmar sin resolver manuscritos → 422
+    from tests.sesion import entrar
+
+    entrar(client, db, rol="direccion")
     mal = client.post(
         "/revisiones/confirmar",
         json={
@@ -78,6 +93,15 @@ def test_flujo_revision_presupuesto(client: TestClient):
         },
     )
     assert mal.status_code == 422
+    assert (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_revision",
+            RegistroAccion.documento_id == doc_id,
+        )
+        .count()
+        == 0
+    )
 
     # Confirmar bien: manuscritos con anotacion_confirmada
     payload = {
@@ -102,6 +126,17 @@ def test_flujo_revision_presupuesto(client: TestClient):
     ok = client.post("/revisiones/confirmar", json=payload)
     assert ok.status_code == 200, ok.text
     assert ok.json()["ok"] is True
+    filas_registro = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_revision",
+            RegistroAccion.documento_id == doc_id,
+        )
+        .all()
+    )
+    assert len(filas_registro) == 1
+    assert filas_registro[0].tipo_documento == "presupuesto"
+    assert "presupuesto" in filas_registro[0].etiqueta
 
     pend2 = client.get("/revisiones/pendientes")
     assert not any(

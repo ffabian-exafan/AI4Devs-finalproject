@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import usuario_actual
+from app.models import Usuario
 from app.schemas.revision import (
     ConfirmarRevisionIn,
     ConfirmarRevisionOut,
@@ -39,11 +41,12 @@ def obtener_documento(
 def confirmar_revision(
     payload: ConfirmarRevisionIn,
     db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
 ) -> ConfirmarRevisionOut:
     # Validación de forma: Pydantic (ConfirmarRevisionIn).
     # La de negocio (manuscritos, pertenencia) se repite en el servicio.
     try:
-        return revision_svc.confirmar_revision(db, payload)
+        return revision_svc.confirmar_revision(db, payload, actual)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

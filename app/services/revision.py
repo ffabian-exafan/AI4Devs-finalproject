@@ -6,7 +6,8 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session
 
-from app.models import Contrato, Contratista, Presupuesto, Proyecto, Tarea
+from app.models import Contrato, Contratista, Presupuesto, Proyecto, Tarea, Usuario
+from app.services.registro import registrar
 from app.services.jerarquia import asegurar_apartados_padre, mapa_padres
 from app.services.presupuesto_excel import (
     devolver_elementos_de_montaje,
@@ -128,7 +129,11 @@ def obtener_documento(
     raise ValueError(f"Tipo de documento no válido: {tipo}")
 
 
-def confirmar_revision(db: Session, payload: ConfirmarRevisionIn) -> ConfirmarRevisionOut:
+def confirmar_revision(
+    db: Session,
+    payload: ConfirmarRevisionIn,
+    usuario: Usuario,
+) -> ConfirmarRevisionOut:
     """
     Persiste la revisión. La validación de forma ya viene en ConfirmarRevisionIn (Pydantic).
     Aquí se aplica la regla de negocio: manuscrito exige confirmación explícita.
@@ -192,6 +197,14 @@ def confirmar_revision(db: Session, payload: ConfirmarRevisionIn) -> ConfirmarRe
         if otros_p == 0 and otros_c == 0:
             proyecto.estado = "en_curso"
 
+    registrar(
+        db,
+        usuario,
+        "confirmar_revision",
+        tipo_documento=payload.tipo,
+        documento_id=payload.documento_id,
+        etiqueta=f"{proyecto.nombre} · {payload.tipo}",
+    )
     db.commit()
 
     return ConfirmarRevisionOut(
