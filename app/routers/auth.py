@@ -8,6 +8,7 @@ from app.deps import usuario_actual
 from app.models import Usuario
 from app.schemas.usuario import LoginIn, UsuarioRead
 from app.services import usuarios as usuarios_svc
+from app.services.registro import registrar
 
 router = APIRouter(tags=["auth"])
 
@@ -20,6 +21,8 @@ def login(datos: LoginIn, request: Request, db: Session = Depends(get_db)) -> Us
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="El correo o la clave no son válidos.",
         )
+    registrar(db, usuario, "inicio_sesion")
+    db.commit()
     request.session["usuario_id"] = usuario.id
     return usuario
 

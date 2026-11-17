@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Usuario
+from app.models import RegistroAccion, Usuario
 
 CLAVE = "clave-ficticia"
 
@@ -55,14 +55,25 @@ def test_la_app_y_la_pantalla_exigen_login(client: TestClient):
 def test_login_rechaza_clave_incorrecta(client: TestClient, db: Session):
     email = _email()
     _alta(db, email=email)
+    antes = (
+        db.query(RegistroAccion)
+        .filter(RegistroAccion.accion == "inicio_sesion")
+        .count()
+    )
 
     res = client.post(
         "/auth/login",
         json={"email": email, "password": "otra-clave-mala"},
     )
 
+    despues = (
+        db.query(RegistroAccion)
+        .filter(RegistroAccion.accion == "inicio_sesion")
+        .count()
+    )
     assert res.status_code == 401
     assert "password_hash" not in res.text
+    assert despues == antes
 
 
 def test_login_deja_entrar_y_no_devuelve_la_clave(client: TestClient, db: Session):
@@ -79,20 +90,43 @@ def test_login_deja_entrar_y_no_devuelve_la_clave(client: TestClient, db: Sessio
     assert "password" not in cuerpo
     yo = client.get("/auth/yo")
     assert yo.status_code == 200
+    entradas = (
+        db.query(RegistroAccion)
+        .filter(RegistroAccion.accion == "inicio_sesion")
+        .all()
+    )
+    assert any(fila.usuario_id == cuerpo["id"] for fila in entradas)
     assert yo.json()["id"] == cuerpo["id"]
     assert client.get("/", follow_redirects=False).status_code == 200
 
 
 def test_logout_cierra_la_sesion(client: TestClient, db: Session):
     email = _email()
-    _alta(db, email=email)
+    usuario = _alta(db, email=email)
     client.post("/auth/login", json={"email": email, "password": CLAVE})
+    tras_login = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "inicio_sesion",
+            RegistroAccion.usuario_id == usuario.id,
+        )
+        .count()
+    )
 
     out = client.post("/auth/logout")
+    tras_logout = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "inicio_sesion",
+            RegistroAccion.usuario_id == usuario.id,
+        )
+        .count()
+    )
 
     assert out.status_code == 204
     assert client.get("/auth/yo").status_code == 401
     assert client.get("/usuarios").status_code == 401
+    assert tras_logout == tras_login
 
 
 def test_alta_edicion_y_borrado(client: TestClient, db: Session):
