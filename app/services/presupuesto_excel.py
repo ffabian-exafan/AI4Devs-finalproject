@@ -11,7 +11,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import LineaPdfCliente, LineaPdfClienteTarea, Nave, Presupuesto, Proyecto, Tarea
+from app.models import LineaPdfCliente, LineaPdfClienteTarea, Nave, Presupuesto, Proyecto, Tarea, Usuario
 from app.schemas.presupuesto import (
     ApartadoExcelOut,
     AvisoCuadreOut,
@@ -25,6 +25,7 @@ from app.schemas.presupuesto import (
 from app.services import almacen as almacen_svc
 from app.services import extraccion as extraccion_svc
 from app.services import llm as llm_svc
+from app.services.registro import registrar
 from app.services.casado import _apartados_presupuesto
 from app.services.excel_expertis import (
     ExcelLeido,
@@ -267,9 +268,12 @@ def confirmar_importe_cliente(
     proyecto_id: int,
     tarea_id: int,
     importe: Decimal,
+    usuario: Usuario,
 ) -> ImporteClienteOut:
     """Guarda el importe del contrato con el cliente en un subapartado Excel."""
-    salida = confirmar_importes_cliente(db, proyecto_id, [tarea_id], importe)
+    salida = confirmar_importes_cliente(
+        db, proyecto_id, [tarea_id], importe, usuario=usuario, registrar_fila=True
+    )
     return salida.asignaciones[0]
 
 
@@ -279,6 +283,9 @@ def confirmar_importes_cliente(
     tarea_ids: list[int],
     importe: Decimal,
     linea_id: int | None = None,
+    *,
+    usuario: Usuario | None = None,
+    registrar_fila: bool = True,
 ) -> ImportesClienteOut:
     """Un importe del PDF puede cubrir varios subapartados. La cifra se reparte según su presupuesto."""
     if not tarea_ids:
@@ -302,6 +309,27 @@ def confirmar_importes_cliente(
         tarea.importe_contrato_cliente = parte
     if linea_id is not None:
         _enlazar_linea(db, proyecto_id, linea_id, vistos)
+    if registrar_fila and usuario is not None:
+        proyecto = db.get(Proyecto, proyecto_id)
+        if len(tareas) == 1:
+            tarea = tareas[0]
+            registrar(
+                db,
+                usuario,
+                "confirmar_importe_cliente",
+                tipo_documento="tarea",
+                documento_id=tarea.id,
+                etiqueta=f"{tarea.codigo} · {tarea.descripcion} · {proyecto.nombre}",
+            )
+        else:
+            registrar(
+                db,
+                usuario,
+                "confirmar_importes_cliente",
+                tipo_documento="proyecto",
+                documento_id=proyecto.id,
+                etiqueta=proyecto.nombre,
+            )
     db.commit()
     for tarea in tareas:
         db.refresh(tarea)

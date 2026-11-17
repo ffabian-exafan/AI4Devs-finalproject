@@ -16,7 +16,9 @@ from app.models import (
     Presupuesto,
     Proyecto,
     Tarea,
+    Usuario,
 )
+from app.services.registro import registrar
 from app.schemas.casado import DesenlazarApartadoOut
 from app.schemas.presupuesto import SoloGestionOut
 
@@ -86,7 +88,9 @@ def desmarcar(db: Session, proyecto_id: int, linea_id: int) -> None:
     db.commit()
 
 
-def confirmar(db: Session, proyecto_id: int, tarea_id: int) -> SoloGestionOut:
+def confirmar(
+    db: Session, proyecto_id: int, tarea_id: int, usuario: Usuario
+) -> SoloGestionOut:
     apartado = _apartado_de_la_obra(db, proyecto_id, tarea_id)
     if not apartado.solo_gestion:
         raise ValueError("El apartado no es de solo gestión")
@@ -99,8 +103,17 @@ def confirmar(db: Session, proyecto_id: int, tarea_id: int) -> SoloGestionOut:
         raise ValueError(f"Línea del apartado {tarea_id} no encontrada")
     if apartado.estado_revision != "confirmada":
         apartado.estado_revision = "confirmada"
-        db.commit()
-        db.refresh(apartado)
+    proyecto = db.get(Proyecto, proyecto_id)
+    registrar(
+        db,
+        usuario,
+        "confirmar_solo_gestion",
+        tipo_documento="tarea",
+        documento_id=apartado.id,
+        etiqueta=f"{apartado.codigo} · {apartado.descripcion} · {proyecto.nombre}",
+    )
+    db.commit()
+    db.refresh(apartado)
     return _salida(apartado, linea)
 
 

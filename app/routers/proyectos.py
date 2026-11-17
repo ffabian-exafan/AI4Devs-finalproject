@@ -5,7 +5,8 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Contrato, Factura, Presupuesto
+from app.deps import usuario_actual
+from app.models import Contrato, Factura, Presupuesto, Usuario
 from app.schemas.casado import (
     ApartadoEnlazadoOut,
     DesenlazarApartadoOut,
@@ -297,10 +298,11 @@ def confirmar_importe_cliente(
     tarea_id: int,
     body: ImporteClienteIn,
     db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
 ) -> ImporteClienteOut:
     try:
         return presupuesto_excel_svc.confirmar_importe_cliente(
-            db, proyecto_id, tarea_id, body.importe
+            db, proyecto_id, tarea_id, body.importe, actual
         )
     except ValueError as exc:
         detail = str(exc)
@@ -320,10 +322,11 @@ def confirmar_importes_cliente(
     proyecto_id: int,
     body: ImportesClienteIn,
     db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
 ) -> ImportesClienteOut:
     try:
         return presupuesto_excel_svc.confirmar_importes_cliente(
-            db, proyecto_id, body.tarea_ids, body.importe, body.linea_id
+            db, proyecto_id, body.tarea_ids, body.importe, body.linea_id, usuario=actual
         )
     except ValueError as exc:
         detail = str(exc)
@@ -449,9 +452,10 @@ def confirmar_solo_gestion(
     proyecto_id: int,
     tarea_id: int,
     db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
 ) -> SoloGestionOut:
     try:
-        return solo_gestion_svc.confirmar(db, proyecto_id, tarea_id)
+        return solo_gestion_svc.confirmar(db, proyecto_id, tarea_id, actual)
     except ValueError as exc:
         raise _error_valor(exc) from exc
 

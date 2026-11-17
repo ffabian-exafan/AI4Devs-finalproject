@@ -80,7 +80,7 @@ def editar(
             from app.services.presupuesto_excel import confirmar_importes_cliente
 
             confirmar_importes_cliente(
-                db, proyecto_id, confirmados, linea.importe, linea.id
+                db, proyecto_id, confirmados, linea.importe, linea.id, registrar_fila=False
             )
         else:
             db.commit()

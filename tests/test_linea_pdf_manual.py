@@ -16,10 +16,12 @@ from app.models import (
     Nave,
     Presupuesto,
     Proyecto,
+    RegistroAccion,
     Tarea,
 )
 from app.schemas.extraccion import ApartadoExtraido, NaveExtraida, PresupuestoExtraido
 from app.services.proyectos import borrar_proyecto
+from tests.sesion import entrar
 
 
 @pytest.fixture
@@ -181,6 +183,7 @@ def test_editar_manual_confirmada_reparte_y_la_leida_no_se_toca(client: TestClie
         )
         assert alta.status_code == 201, alta.text
         manual_id = alta.json()["sugerencias"][-1]["id"]
+        entrar(client, db, rol="direccion")
         confirmado = client.post(
             f"/proyectos/{pid}/importe-cliente",
             json={
@@ -190,6 +193,26 @@ def test_editar_manual_confirmada_reparte_y_la_leida_no_se_toca(client: TestClie
             },
         )
         assert confirmado.status_code == 200, confirmado.text
+        filas_proyecto = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "confirmar_importes_cliente",
+                RegistroAccion.documento_id == pid,
+            )
+            .all()
+        )
+        assert len(filas_proyecto) == 1
+        assert filas_proyecto[0].tipo_documento == "proyecto"
+        antes = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion.in_(
+                    ("confirmar_importe_cliente", "confirmar_importes_cliente")
+                ),
+                RegistroAccion.documento_id.in_((pid, obra["uno"].id, obra["dos"].id)),
+            )
+            .count()
+        )
 
         editada = client.patch(
             f"/proyectos/{pid}/lineas-pdf/{manual_id}",
@@ -202,6 +225,17 @@ def test_editar_manual_confirmada_reparte_y_la_leida_no_se_toca(client: TestClie
         assert fila["importe_pdf"] == 40
         assert fila["confirmada"] is True
         assert set(fila["tarea_ids"]) == {obra["uno"].id, obra["dos"].id}
+        despues = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion.in_(
+                    ("confirmar_importe_cliente", "confirmar_importes_cliente")
+                ),
+                RegistroAccion.documento_id.in_((pid, obra["uno"].id, obra["dos"].id)),
+            )
+            .count()
+        )
+        assert despues == antes
 
         db.expire_all()
         assert db.get(Tarea, obra["uno"].id).importe_contrato_cliente == Decimal("10.00")
@@ -257,10 +291,22 @@ def test_borrar_manual_suelta_el_excel_y_respeta_el_contrato(client: TestClient,
             json={"codigo": "12", "descripcion": "Fontanería ficticia", "importe": 40},
         )
         manual_id = alta.json()["sugerencias"][-1]["id"]
-        client.post(
+        entrar(client, db, rol="direccion")
+        una = client.post(
             f"/proyectos/{pid}/importe-cliente",
             json={"tarea_ids": [obra["uno"].id], "importe": 40, "linea_id": manual_id},
         )
+        assert una.status_code == 200, una.text
+        filas_tarea = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "confirmar_importe_cliente",
+                RegistroAccion.documento_id == obra["uno"].id,
+            )
+            .all()
+        )
+        assert len(filas_tarea) == 1
+        assert filas_tarea[0].tipo_documento == "tarea"
         borrada = client.delete(f"/proyectos/{pid}/lineas-pdf/{manual_id}")
         assert borrada.status_code == 204, borrada.text
         db.expire_all()

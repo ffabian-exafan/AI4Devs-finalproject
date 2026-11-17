@@ -17,9 +17,11 @@ from app.models import (
     Nave,
     Presupuesto,
     Proyecto,
+    RegistroAccion,
     Tarea,
 )
 from app.services.proyectos import borrar_proyecto
+from tests.sesion import entrar
 
 
 @pytest.fixture
@@ -319,6 +321,19 @@ def test_dos_contratos_se_suman_contra_el_importe_del_pdf(client: TestClient, db
         borrar_proyecto(db, obra["proyecto"].id)
 
 
+def _filas_gestion(db: Session, tarea_id: int) -> int:
+    filas = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_solo_gestion",
+            RegistroAccion.documento_id == tarea_id,
+        )
+        .all()
+    )
+    assert all(fila.tipo_documento == "tarea" for fila in filas)
+    return len(filas)
+
+
 def test_manuscrito_queda_pendiente_hasta_confirmar(client: TestClient, db: Session):
     obra = _obra(db)
     linea = _linea(
@@ -373,16 +388,29 @@ def test_manuscrito_queda_pendiente_hasta_confirmar(client: TestClient, db: Sess
         assert tarea_id not in sugeridas
         assert excel_gestion.id not in sugeridas
 
+        entrar(client, db, rol="direccion")
         no_es = client.post(f"/proyectos/{pid}/apartados/{excel_gestion.id}/confirmar-gestion")
         assert no_es.status_code == 422
+        assert (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "confirmar_solo_gestion",
+                RegistroAccion.documento_id == excel_gestion.id,
+            )
+            .count()
+            == 0
+        )
+        assert _filas_gestion(db, tarea_id) == 0
 
         confirmada = client.post(f"/proyectos/{pid}/apartados/{tarea_id}/confirmar-gestion")
         assert confirmada.status_code == 200, confirmada.text
         assert confirmada.json()["estado_revision"] == "confirmada"
         assert confirmada.json()["importe"] == 800.0
+        assert _filas_gestion(db, tarea_id) == 1
         otra = client.post(f"/proyectos/{pid}/apartados/{tarea_id}/confirmar-gestion")
         assert otra.status_code == 200
         assert otra.json()["estado_revision"] == "confirmada"
+        assert _filas_gestion(db, tarea_id) == 2
 
         detalle = client.get(f"/proyectos/{pid}")
         sugeridas = []

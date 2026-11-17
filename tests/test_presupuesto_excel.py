@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Nave, Presupuesto, Proyecto, Tarea
+from app.models import Nave, Presupuesto, Proyecto, RegistroAccion, Tarea
 from app.schemas.extraccion import ApartadoExtraido, NaveExtraida, PresupuestoExtraido
 from app.services.excel_expertis import leer_excel_expertis
+from tests.sesion import entrar
 
 
 @pytest.fixture
@@ -842,12 +843,32 @@ def test_alta_desde_varios_excel_y_contraste_del_pdf(
         "Salida de silos ficticia"
     )
 
+    entrar(client, db, rol="direccion")
     confirmado = client.post(
         f"/proyectos/{proyecto_id}/apartados/{silos.id}/importe-cliente",
         json={"importe": sugerencia["importe_pdf"]},
     )
     assert confirmado.status_code == 200, confirmado.text
     assert confirmado.json()["importe_contrato_cliente"] == 1000.0
+    filas_silos = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_importe_cliente",
+            RegistroAccion.documento_id == silos.id,
+        )
+        .all()
+    )
+    assert len(filas_silos) == 1
+    assert filas_silos[0].tipo_documento == "tarea"
+    assert (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_importes_cliente",
+            RegistroAccion.documento_id == proyecto_id,
+        )
+        .count()
+        == 0
+    )
 
     control = client.get(f"/proyectos/{proyecto_id}/control-economico")
     assert control.status_code == 200, control.text
@@ -860,11 +881,40 @@ def test_alta_desde_varios_excel_y_contraste_del_pdf(
     assert fila["montaje"] == 30.0
     assert fila["contrato_cliente"] == 1000.0
 
+    entrar(client, db, rol="direccion")
     repartido = client.post(
         f"/proyectos/{proyecto_id}/importe-cliente",
         json={"tarea_ids": [silos.id, montaje.id], "importe": 100, "linea_id": sugerencia["id"]},
     )
     assert repartido.status_code == 200, repartido.text
+    filas_proyecto = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_importes_cliente",
+            RegistroAccion.documento_id == proyecto_id,
+        )
+        .all()
+    )
+    assert len(filas_proyecto) == 1
+    assert filas_proyecto[0].tipo_documento == "proyecto"
+    assert (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_importe_cliente",
+            RegistroAccion.documento_id == silos.id,
+        )
+        .count()
+        == 1
+    )
+    assert (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_importe_cliente",
+            RegistroAccion.documento_id == montaje.id,
+        )
+        .count()
+        == 0
+    )
     asignaciones = {
         item["tarea_id"]: item["importe_contrato_cliente"]
         for item in repartido.json()["asignaciones"]
