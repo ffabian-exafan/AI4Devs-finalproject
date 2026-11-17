@@ -19,8 +19,10 @@ from app.models import (
     Nave,
     Presupuesto,
     Proyecto,
+    RegistroAccion,
     Tarea,
 )
+from tests.sesion import entrar
 from app.services import almacen as almacen_svc
 
 NIF_FICTICIO = "B00000999"
@@ -204,12 +206,29 @@ def test_quitar_contrato_deja_factura_y_presupuesto(
     datos = _alta(db)
     pid = datos["proyecto_id"]
     cid = datos["contrato_id"]
+    contrato = db.get(Contrato, cid)
+    assert contrato is not None
+    contrato.referencia_presupuesto = "P-FICT-01"
+    db.commit()
+    nombre = db.get(Proyecto, pid).nombre
 
+    entrar(client, db, rol="direccion")
     respuesta = client.delete(f"/proyectos/{pid}/contratos/{cid}")
     assert respuesta.status_code == 204, respuesta.text
 
     db.expire_all()
     assert db.get(Contrato, cid) is None
+    borrados = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "borrar_contrato",
+            RegistroAccion.documento_id == cid,
+        )
+        .all()
+    )
+    assert len(borrados) == 1
+    assert nombre in borrados[0].etiqueta
+    assert "P-FICT-01" in borrados[0].etiqueta
     assert db.get(Tarea, datos["apartado_id"]) is not None
     assert db.get(Tarea, datos["padre_id"]) is None
     assert db.get(Tarea, datos["hija_id"]) is None
@@ -236,8 +255,19 @@ def test_quitar_contrato_deja_factura_y_presupuesto(
     assert db.get(Contratista, datos["contratista_id"]) is not None
     assert almacen_svc.abrir_si_existe(datos["ruta"]) is None
 
+    entrar(client, db, rol="direccion")
     otra = client.delete(f"/proyectos/{pid}/contratos/{cid}")
     assert otra.status_code == 404
+    db.expire_all()
+    siguen = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "borrar_contrato",
+            RegistroAccion.documento_id == cid,
+        )
+        .all()
+    )
+    assert len(siguen) == 1
 
 
 def test_quitar_contrato_de_otra_obra_no_lo_borra(client: TestClient, db: Session):
@@ -246,9 +276,19 @@ def test_quitar_contrato_de_otra_obra_no_lo_borra(client: TestClient, db: Sessio
     db.add(ajena)
     db.commit()
 
+    entrar(client, db, rol="direccion")
     respuesta = client.delete(
         f"/proyectos/{ajena.id}/contratos/{datos['contrato_id']}"
     )
     assert respuesta.status_code == 404
     db.expire_all()
     assert db.get(Contrato, datos["contrato_id"]) is not None
+    borrados = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "borrar_contrato",
+            RegistroAccion.documento_id == datos["contrato_id"],
+        )
+        .all()
+    )
+    assert len(borrados) == 0

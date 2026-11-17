@@ -51,9 +51,13 @@ def listar_proyectos(db: Session = Depends(get_db)) -> list[ProyectoRead]:
 
 
 @router.delete("/proyectos/{proyecto_id}", status_code=status.HTTP_204_NO_CONTENT)
-def borrar_proyecto(proyecto_id: int, db: Session = Depends(get_db)) -> None:
+def borrar_proyecto(
+    proyecto_id: int,
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+) -> None:
     try:
-        proyectos_svc.borrar_proyecto(db, proyecto_id)
+        proyectos_svc.borrar_proyecto(db, proyecto_id, actual)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -117,9 +121,10 @@ def borrar_linea(
     proyecto_id: int,
     tarea_id: int,
     db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
 ) -> None:
     try:
-        lineas_svc.borrar_linea(db, proyecto_id, tarea_id)
+        lineas_svc.borrar_linea(db, proyecto_id, tarea_id, actual)
     except lineas_svc.LineaNoEncontrada as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -468,9 +473,10 @@ def borrar_contrato(
     proyecto_id: int,
     contrato_id: int,
     db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
 ) -> Response:
     try:
-        proyectos_svc.borrar_contrato(db, proyecto_id, contrato_id)
+        proyectos_svc.borrar_contrato(db, proyecto_id, contrato_id, actual)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

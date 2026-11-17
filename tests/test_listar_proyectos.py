@@ -9,7 +9,16 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Contratista, Factura, Nave, Presupuesto, Proyecto, Tarea
+from app.models import (
+    Contratista,
+    Factura,
+    Nave,
+    Presupuesto,
+    Proyecto,
+    RegistroAccion,
+    Tarea,
+)
+from tests.sesion import entrar
 
 
 @pytest.fixture
@@ -265,7 +274,9 @@ def test_borrar_proyecto_quita_la_obra_y_sus_filas(
     )
     carpeta = tmp_path / str(proyecto_id)
     assert carpeta.is_dir()
+    nombre = proyecto.nombre
 
+    entrar(client, db, rol="direccion")
     response = client.delete(f"/proyectos/{proyecto_id}")
     assert response.status_code == 204, response.text
     assert response.content == b""
@@ -277,13 +288,34 @@ def test_borrar_proyecto_quita_la_obra_y_sus_filas(
     db.expire_all()
     assert db.get(Nave, nave_id) is None
     assert db.get(Presupuesto, presupuesto_id) is None
+    assert db.get(Proyecto, proyecto_id) is None
+    borrados = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "borrar_proyecto",
+            RegistroAccion.documento_id == proyecto_id,
+        )
+        .all()
+    )
+    assert len(borrados) == 1
+    assert nombre in borrados[0].etiqueta
     assert not carpeta.exists()
     get_settings.cache_clear()
 
 
-def test_borrar_proyecto_inexistente(client: TestClient):
+def test_borrar_proyecto_inexistente(client: TestClient, db: Session):
+    entrar(client, db, rol="direccion")
     response = client.delete("/proyectos/999999999")
     assert response.status_code == 404
+    borrados = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "borrar_proyecto",
+            RegistroAccion.documento_id == 999999999,
+        )
+        .all()
+    )
+    assert len(borrados) == 0
 
 
 def test_obtener_proyecto_inexistente(client: TestClient):

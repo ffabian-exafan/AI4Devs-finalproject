@@ -14,7 +14,9 @@ from app.models import (
     Presupuesto,
     Proyecto,
     Tarea,
+    Usuario,
 )
+from app.services.registro import registrar
 from app.schemas.proyecto import (
     ApartadoContratoOut,
     ApartadoEnlaceOut,
@@ -432,7 +434,9 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
     )
 
 
-def borrar_contrato(db: Session, proyecto_id: int, contrato_id: int) -> None:
+def borrar_contrato(
+    db: Session, proyecto_id: int, contrato_id: int, usuario: Usuario
+) -> None:
     """Quita el contrato del proveedor.
 
     Las facturas se quedan y dejan de apuntar a él. Se borran el fichero,
@@ -442,6 +446,21 @@ def borrar_contrato(db: Session, proyecto_id: int, contrato_id: int) -> None:
     contrato = db.get(Contrato, contrato_id)
     if contrato is None or contrato.proyecto_id != proyecto_id:
         raise ValueError(f"Contrato {contrato_id} no encontrado")
+
+    proyecto = db.get(Proyecto, proyecto_id)
+    nombre = proyecto.nombre
+    referencia = contrato.referencia_presupuesto
+    etiqueta = nombre
+    if referencia is not None and referencia.strip():
+        etiqueta = f"{nombre} · {referencia}"
+    registrar(
+        db,
+        usuario,
+        "borrar_contrato",
+        tipo_documento="contrato",
+        documento_id=contrato_id,
+        etiqueta=etiqueta,
+    )
 
     ruta = contrato.ruta_almacen
     propias = _ids_tareas_propias_del_contrato(db, contrato_id)
@@ -513,7 +532,7 @@ def _en_ids(db: Session, sql: str, ids: list[int]) -> None:
     )
 
 
-def borrar_proyecto(db: Session, proyecto_id: int) -> None:
+def borrar_proyecto(db: Session, proyecto_id: int, usuario: Usuario) -> None:
     """Elimina la obra y lo que cuelga de ella. El contratista se conserva.
 
     [VERIFICAR] docs/readme.md no define el borrado de un proyecto.
@@ -521,6 +540,18 @@ def borrar_proyecto(db: Session, proyecto_id: int) -> None:
     proyecto = db.get(Proyecto, proyecto_id)
     if proyecto is None:
         raise ValueError(f"Proyecto {proyecto_id} no encontrado")
+
+    nombre = proyecto.nombre
+    codigo = proyecto.codigo
+    etiqueta = nombre if codigo is None else f"{nombre} · {codigo}"
+    registrar(
+        db,
+        usuario,
+        "borrar_proyecto",
+        tipo_documento="proyecto",
+        documento_id=proyecto_id,
+        etiqueta=etiqueta,
+    )
 
     params = {"id": proyecto_id}
     db.execute(

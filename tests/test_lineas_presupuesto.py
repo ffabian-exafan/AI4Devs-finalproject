@@ -9,7 +9,16 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Contratista, Contrato, Nave, Presupuesto, Proyecto, Tarea
+from app.models import (
+    Contratista,
+    Contrato,
+    Nave,
+    Presupuesto,
+    Proyecto,
+    RegistroAccion,
+    Tarea,
+)
+from tests.sesion import entrar
 
 
 @pytest.fixture
@@ -87,6 +96,7 @@ def _obra(db: Session) -> tuple[int, int, int]:
 
 def test_crear_editar_y_borrar_linea(client: TestClient, db: Session):
     proyecto_id, padre_id, hijo_id = _obra(db)
+    nombre_obra = db.get(Proyecto, proyecto_id).nombre
     try:
         alta = client.post(
             f"/proyectos/{proyecto_id}/lineas",
@@ -123,6 +133,8 @@ def test_crear_editar_y_borrar_linea(client: TestClient, db: Session):
         codigos = {ap["codigo"] for ap in cuerpo["apartados"]}
         assert {"A1", "Z9"} <= codigos
 
+        codigo_linea = db.get(Tarea, padre_id).codigo
+        entrar(client, db, rol="direccion")
         borrada = client.delete(f"/proyectos/{proyecto_id}/lineas/{padre_id}")
         assert borrada.status_code == 204, borrada.text
         detalle = client.get(f"/proyectos/{proyecto_id}")
@@ -137,8 +149,33 @@ def test_crear_editar_y_borrar_linea(client: TestClient, db: Session):
         assert padre_id not in ids
         assert hijo_id not in ids
         assert creada["id"] in ids
+        db.expire_all()
+        assert db.get(Tarea, padre_id) is None
+        borradas = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "borrar_linea",
+                RegistroAccion.documento_id == padre_id,
+            )
+            .all()
+        )
+        assert len(borradas) == 1
+        assert codigo_linea in borradas[0].etiqueta
     finally:
+        entrar(client, db, rol="direccion")
         client.delete(f"/proyectos/{proyecto_id}")
+        db.expire_all()
+        obras = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "borrar_proyecto",
+                RegistroAccion.documento_id == proyecto_id,
+            )
+            .all()
+        )
+        assert len(obras) == 1
+        assert nombre_obra in obras[0].etiqueta
+        assert db.get(Proyecto, proyecto_id) is None
 
 
 def test_borrar_linea_enlazada_a_contrato(client: TestClient, db: Session):
@@ -165,18 +202,43 @@ def test_borrar_linea_enlazada_a_contrato(client: TestClient, db: Session):
         )
     )
     db.commit()
+    nombre_obra = db.get(Proyecto, proyecto_id).nombre
     try:
+        entrar(client, db, rol="direccion")
         response = client.delete(f"/proyectos/{proyecto_id}/lineas/{padre_id}")
         assert response.status_code == 422, response.text
         detalle = client.get(f"/proyectos/{proyecto_id}")
         ids = {ap["id"] for ap in detalle.json()["apartados"]}
         assert padre_id in ids
+        rechazadas = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "borrar_linea",
+                RegistroAccion.documento_id == padre_id,
+            )
+            .all()
+        )
+        assert len(rechazadas) == 0
     finally:
+        entrar(client, db, rol="direccion")
         client.delete(f"/proyectos/{proyecto_id}")
+        db.expire_all()
+        obras = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "borrar_proyecto",
+                RegistroAccion.documento_id == proyecto_id,
+            )
+            .all()
+        )
+        assert len(obras) == 1
+        assert nombre_obra in obras[0].etiqueta
+        assert db.get(Proyecto, proyecto_id) is None
 
 
 def test_linea_vacia_y_ajena(client: TestClient, db: Session):
     proyecto_id, padre_id, _hijo_id = _obra(db)
+    nombre_obra = db.get(Proyecto, proyecto_id).nombre
     try:
         vacia = client.post(
             f"/proyectos/{proyecto_id}/lineas",
@@ -198,4 +260,17 @@ def test_linea_vacia_y_ajena(client: TestClient, db: Session):
         )
         assert ajena.status_code == 404, ajena.text
     finally:
+        entrar(client, db, rol="direccion")
         client.delete(f"/proyectos/{proyecto_id}")
+        db.expire_all()
+        obras = (
+            db.query(RegistroAccion)
+            .filter(
+                RegistroAccion.accion == "borrar_proyecto",
+                RegistroAccion.documento_id == proyecto_id,
+            )
+            .all()
+        )
+        assert len(obras) == 1
+        assert nombre_obra in obras[0].etiqueta
+        assert db.get(Proyecto, proyecto_id) is None

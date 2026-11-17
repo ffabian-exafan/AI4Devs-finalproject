@@ -20,8 +20,10 @@ from app.models import (
     Presupuesto,
     Proyecto,
     Tarea,
+    Usuario,
 )
 from app.schemas.tarea import LineaPresupuestoIn, LineaPresupuestoOut
+from app.services.registro import registrar
 
 
 class LineaNoEncontrada(Exception):
@@ -77,7 +79,9 @@ def editar_linea(
     return _out(tarea)
 
 
-def borrar_linea(db: Session, proyecto_id: int, tarea_id: int) -> None:
+def borrar_linea(
+    db: Session, proyecto_id: int, tarea_id: int, usuario: Usuario
+) -> None:
     tarea = _tarea_presupuesto(db, proyecto_id, tarea_id)
     presupuesto_id = tarea.presupuesto_id
     ids = _ids_subarbol(db, tarea.id)
@@ -96,6 +100,17 @@ def borrar_linea(db: Session, proyecto_id: int, tarea_id: int) -> None:
         raise LineaEnlazada(
             "Hay un contrato enlazado a esta línea. Quita el enlace antes de borrarla."
         )
+    codigo = tarea.codigo
+    descripcion = tarea.descripcion
+    proyecto = db.get(Proyecto, proyecto_id)
+    registrar(
+        db,
+        usuario,
+        "borrar_linea",
+        tipo_documento="tarea",
+        documento_id=tarea_id,
+        etiqueta=f"{codigo} · {descripcion} · {proyecto.nombre}",
+    )
     db.execute(
         update(LineaFactura)
         .where(LineaFactura.tarea_id.in_(ids))
