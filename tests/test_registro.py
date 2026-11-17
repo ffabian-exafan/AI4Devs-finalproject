@@ -157,3 +157,21 @@ def test_superadministrador_lista_el_registro(client, db):
     cuerpo = res.json()
     assert cuerpo["page"] == 1
     assert cuerpo["page_size"] == 50
+
+
+def test_importar_presupuesto_no_escribe_fila(client, db):
+    from pathlib import Path
+
+    antes = db.query(RegistroAccion).count()
+    fixture = (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "presupuesto_nave_destete_anonimizado.md"
+    )
+    with fixture.open("rb") as fh:
+        res = client.post(
+            "/proyectos/importar-presupuesto",
+            files={"fichero": (fixture.name, fh, "text/markdown")},
+        )
+    assert res.status_code == 201, res.text
+    assert db.query(RegistroAccion).count() == antes
