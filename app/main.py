@@ -9,7 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 
 from app.config import get_settings
-from app.routers import auth, facturas, health, proyectos, revisiones, usuarios, vista
+from app.routers import auth, facturas, health, proyectos, registro, revisiones, usuarios, vista
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -25,6 +25,7 @@ app.include_router(proyectos.router)
 app.include_router(revisiones.router)
 app.include_router(facturas.router)
 app.include_router(vista.router)
+app.include_router(registro.router)
 
 
 @app.middleware("http")
