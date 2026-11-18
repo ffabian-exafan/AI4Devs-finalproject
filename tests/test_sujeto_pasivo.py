@@ -276,3 +276,90 @@ def test_borrar_la_obra_borra_la_carta(client: TestClient, db: Session, uploads)
     borrado = client.delete(f"/proyectos/{obra.id}")
     assert borrado.status_code == 204
     assert not carpeta.exists()
+
+
+def _payload(factura: Factura, iva: str) -> dict:
+    return {
+        "numero": factura.numero,
+        "fecha_emision": factura.fecha_emision.isoformat(),
+        "base_imponible": "100.00",
+        "iva": iva,
+        "irpf": "0",
+        "retencion_garantia": "0",
+        "total": "100.00",
+        "tipo": "ordinaria",
+        "contrato_id": None,
+        "lineas": [],
+    }
+
+
+def test_confirmar_en_obra_marcada_exige_iva_cero(client: TestClient, db: Session, uploads):
+    obra = _obra(db)
+    factura = _factura(db, obra, "21.00", "pendiente")
+    entrar(client, db)
+    alta = client.post(
+        f"/proyectos/{obra.id}/inversion-sujeto-pasivo",
+        files={"fichero": ("carta-ficticia.pdf", PDF, "application/pdf")},
+    )
+    assert alta.status_code == 200
+    mal = client.post(f"/facturas/{factura.id}/confirmar", json=_payload(factura, "21.00"))
+    assert mal.status_code == 422
+    assert mal.json()["detail"] == (
+        "La obra está en inversión del sujeto pasivo. El IVA tiene que ser 0."
+    )
+    db.refresh(factura)
+    assert factura.estado_revision == "pendiente"
+    assert factura.iva == Decimal("21.00")
+    negativo = client.post(f"/facturas/{factura.id}/confirmar", json=_payload(factura, "-1"))
+    assert negativo.status_code == 422
+    db.refresh(factura)
+    assert factura.estado_revision == "pendiente"
+    assert factura.iva == Decimal("21.00")
+    bien = client.post(f"/facturas/{factura.id}/confirmar", json=_payload(factura, "0"))
+    assert bien.status_code == 200, bien.text
+    db.refresh(factura)
+    assert factura.estado_revision == "confirmada"
+    assert factura.iva == Decimal("0.00") or factura.iva == Decimal("0")
+
+
+def test_sin_marca_se_puede_confirmar_con_iva(client: TestClient, db: Session):
+    obra = _obra(db)
+    factura = _factura(db, obra, "21.00", "pendiente")
+    entrar(client, db)
+    respuesta = client.post(
+        f"/facturas/{factura.id}/confirmar",
+        json=_payload(factura, "21.00"),
+    )
+    assert respuesta.status_code == 200, respuesta.text
+    db.refresh(factura)
+    assert factura.estado_revision == "confirmada"
+    assert factura.iva == Decimal("21.00")
+
+
+def test_el_listado_avisa_solo_si_hay_iva(client: TestClient, db: Session, uploads):
+    obra = _obra(db)
+    con_iva = _factura(db, obra, "21.00", "pendiente")
+    sin_iva = _factura(db, obra, "0", "pendiente")
+    sin_iva.numero = "F-ISP-LISTA-0"
+    db.commit()
+    otra = _obra(db)
+    otra.nombre = "Obra ficticia sin carta"
+    suelta = _factura(db, otra, "21.00", "pendiente")
+    suelta.numero = "F-ISP-LIBRE"
+    db.commit()
+    entrar(client, db)
+    alta = client.post(
+        f"/proyectos/{obra.id}/inversion-sujeto-pasivo",
+        files={"fichero": ("carta-ficticia.pdf", PDF, "application/pdf")},
+    )
+    assert alta.status_code == 200
+    texto = "La obra está en inversión del sujeto pasivo. El IVA tiene que ser 0."
+    listado = client.get("/facturas", params={"proyecto_id": obra.id}).json()
+    por_id = {fila["id"]: fila for fila in listado}
+    assert por_id[con_iva.id]["aviso_isp"] == texto
+    assert por_id[sin_iva.id]["aviso_isp"] is None
+    detalle = client.get(f"/facturas/{sin_iva.id}").json()
+    assert detalle["inversion_sujeto_pasivo"] is True
+    assert detalle["aviso_isp"] is None
+    libre = client.get("/facturas", params={"proyecto_id": otra.id}).json()
+    assert next(fila for fila in libre if fila["id"] == suelta.id)["aviso_isp"] is None

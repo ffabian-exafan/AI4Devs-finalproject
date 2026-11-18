@@ -20,6 +20,7 @@ from app.models import (
     Usuario,
 )
 from app.services.registro import registrar
+from app.services.sujeto_pasivo import AVISO_ISP, aviso_de
 from app.schemas.factura import (
     ConfirmarFacturaIn,
     ConfirmarFacturaOut,
@@ -122,6 +123,7 @@ def listar_facturas(db: Session, proyecto_id: int) -> list[FacturaResumenOut]:
         db.query(Factura)
         .options(
             joinedload(Factura.contratista),
+            joinedload(Factura.proyecto),
             joinedload(Factura.contrato).joinedload(Contrato.contratista),
         )
         .filter(Factura.proyecto_id == proyecto_id)
@@ -137,6 +139,7 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
         db.query(Factura)
         .options(
             joinedload(Factura.contratista),
+            joinedload(Factura.proyecto),
             joinedload(Factura.lineas),
             joinedload(Factura.contrato).joinedload(Contrato.contratista),
         )
@@ -160,6 +163,9 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
         irpf=factura.irpf,
         retencion_garantia=factura.retencion_garantia,
         lineas=sorted(factura.lineas, key=lambda linea: linea.id),
+        inversion_sujeto_pasivo=bool(
+            factura.proyecto and factura.proyecto.inversion_sujeto_pasivo
+        ),
         contratos_candidatos=[
             ContratoCandidatoFacturaOut(
                 id=contrato.id,
@@ -184,6 +190,10 @@ def confirmar_factura(
         raise ValueError(f"Factura {factura_id} no encontrada")
     if factura.proyecto_id is None:
         raise ValueError(f"La factura {factura_id} no tiene proyecto")
+
+    proyecto = db.get(Proyecto, factura.proyecto_id)
+    if proyecto is not None and proyecto.inversion_sujeto_pasivo and payload.iva != 0:
+        raise ValueError(AVISO_ISP)
 
     if payload.contrato_id is not None:
         contrato = db.get(Contrato, payload.contrato_id)
@@ -352,6 +362,7 @@ def _etiqueta_contrato(factura: Factura) -> str | None:
 
 
 def _a_resumen(factura: Factura) -> FacturaResumenOut:
+    marcada = bool(factura.proyecto and factura.proyecto.inversion_sujeto_pasivo)
     return FacturaResumenOut(
         id=factura.id,
         proyecto_id=factura.proyecto_id,
@@ -369,6 +380,7 @@ def _a_resumen(factura: Factura) -> FacturaResumenOut:
         estado_revision=factura.estado_revision,
         tiene_fichero=bool(factura.ruta_almacen),
         fichero_origen=factura.fichero_origen,
+        aviso_isp=aviso_de(marcada, factura.iva),
     )
 
 

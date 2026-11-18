@@ -100,6 +100,7 @@ class FacturaResumenOut(BaseModel):
     estado_revision: str
     tiene_fichero: bool = False
     fichero_origen: str = ""
+    aviso_isp: str | None = None
 
 
 class FacturaRevisionOut(FacturaResumenOut):
@@ -111,6 +112,7 @@ class FacturaRevisionOut(FacturaResumenOut):
     contratos_candidatos: list[ContratoCandidatoFacturaOut] = Field(
         default_factory=list
     )
+    inversion_sujeto_pasivo: bool = False
 
 
 class LineaFacturaRevisionIn(BaseModel):
