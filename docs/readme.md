@@ -263,6 +263,9 @@ erDiagram
         date fecha_inicio
         string estado
         timestamp created_at
+        bool inversion_sujeto_pasivo "false por defecto; lo marca una persona"
+        string ruta_carta_isp "nullable, ruta relativa en uploads/"
+        string fichero_carta_isp "nullable, nombre original del PDF"
     }
     PRESUPUESTO {
         int id PK
@@ -366,13 +369,13 @@ erDiagram
 
 - **USUARIO.** Quien usa la app. `rol` define permisos (jefe de obra, administración, dirección, superadministrador). `email` único, contraseña con hash.
 - **REGISTRO_ACCION.** Una fila por cada gesto de una persona. Columnas: `usuario_id` (entero suelto, sin clave ajena), `nombre_en_el_momento`, `accion`, `tipo_documento`, `documento_id`, `etiqueta`, `ocurrido_en`. No hay columnas de importe. `GET /registro` es para dirección y superadministrador. [VERIFICAR] quién puede asignar el rol superadministrador: quien ya puede hacer `PATCH /usuarios` puede hacerlo hoy, y eso no es una regla nueva que se decida aquí.
-- **PROYECTO.** Una obra. Cabecera de todo. `tipo` distingue llave en mano de reforma.
+- **PROYECTO.** Una obra. Cabecera de todo. `tipo` distingue llave en mano de reforma. Una persona puede marcar la obra subiendo la carta del promotor (`inversion_sujeto_pasivo`). El precio con el cliente y el de la subcontrata se muestran sin IVA. Una factura de esa obra no se confirma si el IVA no es cero, y las ya confirmadas con IVA vuelven a pendiente. La carta no se lee con OCR ni con el modelo.
 - **PRESUPUESTO.** El fichero de origen y su versión. `formato` vale `excel_expertis` (origen de la obra, plantilla Expertis) o `pdf_cliente` (PDF de contraste o presupuestos anteriores). `es_escaneado` marca baja fiabilidad por OCR en el PDF. `ruta_almacen` apunta al fichero en `uploads/` (null en obras antiguas). Permite gestionar revisiones sin perder el histórico (los presupuestos reales llevan sufijo de versión, ej. "V2"). Enlaza con el proyecto.
 - **NAVE.** Unidad de desglose del presupuesto. Guarda su importe presupuestado.
 - **CONTRATISTA.** Equipo interno o subcontrata externa. `nif` único: es la clave del enlace fiable con las facturas.
 - **CONTRATO.** El acuerdo de ejecución firmado con un subcontratista: precio cerrado, plazo y condiciones de medición/facturación. Distinto de `PRESUPUESTO` (lo que se ofertó al cliente) y de `FACTURA` (lo que se cobra mes a mes). Puede aportar un desglose de `TAREA` más fino del que trae el presupuesto — en el ejemplo visto, por Sala con precio unitario. `referencia_presupuesto` es texto libre al nº de presupuesto. Un contrato puede cubrir varios apartados de presupuesto. El conjunto confirmado está en `contrato_apartado`; `tarea_apartado_id` guarda el primero, tras sugerencia automática y **confirmación humana** (ver `docs/flujo_ui_proyecto.md`). [VERIFICAR] el precio se prorratea entre esos apartados según la base de cada uno (montaje, o el importe del PDF si es solo gestión), porque el contrato no trae el reparto. Una línea del PDF del cliente que no está en el Excel se puede relacionar con el contrato anotando a mano nombre, importe y explicación. `ruta_almacen` guarda el PDF/imagen en disco. Se puede quitar el contrato (`DELETE /proyectos/{id}/contratos/{contrato_id}`): las facturas de la obra se quedan y dejan de apuntar a él; se borran el fichero, los enlaces a apartados y las partidas que nacieron solo de ese contrato. Los apartados del presupuesto y el contratista se quedan.
 - **TAREA.** Partida del presupuesto o del contrato, colgada de una nave. **Es jerárquica** (`tarea_padre_id`): un presupuesto suele generar filas de `nivel = "apartado"` con `importe_presupuestado` pero sin `unidad`/`cantidad`/`precio_unitario`; un contrato puede generar filas hijas de `nivel = "partida"` con esos campos rellenos. `presupuesto_id` y `contrato_id` (ambos nullable) registran de qué documento vino cada fila, para poder citar la fuente de cualquier cifra. `tiene_anotacion_manual` marca cuándo el valor impreso fue corregido a mano — fuerza `estado_revision = "pendiente"` sin excepción. En el Excel, `es_montaje` marca la línea que la subcontrata presupuesta y factura. Si está dentro de su subapartado, se agrupa en «Montaje {producto}». Si el montaje está en otra parte del Excel, se asocia al subapartado cuyo nombre aparece en la línea o en el bloque. Lo que no casa y sigue en GENERAL lo propone el LLM (solo nombres). Lo que no es de un solo subapartado queda en «Montaje general». `descuento_pct`, `referencia` y `referencia_alt` guardan `Dto. %`, `Ref. (1)` y `Ref. (2)`. `importe_contrato_cliente` (solo en el apartado) es el importe del PDF del cliente tras confirmación humana. Las líneas `ELEMENTOS DE MONTAJE` no son montaje: se quedan en su bloque. `estado` (económico/administrativo) y `avance_fisico_pct` (ejecución real) van separados a propósito: pagado no es ejecutado. `solo_gestion` marca un apartado creado desde una línea de importe del PDF del cliente: Exafan lo gestiona y no lo suministra. No tiene partidas ni montaje. El importe de la línea es `importe_presupuestado` e `importe_contrato_cliente`. Si el importe es manuscrito, nace pendiente y no admite contrato hasta confirmarlo. Varios contratos pueden enlazarse a ese apartado; lo contratado es la suma, comparada con el importe de la línea. `linea_pdf_cliente_id` apunta a la línea del PDF del cliente cuando el apartado se anota a mano sobre un apartado de ese PDF que no está en el Excel: guarda el nombre, el importe y, en el enlace, la explicación.
-- **FACTURA.** Documento del contratista. Siempre enlaza con un contratista (por NIF) y, cuando existe, con el `CONTRATO` que certifica — esto permite comparar contratado vs. facturado con precisión, no solo por contratista en bloque. Guarda base, IVA, IRPF, retención de garantía y `tipo` (ordinaria, anticipo, certificación). `estado_revision` controla la revisión humana; `es_escaneada` avisa de baja fiabilidad. `ruta_almacen` guarda el fichero subido.
+- **FACTURA.** Documento del contratista. Siempre enlaza con un contratista (por NIF) y, cuando existe, con el `CONTRATO` que certifica — esto permite comparar contratado vs. facturado con precisión, no solo por contratista en bloque. Guarda base, IVA, IRPF, retención de garantía y `tipo` (ordinaria, anticipo, certificación). `estado_revision` controla la revisión humana; `es_escaneada` avisa de baja fiabilidad. `ruta_almacen` guarda el fichero subido. Si la obra tiene `inversion_sujeto_pasivo`, confirmar con IVA distinto de cero responde 422 y no guarda. El IVA tiene que ser 0. El listado trae `aviso_isp` en esas facturas.
 - **LINEA_FACTURA.** Detalle de la factura, si lo hay. `embedding` alimenta el casado semántico con `pgvector`.
 - **ASIGNACION.** Tabla puente del casado. Reparte el importe de una factura a nave o tarea/partida. `es_estimacion` marca cuándo el reparto es proporcional al presupuesto (no medido). `metodo` y `confianza` registran cómo se hizo el enlace y `revisado_por` quién lo confirmó.
 
@@ -455,6 +458,15 @@ paths:
                   requiere_revision: { type: boolean }
                   anotaciones_manuscritas_detectadas: { type: integer }
                   es_escaneado: { type: boolean }
+
+  /proyectos/{id}/inversion-sujeto-pasivo:
+    post:
+      summary: Marca la obra con la carta del promotor. Las facturas confirmadas con IVA vuelven a pendiente
+    delete:
+      summary: Quita la marca y borra la carta. No cambia las facturas
+  /proyectos/{id}/carta-isp:
+    get:
+      summary: Descarga la carta. 404 si no hay
 
   /proyectos/{id}/importar-contrato:
     post:
