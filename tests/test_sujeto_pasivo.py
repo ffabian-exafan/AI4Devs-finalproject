@@ -396,3 +396,17 @@ def test_el_control_marca_la_obra_sin_cambiar_el_facturado(
     assert antes["por_contrato"] == despues["por_contrato"]
     assert despues["por_contrato"][0]["contratado"] == 100.0
     assert despues["por_contrato"][0]["facturado"] == 40.0
+
+
+def test_la_ficha_nombra_la_inversion():
+    html = Path("app/static/index.html").read_text(encoding="utf-8")
+    js = Path("app/static/js/obras.js").read_text(encoding="utf-8")
+    assert "Marcar inversión del sujeto pasivo" in html
+    assert "Facturación al promotor: sin IVA" in html
+    assert "Ver carta" in html
+    assert "Quitar la marca" in html
+    assert "Contrato cliente" in html and "sin IVA" in html
+    assert "Importes sin IVA" in html
+    assert "marcarIsp" in js
+    assert "quitarIsp" in js
+    assert "aviso_isp" in js

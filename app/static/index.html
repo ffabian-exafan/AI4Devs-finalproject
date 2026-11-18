@@ -154,8 +154,31 @@
               <h1 class="h1 h1-obra" x-text="tituloObra"></h1>
               <p class="sub" x-text="subtituloObra"></p>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" x-show="proyecto"
-              @click="borrarObra(proyecto)">Borrar obra</button>
+            <div class="stack" style="gap: 8px; align-items: flex-end">
+              <p class="sub" x-show="proyecto && proyecto.inversion_sujeto_pasivo">
+                Facturación al promotor: sin IVA
+              </p>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end">
+                <template x-if="proyecto && !proyecto.inversion_sujeto_pasivo">
+                  <button type="button" class="btn btn-secondary btn-sm"
+                    @click="$refs.cartaIsp.click()">Marcar inversión del sujeto pasivo</button>
+                </template>
+                <template x-if="proyecto && proyecto.inversion_sujeto_pasivo">
+                  <span style="display: contents">
+                    <a class="btn btn-secondary btn-sm"
+                      :href="'/proyectos/' + proyecto.id + '/carta-isp'">Ver carta</a>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                      @click="$refs.cartaIsp.click()">Sustituir carta</button>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                      @click="quitarIsp()">Quitar la marca</button>
+                  </span>
+                </template>
+                <button type="button" class="btn btn-secondary btn-sm" x-show="proyecto"
+                  @click="borrarObra(proyecto)">Borrar obra</button>
+              </div>
+              <input type="file" accept="application/pdf,.pdf" hidden x-ref="cartaIsp"
+                @change="marcarIsp($event)">
+            </div>
           </div>
           <template x-if="vista && vista.pasos && vista.pasos.length">
             <div class="pasos">
@@ -795,7 +818,7 @@
                 <h2 class="h2" style="font-size: 15px">Resumen por apartado</h2>
                 <div class="grid-resumen th">
                   <span>Apartado</span>
-                  <span class="der">Contrato cliente</span>
+                  <span class="der">Contrato cliente<span x-show="proyecto && proyecto.inversion_sujeto_pasivo"> sin IVA</span></span>
                   <span class="der">Presupuesto</span>
                   <span class="der">Diferencia</span>
                 </div>
@@ -880,7 +903,7 @@
               <div>
                 <strong x-text="c.gremio"></strong><br />
                 <span class="meta" x-text="c.archivo"></span>
-                <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong></div>
+                <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong><span x-show="proyecto && proyecto.inversion_sujeto_pasivo"> sin IVA</span></div>
                 <a class="btn-texto" x-show="c.tiene_fichero" :href="c.url_fichero">Descargar</a>
               </div>
               <span class="flecha">→</span>
@@ -1066,6 +1089,8 @@
                   </div>
                   <div class="aviso-ambar" style="margin: 16px 20px 0" x-show="seleccion.es_duplicado"
                     x-text="seleccion.aviso_duplicado"></div>
+                  <div class="aviso-ambar" style="margin: 16px 20px 0" x-show="seleccion.aviso_isp"
+                    x-text="seleccion.aviso_isp"></div>
                   <div style="padding: 16px 20px" class="stack">
                     <span class="meta" style="font-weight: 600">Partida a partida frente al presupuesto</span>
                     <template x-for="ln in seleccion.lineas" :key="ln.codigo">
@@ -1109,6 +1134,7 @@
 
       <template x-if="vista && screen === 'control'">
         <div class="stack">
+          <p class="sub" x-show="proyecto && proyecto.inversion_sujeto_pasivo">Importes sin IVA.</p>
           <div class="kpis">
             <template x-for="kpi in vista.control.kpis" :key="kpi.etiqueta">
               <div class="kpi">

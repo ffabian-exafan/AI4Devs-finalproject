@@ -1353,8 +1353,9 @@ function gestionObras() {
         url_fichero: factura.tiene_fichero
           ? "/proyectos/" + proyecto.id + "/facturas/" + factura.id + "/fichero"
           : null,
+        aviso_isp: factura.aviso_isp || null,
         acciones:
-          factura.estado_revision === "confirmada"
+          factura.estado_revision === "confirmada" || factura.aviso_isp
             ? []
             : [{ etiqueta: "Confirmar factura", variante: "primary", resolucion: "Validada" }],
         lineas: [],
@@ -2323,6 +2324,39 @@ function gestionObras() {
         this.error = err.message || "No se ha podido leer el contrato";
       } finally {
         this.leyendoContrato = false;
+      }
+    },
+
+    async marcarIsp(event) {
+      const entrada = event.target;
+      const fichero = entrada.files && entrada.files[0];
+      entrada.value = "";
+      if (!fichero || !this.proyectoId) return;
+      this.error = "";
+      const fd = new FormData();
+      fd.append("fichero", fichero, fichero.name);
+      try {
+        await GestorApi.postForm(
+          "/proyectos/" + this.proyectoId + "/inversion-sujeto-pasivo",
+          fd
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+      } catch (err) {
+        this.error = err.message || "No se ha podido marcar la obra";
+      }
+    },
+
+    async quitarIsp() {
+      if (!this.proyectoId) return;
+      if (!window.confirm("¿Quitar la inversión del sujeto pasivo de esta obra?")) return;
+      this.error = "";
+      try {
+        await GestorApi.borrar(
+          "/proyectos/" + this.proyectoId + "/inversion-sujeto-pasivo"
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+      } catch (err) {
+        this.error = err.message || "No se ha podido quitar la marca";
       }
     },
 
