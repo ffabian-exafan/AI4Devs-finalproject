@@ -22,6 +22,8 @@ ETIQUETAS = {
     "borrar_factura": "Borró la factura",
     "borrar_linea": "Borró la línea",
     "inicio_sesion": "Entró",
+    "marcar_isp": "Marcó la inversión del sujeto pasivo",
+    "quitar_isp": "Quitó la inversión del sujeto pasivo",
 }
 
 if set(ETIQUETAS) != set(ACCIONES):

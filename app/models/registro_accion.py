@@ -18,6 +18,8 @@ ACCIONES = (
     "borrar_factura",
     "borrar_linea",
     "inicio_sesion",
+    "marcar_isp",
+    "quitar_isp",
 )
 
 

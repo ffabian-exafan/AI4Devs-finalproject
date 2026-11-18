@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, String, func
+from sqlalchemy import Boolean, Date, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -39,6 +39,15 @@ class Proyecto(Base):
         server_default=func.now(),
         nullable=False,
     )
+    # La carta del promotor la adjunta una persona. No la lee el modelo.
+    inversion_sujeto_pasivo: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    ruta_carta_isp: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    fichero_carta_isp: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     naves: Mapped[list[Nave]] = relationship(back_populates="proyecto")
     presupuestos: Mapped[list[Presupuesto]] = relationship(back_populates="proyecto")
