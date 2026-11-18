@@ -35,6 +35,38 @@ function proyectoApp() {
         : "Pendiente de facturar " + this.euro(importe);
     },
 
+    async marcarIsp(event) {
+      const entrada = event.target;
+      const fichero = entrada.files && entrada.files[0];
+      entrada.value = "";
+      if (!fichero || !this.proyectoId) return;
+      this.error = "";
+      const fd = new FormData();
+      fd.append("fichero", fichero, fichero.name);
+      try {
+        this.proyecto = await GestorApi.postForm(
+          "/proyectos/" + this.proyectoId + "/inversion-sujeto-pasivo",
+          fd
+        );
+      } catch (err) {
+        this.error = err.message || "No se ha podido marcar la obra";
+      }
+    },
+
+    async quitarIsp() {
+      if (!this.proyectoId) return;
+      if (!window.confirm("¿Quitar la inversión del sujeto pasivo de esta obra?")) return;
+      this.error = "";
+      try {
+        await GestorApi.borrar(
+          "/proyectos/" + this.proyectoId + "/inversion-sujeto-pasivo"
+        );
+        await this.cargar();
+      } catch (err) {
+        this.error = err.message || "No se ha podido quitar la marca";
+      }
+    },
+
     async init() {
       const params = new URLSearchParams(window.location.search);
       const id = params.get("id") || params.get("proyecto_id");

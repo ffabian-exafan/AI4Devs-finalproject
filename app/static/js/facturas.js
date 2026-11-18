@@ -98,6 +98,13 @@ function facturasApp() {
 
     async confirmar() {
       if (!this.seleccionada) return;
+      if (
+        this.seleccionada.inversion_sujeto_pasivo &&
+        Number(this.edicion.iva) !== 0
+      ) {
+        this.error = "La obra está en inversión del sujeto pasivo. El IVA tiene que ser 0.";
+        return;
+      }
       this.confirmando = true;
       this.error = "";
       this.mensaje = "";

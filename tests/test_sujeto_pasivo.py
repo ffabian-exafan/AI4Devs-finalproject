@@ -410,3 +410,25 @@ def test_la_ficha_nombra_la_inversion():
     assert "marcarIsp" in js
     assert "quitarIsp" in js
     assert "aviso_isp" in js
+
+
+def test_las_otras_pantallas_nombran_la_inversion():
+    facturas = Path("app/static/facturas.html").read_text(encoding="utf-8")
+    facturas_js = Path("app/static/js/facturas.js").read_text(encoding="utf-8")
+    control = Path("app/static/control.html").read_text(encoding="utf-8")
+    proyecto = Path("app/static/proyecto.html").read_text(encoding="utf-8")
+    proyecto_js = Path("app/static/js/proyecto.js").read_text(encoding="utf-8")
+    assert "inversion_sujeto_pasivo" in facturas
+    assert "La obra está en inversión del sujeto pasivo" in facturas_js
+    assert "Importes sin IVA" in control
+    assert "Facturación al promotor: sin IVA" in proyecto
+    assert "sin IVA" in proyecto
+    assert "marcarIsp" in proyecto_js
+
+
+def test_el_readme_documenta_la_marca():
+    texto = Path("docs/readme.md").read_text(encoding="utf-8")
+    assert "inversion_sujeto_pasivo" in texto
+    assert "/proyectos/{id}/inversion-sujeto-pasivo" in texto
+    assert "/proyectos/{id}/carta-isp" in texto
+    assert "El IVA tiene que ser 0" in texto

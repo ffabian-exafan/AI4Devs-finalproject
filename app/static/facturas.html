@@ -107,6 +107,10 @@
               </label>
               <label>Base imponible <input type="number" step="0.01" x-model="edicion.base_imponible" required /></label>
               <label>IVA <input type="number" step="0.01" x-model="edicion.iva" required /></label>
+              <p class="estado-msg err"
+                x-show="seleccionada && seleccionada.inversion_sujeto_pasivo && Number(edicion.iva) !== 0">
+                La obra está en inversión del sujeto pasivo. El IVA tiene que ser 0.
+              </p>
               <label>IRPF <input type="number" step="0.01" x-model="edicion.irpf" required /></label>
               <label>Retención garantía <input type="number" step="0.01" x-model="edicion.retencion_garantia" required /></label>
               <label>Total <input type="number" step="0.01" x-model="edicion.total" required /></label>

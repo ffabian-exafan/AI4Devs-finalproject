@@ -46,6 +46,20 @@
               · <span x-text="proyecto.tipo"></span>
               · <span x-text="proyecto.estado"></span>
             </p>
+            <p x-show="proyecto.inversion_sujeto_pasivo">Facturación al promotor: sin IVA</p>
+            <div class="acciones-mini">
+              <template x-if="!proyecto.inversion_sujeto_pasivo">
+                <button type="button" class="secundario" @click="$refs.cartaIsp.click()">Marcar inversión del sujeto pasivo</button>
+              </template>
+              <template x-if="proyecto.inversion_sujeto_pasivo">
+                <span>
+                  <a :href="'/proyectos/' + proyecto.id + '/carta-isp'">Ver carta</a>
+                  <button type="button" class="secundario" @click="$refs.cartaIsp.click()">Sustituir carta</button>
+                  <button type="button" class="secundario" @click="quitarIsp()">Quitar la marca</button>
+                </span>
+              </template>
+            </div>
+            <input type="file" accept="application/pdf,.pdf" hidden x-ref="cartaIsp" @change="marcarIsp($event)">
             <div class="acciones-mini" style="margin-top: 0.5rem">
               <a href="/revision.html">Revisión</a>
               <a :href="'/facturas.html?proyecto_id=' + proyecto.id">Facturas</a>
@@ -137,6 +151,7 @@
                   <strong x-text="c.contratista_nombre"></strong>
                   <span x-text="'(' + c.contratista_nif + ')'"></span>
                   · <span x-text="euro(c.precio_total)"></span>
+                  <span x-show="proyecto.inversion_sujeto_pasivo"> sin IVA</span>
                   · <small x-text="c.estado_extraccion"></small>
                 </div>
 
