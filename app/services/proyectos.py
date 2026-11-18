@@ -431,6 +431,9 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         contratos=contratos_out,
         documentos=documentos,
         contraste_cliente=contraste_guardado(db, proyecto_id),
+        inversion_sujeto_pasivo=bool(proyecto.inversion_sujeto_pasivo),
+        tiene_carta_isp=bool(proyecto.ruta_carta_isp),
+        fichero_carta_isp=proyecto.fichero_carta_isp,
     )
 
 

@@ -37,6 +37,7 @@ from app.services import lineas as lineas_svc
 from app.services import presupuesto_excel as presupuesto_excel_svc
 from app.services import proyectos as proyectos_svc
 from app.services import solo_gestion as solo_gestion_svc
+from app.services import sujeto_pasivo as sujeto_pasivo_svc
 
 router = APIRouter(tags=["proyectos"])
 
@@ -630,6 +631,69 @@ def control_economico(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/inversion-sujeto-pasivo",
+    response_model=ProyectoDetalleOut,
+)
+async def marcar_inversion_sujeto_pasivo(
+    proyecto_id: int,
+    fichero: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+) -> ProyectoDetalleOut:
+    contenido = await fichero.read()
+    try:
+        return sujeto_pasivo_svc.marcar(
+            db,
+            proyecto_id,
+            actual,
+            fichero.filename or "",
+            contenido,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        codigo = (
+            status.HTTP_404_NOT_FOUND
+            if "no encontrado" in detail.lower()
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+@router.delete(
+    "/proyectos/{proyecto_id}/inversion-sujeto-pasivo",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def quitar_inversion_sujeto_pasivo(
+    proyecto_id: int,
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+) -> Response:
+    try:
+        sujeto_pasivo_svc.quitar(db, proyecto_id, actual)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/proyectos/{proyecto_id}/carta-isp")
+def descargar_carta_isp(
+    proyecto_id: int,
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    try:
+        ruta, nombre = sujeto_pasivo_svc.carta(db, proyecto_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    return _responder_fichero(ruta, nombre)
 
 
 @router.get("/proyectos/{proyecto_id}/presupuestos/{presupuesto_id}/fichero")

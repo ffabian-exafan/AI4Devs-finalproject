@@ -143,3 +143,6 @@ class ProyectoDetalleOut(ProyectoRead):
     documentos: list[DocumentoProyectoOut] = Field(default_factory=list)
     # Null si el PDF aún no se ha leído a líneas. El fichero sigue en documentos.
     contraste_cliente: ContrastarClienteOut | None = None
+    inversion_sujeto_pasivo: bool = False
+    tiene_carta_isp: bool = False
+    fichero_carta_isp: str | None = None
