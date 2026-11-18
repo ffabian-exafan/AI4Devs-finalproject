@@ -40,6 +40,7 @@ class DesvioNaveOut(BaseModel):
 
 
 class ControlEconomicoOut(BaseModel):
+    inversion_sujeto_pasivo: bool = False
     por_contratista: list[DesvioContratistaOut] = Field(default_factory=list)
     por_contrato: list[DesvioContratoOut] = Field(default_factory=list)
     por_nave: list[DesvioNaveOut] = Field(default_factory=list)

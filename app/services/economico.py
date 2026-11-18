@@ -25,6 +25,7 @@ def control_economico(db: Session, proyecto_id: int) -> ControlEconomicoOut:
         raise ValueError(f"Proyecto {proyecto_id} no encontrado")
 
     return ControlEconomicoOut(
+        inversion_sujeto_pasivo=bool(proyecto.inversion_sujeto_pasivo),
         por_contratista=_por_contratista(db, proyecto_id),
         por_contrato=_por_contrato(db, proyecto_id),
         por_nave=_por_nave(db, proyecto_id),

@@ -363,3 +363,36 @@ def test_el_listado_avisa_solo_si_hay_iva(client: TestClient, db: Session, uploa
     assert detalle["aviso_isp"] is None
     libre = client.get("/facturas", params={"proyecto_id": otra.id}).json()
     assert next(fila for fila in libre if fila["id"] == suelta.id)["aviso_isp"] is None
+
+
+def test_el_control_marca_la_obra_sin_cambiar_el_facturado(
+    client: TestClient, db: Session, uploads
+):
+    from app.models import Contrato
+
+    obra = _obra(db)
+    factura = _factura(db, obra, "0", "confirmada")
+    contrato = Contrato(
+        proyecto_id=obra.id,
+        contratista_id=factura.contratista_id,
+        precio_total=Decimal("100.00"),
+        fichero_origen="contrato-ficticio.md",
+        estado_extraccion="confirmada",
+    )
+    db.add(contrato)
+    db.flush()
+    factura.contrato_id = contrato.id
+    factura.total = Decimal("40.00")
+    db.commit()
+    entrar(client, db)
+    antes = client.get(f"/proyectos/{obra.id}/control-economico").json()
+    alta = client.post(
+        f"/proyectos/{obra.id}/inversion-sujeto-pasivo",
+        files={"fichero": ("carta-ficticia.pdf", PDF, "application/pdf")},
+    )
+    assert alta.status_code == 200
+    despues = client.get(f"/proyectos/{obra.id}/control-economico").json()
+    assert despues["inversion_sujeto_pasivo"] is True
+    assert antes["por_contrato"] == despues["por_contrato"]
+    assert despues["por_contrato"][0]["contratado"] == 100.0
+    assert despues["por_contrato"][0]["facturado"] == 40.0
