@@ -17,9 +17,18 @@ from app.models import (
     Factura,
     LineaFactura,
     Proyecto,
+    Tarea,
     Usuario,
 )
-from app.services.registro import registrar
+from app.services.codigo_contrato import (
+    AVISO_SIN_CODIGO_FACTURA,
+    AVISO_VARIOS,
+    aviso_otra_obra,
+    aviso_sin_contrato,
+    codigos_en_texto,
+)
+from app.services.registro import ZONA, registrar
+from app.services.sello_factura import DatosSello, lineas_sello, pdf_con_sello
 from app.services.sujeto_pasivo import AVISO_ISP, aviso_de
 from app.schemas.factura import (
     ConfirmarFacturaIn,
@@ -69,12 +78,22 @@ def importar_factura(
             f"No existe un contratista con NIF {datos['contratista_nif']}"
         )
 
-    contratos = _contratos_candidatos(db, proyecto_id, contratista.id)
-    contrato_sugerido = contratos[0] if len(contratos) == 1 else None
+    codigo, aviso, contrato_por_codigo = _codigo_de_factura(
+        db, proyecto_id, contratista.id, texto
+    )
+    if contrato_por_codigo is not None:
+        contrato_sugerido = contrato_por_codigo
+    elif codigo is None:
+        contratos = _contratos_candidatos(db, proyecto_id, contratista.id)
+        contrato_sugerido = contratos[0] if len(contratos) == 1 else None
+    else:
+        contrato_sugerido = None
 
     factura = Factura(
         proyecto_id=proyecto_id,
         contratista_id=contratista.id,
+        codigo_contrato=codigo,
+        aviso_codigo=aviso,
         contrato_id=contrato_sugerido.id if contrato_sugerido else None,
         numero=datos["numero"],
         fecha_emision=datos["fecha_emision"],
@@ -111,6 +130,8 @@ def importar_factura(
         factura_id=factura.id,
         contratista_nif=contratista.nif,
         contrato_id=factura.contrato_id,
+        codigo_contrato=factura.codigo_contrato,
+        aviso_codigo=factura.aviso_codigo,
         estado_revision=factura.estado_revision,
         requiere_revision=True,
     )
@@ -173,6 +194,7 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
                     contrato.contratista.nombre if contrato.contratista else "—"
                 ),
                 precio_total=contrato.precio_total,
+                codigo=contrato.codigo,
             )
             for contrato in candidatos
         ],
@@ -195,7 +217,19 @@ def confirmar_factura(
     if proyecto is not None and proyecto.inversion_sujeto_pasivo and payload.iva != 0:
         raise ValueError(AVISO_ISP)
 
-    if payload.contrato_id is not None:
+    if payload.codigo_contrato:
+        contrato = _exigir_contrato_del_codigo(
+            db,
+            factura.proyecto_id,
+            factura.contratista_id,
+            payload.codigo_contrato,
+        )
+        if payload.contrato_id is not None and payload.contrato_id != contrato.id:
+            raise ValueError("El contrato no coincide con el código")
+        factura.codigo_contrato = payload.codigo_contrato
+        factura.aviso_codigo = None
+        factura.contrato_id = contrato.id
+    elif payload.contrato_id is not None:
         contrato = db.get(Contrato, payload.contrato_id)
         if contrato is None:
             raise ValueError(f"Contrato {payload.contrato_id} no encontrado")
@@ -203,6 +237,7 @@ def confirmar_factura(
             raise ValueError("El contrato no pertenece al proyecto de la factura")
         if contrato.contratista_id != factura.contratista_id:
             raise ValueError("El contrato no pertenece al contratista de la factura")
+        factura.contrato_id = contrato.id
 
     factura.numero = payload.numero
     factura.fecha_emision = payload.fecha_emision
@@ -212,9 +247,11 @@ def confirmar_factura(
     factura.retencion_garantia = payload.retencion_garantia
     factura.total = payload.total
     factura.tipo = payload.tipo
-    factura.contrato_id = payload.contrato_id or _contrato_unico_id(
-        db, factura.proyecto_id, factura.contratista_id
-    )
+    factura.referencia_alc = payload.referencia_alc
+    if factura.contrato_id is None and not payload.codigo_contrato:
+        factura.contrato_id = payload.contrato_id or _contrato_unico_id(
+            db, factura.proyecto_id, factura.contratista_id
+        )
     factura.estado_revision = "confirmada"
 
     db.query(LineaFactura).filter(
@@ -228,7 +265,21 @@ def confirmar_factura(
                 importe=linea.importe,
             )
         )
+    db.flush()
     proyecto = db.get(Proyecto, factura.proyecto_id)
+    ahora = datetime.now(ZONA)
+    datos = _datos_sello(db, factura, proyecto, usuario, ahora)
+    origen = almacen_svc.abrir_si_existe(factura.ruta_almacen)
+    contenido = pdf_con_sello(origen, lineas_sello(datos))
+    factura.ruta_sello = almacen_svc.guardar(
+        factura.proyecto_id,
+        "factura",
+        factura.id,
+        "sello-confirmacion.pdf",
+        contenido,
+    )
+    factura.confirmada_en = ahora
+    factura.confirmada_por = datos.nombre
     registrar(
         db,
         usuario,
@@ -245,7 +296,66 @@ def confirmar_factura(
         proyecto_id=factura.proyecto_id,
         contrato_id=factura.contrato_id,
         estado_revision=factura.estado_revision,
+        tiene_sello=True,
     )
+
+
+def _datos_sello(
+    db: Session,
+    factura: Factura,
+    proyecto: Proyecto | None,
+    usuario: Usuario,
+    ahora: datetime,
+) -> DatosSello:
+    contrato = db.get(Contrato, factura.contrato_id) if factura.contrato_id else None
+    presupuestado = (
+        Decimal(contrato.precio_total) if contrato is not None else Decimal("0")
+    )
+    codigo = factura.codigo_contrato or (contrato.codigo if contrato is not None else None)
+    hermanas = _facturas_del_mismo_contrato(db, factura)
+    ordinal = 1
+    acumulado = Decimal("0")
+    for indice, hermana in enumerate(hermanas, start=1):
+        acumulado += Decimal(hermana.total)
+        if hermana.id == factura.id:
+            ordinal = indice
+    obra = proyecto.nombre.strip() if proyecto is not None and proyecto.nombre else "—"
+    nombre = (usuario.nombre or "").strip() or "—"
+    return DatosSello(
+        obra=obra,
+        codigo=codigo,
+        referencia_alc=factura.referencia_alc or "",
+        nombre=nombre,
+        fecha=ahora.astimezone(ZONA).date(),
+        presupuestado=presupuestado,
+        ordinal=ordinal,
+        importe_factura=Decimal(factura.total),
+        pendiente=presupuestado - acumulado,
+    )
+
+
+def _facturas_del_mismo_contrato(db: Session, factura: Factura) -> list[Factura]:
+    """Confirmadas del mismo contrato, por fecha de emisión. La actual entra."""
+    consulta = db.query(Factura).filter(
+        Factura.proyecto_id == factura.proyecto_id,
+        Factura.estado_revision == "confirmada",
+    )
+    if factura.contrato_id is not None:
+        consulta = consulta.filter(Factura.contrato_id == factura.contrato_id)
+    else:
+        consulta = consulta.filter(
+            Factura.contrato_id.is_(None),
+            Factura.contratista_id == factura.contratista_id,
+        )
+    filas = consulta.all()
+    if all(fila.id != factura.id for fila in filas):
+        filas.append(factura)
+
+    def orden(fila: Factura) -> tuple:
+        return (fila.fecha_emision is None, fila.fecha_emision or date.min, fila.id)
+
+    filas.sort(key=orden)
+    return filas
 
 
 def enlazar_contrato(
@@ -294,6 +404,7 @@ def borrar_factura(db: Session, factura_id: int, usuario: Usuario) -> None:
         etiqueta=f"{numero} · {proyecto.nombre}",
     )
     ruta = factura.ruta_almacen
+    ruta_sello = factura.ruta_sello
     db.query(Factura).filter(Factura.duplicado_de_id == factura.id).update(
         {Factura.duplicado_de_id: None},
         synchronize_session=False,
@@ -307,6 +418,93 @@ def borrar_factura(db: Session, factura_id: int, usuario: Usuario) -> None:
     db.delete(factura)
     db.commit()
     almacen_svc.borrar_fichero(ruta)
+    if ruta_sello != ruta:
+        almacen_svc.borrar_fichero(ruta_sello)
+
+
+def guardar_codigo_factura(db: Session, factura_id: int, codigo: str) -> Factura:
+    """Guarda el código que la persona indica y, si existe, enlaza el contrato."""
+    factura = (
+        db.query(Factura)
+        .options(
+            joinedload(Factura.contratista),
+            joinedload(Factura.contrato).joinedload(Contrato.contratista),
+        )
+        .filter(Factura.id == factura_id)
+        .first()
+    )
+    if factura is None:
+        raise ValueError(f"Factura {factura_id} no encontrada")
+    if factura.proyecto_id is None:
+        raise ValueError(f"La factura {factura_id} no tiene proyecto")
+    factura.codigo_contrato = codigo
+    contrato, aviso = _enlace_por_codigo(
+        db, factura.proyecto_id, factura.contratista_id, codigo
+    )
+    factura.aviso_codigo = aviso
+    factura.contrato_id = contrato.id if contrato is not None else None
+    db.commit()
+    db.refresh(factura)
+    return factura
+
+
+def _codigo_de_factura(
+    db: Session,
+    proyecto_id: int,
+    contratista_id: int,
+    texto: str,
+) -> tuple[str | None, str | None, Contrato | None]:
+    encontrados = codigos_en_texto(texto)
+    if len(encontrados) > 1:
+        return None, AVISO_VARIOS, None
+    if not encontrados:
+        return None, AVISO_SIN_CODIGO_FACTURA, None
+    codigo = encontrados[0]
+    contrato, aviso = _enlace_por_codigo(db, proyecto_id, contratista_id, codigo)
+    return codigo, aviso, contrato
+
+
+def _enlace_por_codigo(
+    db: Session,
+    proyecto_id: int,
+    contratista_id: int,
+    codigo: str,
+) -> tuple[Contrato | None, str | None]:
+    contrato = db.query(Contrato).filter(Contrato.codigo == codigo).one_or_none()
+    if contrato is None:
+        return None, aviso_sin_contrato(codigo)
+    if contrato.proyecto_id != proyecto_id:
+        return None, aviso_otra_obra(codigo)
+    _dejar_el_proveedor_que_factura(db, contrato, contratista_id)
+    return contrato, None
+
+
+def _dejar_el_proveedor_que_factura(
+    db: Session,
+    contrato: Contrato,
+    contratista_id: int,
+) -> None:
+    """El que factura es el subcontratista. El PDF del contrato a veces trae antes a quien encarga."""
+    if contrato.contratista_id == contratista_id:
+        return
+    anterior = contrato.contratista_id
+    contrato.contratista_id = contratista_id
+    db.query(Tarea).filter(
+        Tarea.contrato_id == contrato.id,
+        Tarea.contratista_id == anterior,
+    ).update({Tarea.contratista_id: contratista_id}, synchronize_session=False)
+
+
+def _exigir_contrato_del_codigo(
+    db: Session,
+    proyecto_id: int,
+    contratista_id: int,
+    codigo: str,
+) -> Contrato:
+    contrato, aviso = _enlace_por_codigo(db, proyecto_id, contratista_id, codigo)
+    if contrato is None:
+        raise ValueError(aviso or aviso_sin_contrato(codigo))
+    return contrato
 
 
 def _contratos_candidatos(
@@ -343,6 +541,19 @@ def _rellenar_contrato_unico(db: Session, facturas: list[Factura]) -> None:
     for factura in facturas:
         if factura.contrato_id is not None or factura.proyecto_id is None:
             continue
+        if factura.codigo_contrato:
+            contrato, aviso = _enlace_por_codigo(
+                db,
+                factura.proyecto_id,
+                factura.contratista_id,
+                factura.codigo_contrato,
+            )
+            if contrato is None:
+                continue
+            factura.contrato_id = contrato.id
+            factura.aviso_codigo = aviso
+            cambio = True
+            continue
         contrato_id = _contrato_unico_id(db, factura.proyecto_id, factura.contratista_id)
         if contrato_id is None:
             continue
@@ -373,6 +584,8 @@ def _a_resumen(factura: Factura) -> FacturaResumenOut:
         ),
         contratista_nif=factura.contratista.nif if factura.contratista else "—",
         contrato_id=factura.contrato_id,
+        codigo_contrato=factura.codigo_contrato,
+        aviso_codigo=factura.aviso_codigo,
         contrato_etiqueta=_etiqueta_contrato(factura),
         total=factura.total,
         tipo=factura.tipo,
@@ -381,6 +594,8 @@ def _a_resumen(factura: Factura) -> FacturaResumenOut:
         tiene_fichero=bool(factura.ruta_almacen),
         fichero_origen=factura.fichero_origen,
         aviso_isp=aviso_de(marcada, factura.iva),
+        referencia_alc=factura.referencia_alc,
+        tiene_sello=bool(factura.ruta_sello),
     )
 
 

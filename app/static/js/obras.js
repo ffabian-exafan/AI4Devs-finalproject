@@ -25,7 +25,17 @@ function gestionObras() {
     ficheroNombre: "",
     verPagina: false,
     leyendoContrato: false,
+    leyendoParte: false,
+    errorManoObra: "",
+    precioHoraEscrito: "",
+    nombreLineaMano: "",
+    lineaParteId: null,
     leyendoFactura: false,
+    selloFacturaId: null,
+    selloAlc: "",
+    selloError: "",
+    confirmandoSello: false,
+    visorPdf: null,
     sobreDrop: false,
     nombreObra: "",
     contraste: null,
@@ -692,6 +702,7 @@ function gestionObras() {
           importe_pdf: fila.importe_pdf,
           importe_bruto: fila.importe_bruto,
           elegidos: (fila.tarea_ids || []).map(String),
+          guardados: fila.confirmada ? (fila.tarea_ids || []).map(String) : [],
           confirmada: Boolean(fila.confirmada),
           sugerida: Boolean(fila.sugerida) && !fila.confirmada,
           solo_gestion: Boolean(fila.solo_gestion),
@@ -727,6 +738,7 @@ function gestionObras() {
           fila.es_manual = Boolean(remoto.es_manual);
           if (!remoto.confirmada) return;
           fila.elegidos = (remoto.tarea_ids || []).map(String);
+          fila.guardados = fila.elegidos.slice();
           fila.confirmada = true;
           fila.sugerida = false;
           this._aplicarCruce(fila);
@@ -1211,6 +1223,17 @@ function gestionObras() {
       }
     },
 
+    contrasteCambiado(fila) {
+      if (!fila || !fila.confirmada) return false;
+      const firma = (ids) =>
+        (ids || [])
+          .map(String)
+          .filter(Boolean)
+          .sort()
+          .join(",");
+      return firma(fila.elegidos) !== firma(fila.guardados);
+    },
+
     async confirmarImporteCliente(fila) {
       const ids = (fila.elegidos || []).map((id) => Number(id)).filter((id) => id);
       if (!ids.length) {
@@ -1224,6 +1247,7 @@ function gestionObras() {
           { tarea_ids: ids, importe: fila.importe_pdf, linea_id: fila.id }
         );
         fila.confirmada = true;
+        fila.guardados = (fila.elegidos || []).slice();
         await this._cargarVistaProyecto(this.proyectoId);
         const filas = (this.contraste && this.contraste.sugerencias) || [];
         const desde = filas.indexOf(fila);
@@ -1247,6 +1271,15 @@ function gestionObras() {
       this.proyecto = proyecto;
       this.proyectoId = proyecto.id;
       this.vista = this._armarVista(proyecto, facturas, control);
+      this.precioHoraEscrito = (proyecto.mano_obra && proyecto.mano_obra.precio_hora) || "";
+      this.errorManoObra = "";
+      const lineasMano = (this.vista.mano_obra && this.vista.mano_obra.lineas) || [];
+      lineasMano.forEach((linea) => {
+        (linea.partes || []).forEach((parte) => {
+          if (parte.horas == null) parte.horas = "";
+          if (parte.fecha == null) parte.fecha = "";
+        });
+      });
       this._hidratarContraste(proyecto);
       const fila = this.proyectos.find((p) => p.id === proyecto.id);
       if (fila) {
@@ -1291,6 +1324,8 @@ function gestionObras() {
             : null,
           importe: euro(contrato.precio_total),
           precio_total: Number(contrato.precio_total) || 0,
+          codigo: contrato.codigo || null,
+          codigo_escrito: "",
           apartado_ids: apartadoIds,
           confianza: asociado
             ? 100
@@ -1304,8 +1339,8 @@ function gestionObras() {
             : sugerencia
               ? sugerencia.motivo
               : "Sin sugerencia automática",
-          aviso: null,
-          hay_aviso: false,
+          aviso: contrato.aviso || null,
+          hay_aviso: Boolean(contrato.aviso),
           etiqueta_base: null,
           presupuestado: "—",
           diferencia: "—",
@@ -1339,6 +1374,9 @@ function gestionObras() {
         fecha: factura.fecha_emision || "—",
         apartado: factura.contrato_etiqueta || "Sin contrato",
         contrato_id: factura.contrato_id,
+        codigo_contrato: factura.codigo_contrato || null,
+        aviso_codigo: factura.aviso_codigo || null,
+        codigo_escrito: "",
         candidatos: [],
         importe: euro(factura.total),
         kind: factura.estado_revision === "confirmada" ? "ok" : "bad",
@@ -1350,13 +1388,20 @@ function gestionObras() {
         desviacion: factura.estado_revision === "confirmada" ? "Confirmada" : "Pendiente de revisión",
         desviacion_negativa: false,
         tiene_fichero: Boolean(factura.tiene_fichero),
+        fichero: factura.fichero_origen || "",
         url_fichero: factura.tiene_fichero
           ? "/proyectos/" + proyecto.id + "/facturas/" + factura.id + "/fichero"
           : null,
         aviso_isp: factura.aviso_isp || null,
-        acciones:
-          factura.estado_revision === "confirmada" || factura.aviso_isp
-            ? []
+        referencia_alc: factura.referencia_alc || null,
+        tiene_sello: Boolean(factura.tiene_sello),
+        url_sello: factura.tiene_sello ? "/facturas/" + factura.id + "/sello" : null,
+        acciones: factura.aviso_isp
+          ? []
+          : factura.estado_revision === "confirmada"
+            ? factura.tiene_sello
+              ? []
+              : [{ etiqueta: "Generar sello", variante: "primary", resolucion: "Validada" }]
             : [{ etiqueta: "Confirmar factura", variante: "primary", resolucion: "Validada" }],
         lineas: [],
       }));
@@ -1529,6 +1574,12 @@ function gestionObras() {
                 : fila.descripcion_pdf,
               importe: euro(fila.importe_pdf),
             })),
+        },
+        mano_obra: proyecto.mano_obra || {
+          precio_hora: null,
+          acumulado_horas: "0.00",
+          acumulado: "0,00 €",
+          lineas: [],
         },
         facturas: facturasVista,
         control: {
@@ -2304,6 +2355,148 @@ function gestionObras() {
       }
     },
 
+    async guardarPrecioHora() {
+      if (!this.proyectoId) return;
+      this.errorManoObra = "";
+      try {
+        await GestorApi.patchJson("/proyectos/" + this.proyectoId + "/precio-hora", {
+          precio_hora: this.precioHoraEscrito,
+        });
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido guardar el precio";
+      }
+    },
+
+    async anadirLineaMano() {
+      if (!this.proyectoId) return;
+      this.errorManoObra = "";
+      try {
+        await GestorApi.postJson("/proyectos/" + this.proyectoId + "/lineas-mano-obra", {
+          nombre: this.nombreLineaMano,
+        });
+        this.nombreLineaMano = "";
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido añadir la línea";
+      }
+    },
+
+    async renombrarLineaMano(linea) {
+      if (!this.proyectoId || !linea) return;
+      this.errorManoObra = "";
+      try {
+        await GestorApi.patchJson(
+          "/proyectos/" + this.proyectoId + "/lineas-mano-obra/" + linea.id,
+          { nombre: linea.nombre }
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido guardar el nombre";
+      }
+    },
+
+    async borrarLineaMano(linea) {
+      if (!this.proyectoId || !linea) return;
+      this.errorManoObra = "";
+      try {
+        await GestorApi.borrar(
+          "/proyectos/" + this.proyectoId + "/lineas-mano-obra/" + linea.id
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido borrar la línea";
+      }
+    },
+
+    async elegirParte(event) {
+      const entrada = event.target;
+      const fichero = entrada.files && entrada.files[0];
+      const lineaId = this.lineaParteId;
+      entrada.value = "";
+      if (!fichero || !lineaId) return;
+      try {
+        const copia = await GestorApi.copiarFichero(fichero);
+        await this.subirParte(lineaId, copia);
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido leer el fichero";
+      }
+    },
+
+    async soltarParte(lineaId, event) {
+      this.sobreDrop = false;
+      const ficheros = await this._ficherosSoltados(event);
+      if (ficheros[0]) await this.subirParte(lineaId, ficheros[0]);
+    },
+
+    async subirParte(lineaId, fichero) {
+      if (this.leyendoParte || !fichero || !this.proyectoId) return;
+      this.errorManoObra = "";
+      this.leyendoParte = true;
+      this.ficheroNombre = fichero.name;
+      this.screen = "contratos";
+      const fd = new FormData();
+      fd.append("fichero", fichero, fichero.name);
+      try {
+        await GestorApi.postForm(
+          "/proyectos/" + this.proyectoId + "/lineas-mano-obra/" + lineaId + "/partes",
+          fd
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido leer el parte";
+      } finally {
+        this.leyendoParte = false;
+      }
+    },
+
+    async guardarHorasParte(parte) {
+      if (!this.proyectoId || !parte) return;
+      this.errorManoObra = "";
+      try {
+        await GestorApi.patchJson("/proyectos/" + this.proyectoId + "/partes/" + parte.id, {
+          horas: parte.horas === "" ? null : parte.horas,
+          fecha: parte.fecha || null,
+        });
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se han podido guardar las horas";
+      }
+    },
+
+    async confirmarParte(parte) {
+      if (!this.proyectoId || !parte) return;
+      this.errorManoObra = "";
+      try {
+        await GestorApi.postJson(
+          "/proyectos/" + this.proyectoId + "/partes/" + parte.id + "/confirmar",
+          {}
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido confirmar el parte";
+      }
+    },
+
+    async quitarParte(parte) {
+      if (!this.proyectoId || !parte) return;
+      this.errorManoObra = "";
+      try {
+        await GestorApi.borrar("/proyectos/" + this.proyectoId + "/partes/" + parte.id);
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.errorManoObra = err.message || "No se ha podido quitar el parte";
+      }
+    },
+
     async leerContrato(fichero) {
       if (this.leyendoContrato) return;
       if (!this.proyectoId) {
@@ -2397,10 +2590,13 @@ function gestionObras() {
           return {
             ...fila,
             contrato_id: detalle.contrato_id,
+            codigo_contrato: detalle.codigo_contrato || null,
+            aviso_codigo: detalle.aviso_codigo || null,
             apartado: detalle.contrato_etiqueta || "Sin contrato",
             candidatos: (detalle.contratos_candidatos || []).map((contrato) => ({
               id: contrato.id,
               etiqueta:
+                (contrato.codigo ? contrato.codigo + " · " : "") +
                 contrato.contratista_nombre +
                 " · " +
                 GestorApi.euro(contrato.precio_total),
@@ -2434,6 +2630,38 @@ function gestionObras() {
         await this._cargarVistaProyecto(this.proyectoId);
       } catch (err) {
         this.error = err.message || "No se ha podido borrar la factura";
+      }
+    },
+
+    async guardarCodigoContrato(fila) {
+      const codigo = (fila.codigo_escrito || "").trim();
+      if (!codigo || !this.proyectoId) return;
+      this.error = "";
+      try {
+        await GestorApi.postJson(
+          "/proyectos/" + this.proyectoId + "/contratos/" + fila.id + "/codigo",
+          { codigo }
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "contratos";
+      } catch (err) {
+        this.error = err.message || "No se ha podido guardar el código";
+      }
+    },
+
+    async guardarCodigoFactura(factura) {
+      const codigo = (factura.codigo_escrito || "").trim();
+      if (!codigo || !factura.id) return;
+      this.error = "";
+      try {
+        await GestorApi.postJson("/facturas/" + factura.id + "/codigo", { codigo });
+        const abierta = factura.id;
+        this.sel = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "facturas";
+        await this.seleccionarFactura(abierta);
+      } catch (err) {
+        this.error = err.message || "No se ha podido guardar el código";
       }
     },
 
@@ -2494,32 +2722,91 @@ function gestionObras() {
         this.error = "";
         try {
           const detalle = await GestorApi.getJson("/facturas/" + id);
-          await GestorApi.postJson("/facturas/" + id + "/confirmar", {
-            numero: detalle.numero,
-            fecha_emision: detalle.fecha_emision,
-            base_imponible: detalle.base_imponible,
-            iva: detalle.iva,
-            irpf: detalle.irpf,
-            retencion_garantia: detalle.retencion_garantia,
-            total: detalle.total,
-            tipo: detalle.tipo,
-            contrato_id: detalle.contrato_id,
-            lineas: (detalle.lineas || []).map((linea) => ({
-              id: linea.id,
-              descripcion: linea.descripcion,
-              importe: linea.importe,
-            })),
+          if (!detalle.codigo_contrato) {
+            this.error =
+              detalle.aviso_codigo || "La factura no trae código de contrato. Indícalo.";
+            return;
+          }
+          this.selloFacturaId = id;
+          this.selloAlc = "";
+          this.selloError = "";
+          this.$nextTick(() => {
+            const dialogo = this.$refs.dialogoSello;
+            if (dialogo && !dialogo.open) dialogo.showModal();
+            if (this.$refs.campoAlc) this.$refs.campoAlc.focus();
           });
-          this.sel = null;
-          await this._cargarVistaProyecto(this.proyectoId);
         } catch (err) {
-          this.error = err.message || "No se ha podido confirmar la factura";
+          this.error = err.message || "No se ha podido abrir la factura";
         }
         return;
       }
       this.estado.resueltas = { ...this.estado.resueltas, [id]: resolucion };
       this.sel = null;
       await this.sincronizar();
+    },
+
+    async confirmarConSello() {
+      const id = this.selloFacturaId;
+      const alc = (this.selloAlc || "").trim();
+      if (!id) return;
+      if (!alc) {
+        this.selloError = "Indica la referencia ALC.";
+        if (this.$refs.campoAlc) this.$refs.campoAlc.focus();
+        return;
+      }
+      this.confirmandoSello = true;
+      this.selloError = "";
+      try {
+        const detalle = await GestorApi.getJson("/facturas/" + id);
+        await GestorApi.postJson("/facturas/" + id + "/confirmar", {
+          numero: detalle.numero,
+          fecha_emision: detalle.fecha_emision,
+          base_imponible: detalle.base_imponible,
+          iva: detalle.iva,
+          irpf: detalle.irpf,
+          retencion_garantia: detalle.retencion_garantia,
+          total: detalle.total,
+          tipo: detalle.tipo,
+          codigo_contrato: detalle.codigo_contrato,
+          contrato_id: detalle.contrato_id,
+          referencia_alc: alc,
+          lineas: (detalle.lineas || []).map((linea) => ({
+            id: linea.id,
+            descripcion: linea.descripcion,
+            importe: linea.importe,
+          })),
+        });
+        if (this.$refs.dialogoSello && this.$refs.dialogoSello.open) {
+          this.$refs.dialogoSello.close();
+        }
+        this.sel = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "facturas";
+        await this.seleccionarFactura(id);
+      } catch (err) {
+        this.selloError = err.message || "No se ha podido confirmar la factura";
+      } finally {
+        this.confirmandoSello = false;
+      }
+    },
+
+    esPdf(nombre) {
+      return esNombrePdf(nombre);
+    },
+
+    abrirVisorPdf(url, nombre) {
+      if (!url || !esNombrePdf(nombre)) return;
+      this.visorPdf = {
+        url: urlVerPdf(url),
+        nombre: nombre,
+        descarga: url,
+      };
+      this.$nextTick(() => {
+        const dialogo = this.$refs.visorPdf;
+        if (!(dialogo instanceof HTMLDialogElement)) return;
+        prepararCierreVisor(dialogo);
+        if (!dialogo.open) dialogo.showModal();
+      });
     },
 
     irAlerta(alerta) {

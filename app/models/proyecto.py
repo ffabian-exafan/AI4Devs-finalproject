@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, String, func
+from sqlalchemy import Boolean, Date, DateTime, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -48,6 +49,8 @@ class Proyecto(Base):
     )
     ruta_carta_isp: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     fichero_carta_isp: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Euros por hora de la mano de obra propia. Nulo hasta que alguien lo guarda.
+    precio_hora: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     naves: Mapped[list[Nave]] = relationship(back_populates="proyecto")
     presupuestos: Mapped[list[Presupuesto]] = relationship(back_populates="proyecto")

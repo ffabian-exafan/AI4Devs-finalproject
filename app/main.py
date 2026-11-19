@@ -1,5 +1,7 @@
 """Arranque FastAPI: sirve el front estático y monta routers."""
 
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from urllib.parse import quote
 
@@ -9,19 +11,34 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 
 from app.config import get_settings
-from app.routers import auth, facturas, health, proyectos, registro, revisiones, usuarios, vista
+from app.routers import auth, facturas, health, mano_obra, proyectos, registro, revisiones, usuarios, vista
+from app.services.barrido_facturas import bucle_barrido_diario, programar_barrido
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+@asynccontextmanager
+async def _vida(_app: FastAPI):
+    tarea = asyncio.create_task(bucle_barrido_diario()) if programar_barrido() else None
+    try:
+        yield
+    finally:
+        if tarea is not None:
+            tarea.cancel()
+            with suppress(asyncio.CancelledError):
+                await tarea
+
 
 app = FastAPI(
     title="Cuadra",
     version="0.2.0",
+    lifespan=_vida,
 )
 
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(usuarios.router)
 app.include_router(proyectos.router)
+app.include_router(mano_obra.router)
 app.include_router(revisiones.router)
 app.include_router(facturas.router)
 app.include_router(vista.router)

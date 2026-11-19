@@ -15,7 +15,7 @@ Los **presupuestos Excel** de Expertis crean el **proyecto** y su desglose (mate
 ### 1. Subir los presupuestos Excel
 
 1. El jefe de obra da nombre a la obra y sube uno o varios Excel `.xlsx` / `.xlsm` de plantilla Expertis. Cada fichero es un apartado. El título del apartado es el nombre del archivo, sin la extensión.
-2. La lectura de la rejilla es determinista, sin OCR. Solo entra como partida la fila cuya `Cant.` es mayor que 0. El precio no decide si la línea entra. En pantalla `Ud` muestra esa `Cant.` y `Descuento` muestra `Dto. %`. Una subsección es la fila en negrita y sin precio (por ejemplo `08` / `ALIMENTACION`). Dentro, una fila en cursiva y sin precio abre otro bloque (por ejemplo el título en cursiva bajo ese código). Una fila con precio no abre bloque, aunque no traiga `Cant.`. No se guarda si no agrupa ninguna partida y no sale como línea. De cada partida se guardan `cantidad`, `precio_unitario`, `descuento_pct` y las referencias. `es_montaje = true` si la descripción empieza por `MONTAJE` o por `COLOCACIÓN`. Si la línea ya está dentro de su subapartado, el bloque se llama «Montaje» más ese nombre (por ejemplo «Montaje Cikkis»). Después de leer el árbol se busca si ese subapartado tiene montaje en otra parte del Excel y se le asocia cuando su nombre aparece en la línea o en el bloque de origen. Lo que no casa por nombre y sigue en GENERAL lo propone el LLM: al modelo solo se le mandan los nombres, sin importes. Lo que no es de un solo subapartado queda en «Montaje general». Sigue pendiente de revisión. Una línea `ELEMENTOS DE MONTAJE` se queda en el bloque en cursiva donde aparece y no entra en esa partida. En alimentación ese bloque es el último, Exafeed.
+2. La lectura de la rejilla es determinista, sin OCR. Si el libro trae las pestañas Expertis y Presupuesto, se lee Expertis; DATA y Traduce no se leen. Solo entra como partida la fila cuya `Cant.` es mayor que 0. El precio no decide si la línea entra. En pantalla `Ud` muestra esa `Cant.` y `Descuento` muestra `Dto. %`. Una subsección es la fila en negrita y sin precio (por ejemplo `08` / `ALIMENTACION`). Dentro, una fila en cursiva y sin precio abre otro bloque (por ejemplo el título en cursiva bajo ese código). Una fila con precio no abre bloque, aunque no traiga `Cant.`. No se guarda si no agrupa ninguna partida y no sale como línea. De cada partida se guardan `cantidad`, `precio_unitario`, `descuento_pct` y las referencias. `es_montaje = true` si la descripción empieza por `MONTAJE` o por `COLOCACIÓN`. Si la línea ya está dentro de su subapartado, el bloque se llama «Montaje» más ese nombre (por ejemplo «Montaje Cikkis»). Después de leer el árbol se busca si ese subapartado tiene montaje en otra parte del Excel y se le asocia cuando su nombre aparece en la línea o en el bloque de origen. Lo que no casa por nombre y sigue en GENERAL lo propone el LLM: al modelo solo se le mandan los nombres, sin importes. Lo que no es de un solo subapartado queda en «Montaje general». Sigue pendiente de revisión. Una línea `ELEMENTOS DE MONTAJE` se queda en el bloque en cursiva donde aparece y no entra en esa partida. En alimentación ese bloque es el último, Exafeed.
 3. Eso **crea el proyecto**, con una sola nave. [VERIFICAR] si un Excel llega a partir varias naves; los ejemplos no lo hacen en columnas.
 4. El documento queda en `pendiente_revision`. Si un `total` del Excel no cuadra con la suma de sus líneas, la revisión queda forzada y se muestra el aviso.
 5. El Excel se guarda en disco (`uploads/{proyecto}/presupuesto/...`) y en la base queda `ruta_almacen`. Se puede descargar desde la obra. Si se borra la obra, se borra también su carpeta en `uploads/`.
@@ -25,7 +25,7 @@ Los **presupuestos Excel** de Expertis crean el **proyecto** y su desglose (mate
 
 1. Se sube el PDF (o imagen) firmado con el cliente. No crea partidas ni otro proyecto. El fichero se guarda igual que el Excel. Si es el mismo que ya está guardado, no se vuelve a leer.
 2. El modelo propone un primer cruce y marca los bloques. No escribe el importe: una persona confirma o cambia la marca. El montaje de un subapartado no se marca aparte: su importe va sumado en ese subapartado. Las dietas y desplazamientos que no están dentro de un subapartado se reparten entre ellos según su importe y entran en su montaje. «Montaje general» queda solo para lo que no es de uno ni son dietas. La diferencia de cada línea es el Excel menos el PDF. Si el Excel es mayor, sale en positivo y en rojo; si el PDF es mayor, en negativo y en verde. Debajo de los descuentos del cierre hay un resumen por apartado del PDF: el Excel es la suma de los bloques marcados en esa línea (la misma cifra del pie) y la diferencia es ese Excel menos el PDF. Un bloque de Excel que ninguna línea tiene marcado sale en su fila, sin PDF. Lo que aún no tiene bloque sale aparte y entra en el total del PDF, salvo que se desmarque esa fila. Ese total resta los descuentos del cierre.
-3. Una persona confirma y se guarda `importe_contrato_cliente` en el apartado. Las líneas del PDF quedan guardadas: al volver a abrir la obra no hay que subir el fichero otra vez.
+3. Una persona confirma y se guarda `importe_contrato_cliente` en el apartado. Después se puede cambiar el bloque y guardar otra vez: el importe pasa a los bloques nuevos y sale de los que se quitan. Las líneas del PDF quedan guardadas: al volver a abrir la obra no hay que subir el fichero otra vez.
 4. Si la lectura no ha sacado un importe, en la cabecera de «Importes del PDF» se añade a mano con código, descripción e importe. Esa línea se contrasta igual que las leídas. Solo ella se puede editar o borrar. Al cambiar el PDF, las líneas leídas se sustituyen y las añadidas a mano se conservan al final.
 5. Si una línea de importe es trabajo que Exafan gestiona y no suministra, se marca «Solo gestión». Eso crea un apartado (`solo_gestion`) con el importe de la línea, sin Excel y sin montaje. La línea deja de contar como PDF sin bloque y no se contrasta con un bloque de Excel. Si el importe es manuscrito, el apartado queda pendiente y no admite contrato hasta confirmarlo. Luego los contratos se enlazan a ese apartado; si hay varios, se suman contra el importe de la línea. `POST .../contratos/{id}/desenlazar-apartado` quita el enlace. `DELETE .../contratos/{id}` quita el contrato: las facturas se quedan sin él, y se borran su fichero, sus enlaces y las partidas que nacieron solo de ese contrato. Con un contrato enlazado no se puede desmarcar.
 
@@ -45,6 +45,7 @@ Los apartados son filas `TAREA` con `nivel = "apartado"` y `presupuesto_id` rell
 2. El sistema extrae contratista, precio total, plazo y, si existe, el desglose fino (p. ej. por salas).
 3. Ese desglose se guarda como árbol propio de `TAREA` con `contrato_id` (no mezcla ni sustituye los apartados del presupuesto).
 4. El contrato también queda pendiente de revisión humana hasta confirmar.
+5. El PDF trae el código del contrato. Si no está, se avisa y hay que escribirlo. Ese código no es el del apartado.
 
 ### 5. Sugerencia automática contrato ↔ apartado
 
@@ -67,9 +68,10 @@ Reglas:
 
 1. Administración sube una factura desde la pantalla de facturas del proyecto. El fichero se guarda en `uploads/{proyecto}/factura/...` y se puede descargar.
 2. El sistema lee el texto nativo o aplica OCR y casa el NIF con `CONTRATISTA`.
-3. Solo propone contratos confirmados del mismo proyecto y contratista.
+3. Si el texto trae un código de contrato, propone el de la misma obra con ese código. Si el contrato se leyó con el NIF de quien encarga la obra, pasa a quedar a nombre de quien factura. Si no lo trae, avisa y pide el código. Si no hay código y el proveedor solo tiene un contrato en la obra, propone ese.
 4. La factura se registra como `pendiente`; una persona revisa importes, tipo,
-   líneas y contrato antes de confirmarla.
+   líneas y contrato antes de confirmarla. Al confirmar aparece un campo para
+   la referencia `ALC/…`. Con eso se genera el PDF con el sello azul.
 5. Solo las facturas con `estado_revision = "confirmada"` cuentan en el control
    económico y en el seguimiento contratado vs. facturado de cada apartado.
 
@@ -103,11 +105,18 @@ Reglas:
 - `DELETE /proyectos/{id}/contratos/{contrato_id}` → quita el contrato. Las facturas se quedan y dejan de apuntar a él.
 - `POST /proyectos/importar-presupuesto` → sigue creando una obra desde PDF (obras ya existentes y pruebas). La UI de alta ya no lo usa.
 - `GET /proyectos/{id}` → detalle con naves, **apartados** y **contratos** (con sugerencia si aún no hay enlace).
+- `PATCH /proyectos/{id}/precio-hora` → guarda el precio por hora de la mano de obra propia. No cambia los partes ya confirmados.
+- `POST /proyectos/{id}/lineas-mano-obra` → añade a mano una línea de trabajo propio. `PATCH` cambia el nombre. `DELETE` la borra solo si no tiene partes confirmados.
+- `POST /proyectos/{id}/lineas-mano-obra/{linea_id}/partes` → sube un parte (PDF o imagen). Lee las horas y lo deja pendiente.
+- `PATCH /proyectos/{id}/partes/{parte_id}` → corrige horas y fecha mientras está pendiente.
+- `POST /proyectos/{id}/partes/{parte_id}/confirmar` → copia el precio de la obra y calcula el importe. `DELETE` quita el parte del acumulado.
+- `GET /proyectos/{id}/partes/{parte_id}/fichero` → descarga el parte.
 - `POST /proyectos/{id}/importar-contrato` → crea contrato + árbol propio; responde con sugerencias de apartado.
 - `POST /proyectos/{id}/contratos/{contrato_id}/enlazar-apartado` → confirma (o corrige) uno o varios apartados; valida en backend con Pydantic. El body lleva `tarea_apartado_ids` (o `tarea_apartado_id` si es uno solo).
 - `POST /facturas` → extrae una factura y la deja pendiente de revisión.
 - `GET /facturas?proyecto_id={id}` y `GET /facturas/{id}` → listado y revisión.
-- `POST /facturas/{id}/confirmar` → valida y confirma los datos y el contrato.
+- `POST /facturas/{id}/confirmar` → valida y confirma los datos, el contrato y la referencia ALC. Genera el PDF con sello.
+- `GET /facturas/{id}/sello` → descarga ese PDF.
 - `GET /proyectos/{id}/presupuestos/{presupuesto_id}/fichero` (y análogos de contrato y factura) → descarga el documento guardado.
 
 ---
@@ -117,5 +126,6 @@ Reglas:
 - No inventa partidas con precio unitario si el documento solo cierra por apartado. El Excel sí guarda precio unitario cuando la rejilla lo trae.
 - El PDF firmado con el cliente no crea partidas ni sustituye el árbol del Excel.
 - No mezcla el árbol del contrato bajo el apartado del presupuesto al importar: el enlace es a nivel contrato ↔ apartado, no un `tarea_padre_id` cruzado.
-- No da por guardado un documento OCR/LLM sin revisión humana.
+- No da por guardado un documento OCR/LLM sin revisión humana. Un parte de mano de obra propia sigue esa regla: pendiente hasta confirmar, y su acumulado no entra en el desvío.
+- La mano de obra propia no crea contrato ni factura. La línea se añade a mano y el coste es horas confirmadas por el precio por hora de la obra, copiado en el parte al confirmar.
 - No incluye facturas pendientes en los importes facturados.

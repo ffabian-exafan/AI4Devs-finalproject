@@ -10,12 +10,35 @@ from pathlib import Path
 
 from app.config import get_settings
 
-_TIPOS = frozenset({"presupuesto", "contrato", "factura", "carta_isp"})
+_TIPOS = frozenset({"presupuesto", "contrato", "factura", "carta_isp", "parte"})
 _RE_NOMBRE = re.compile(r"[^\w.\-]+", re.UNICODE)
 
 
 def raiz() -> Path:
     return Path(get_settings().uploads_dir).expanduser().resolve()
+
+
+def guardar_bandeja(hash_hex: str, nombre_original: str, contenido: bytes) -> str:
+    """Copia de una factura leída de la unidad de red. Escribe solo en uploads/bandeja."""
+    if not contenido:
+        raise ValueError("El fichero está vacío")
+    if len(hash_hex) != 64 or any(c not in "0123456789abcdef" for c in hash_hex):
+        raise ValueError("Hash de bandeja no válido")
+    seguro = _nombre_seguro(nombre_original)
+    relativo = Path("bandeja") / f"{hash_hex}_{seguro}"
+    destino = _dentro_raiz(relativo)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    if destino.is_file() and destino.stat().st_size == len(contenido):
+        return relativo.as_posix()
+    temporal = destino.with_suffix(destino.suffix + ".tmp")
+    try:
+        temporal.write_bytes(contenido)
+        temporal.replace(destino)
+    except Exception:
+        if temporal.exists():
+            temporal.unlink(missing_ok=True)
+        raise
+    return relativo.as_posix()
 
 
 def guardar(

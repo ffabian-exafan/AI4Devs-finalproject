@@ -6,12 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cuadra</title>
   <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261117c" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261119c" />
+  <link rel="stylesheet" href="/css/visor-pdf.css?v=20261119c" />
   <script src="/js/menu-acciones.js?v=20261117c"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js?v=20261116g"></script>
   <script src="/js/sesion.js?v=20261116i"></script>
-  <script src="/js/obras.js?v=20261117e"></script>
+  <script src="/js/visor-pdf.js?v=20261119c"></script>
+  <script src="/js/obras.js?v=20261119d"></script>
 </head>
 
 <body>
@@ -60,6 +62,9 @@
       <input class="oculto" type="file" x-ref="ficheroContrato"
         accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
         @change="elegirContrato($event)" />
+      <input class="oculto" type="file" x-ref="ficheroParte"
+        accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,image/jpeg,image/png,image/tiff"
+        @change="elegirParte($event)" />
       <input class="oculto" type="file" x-ref="ficheroFactura"
         accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
         @change="elegirFactura($event)" />
@@ -275,8 +280,12 @@
               <div class="docs-obra">
                 <span class="meta">Documentos guardados</span>
                 <template x-for="doc in panelPresupuesto.documentos" :key="'doc-' + doc.id">
-                  <a class="btn-texto" :href="doc.url" :title="doc.nombre"
-                    x-text="doc.formato + ' · ' + doc.nombre"></a>
+                  <span class="docs-obra-fila">
+                    <button type="button" class="btn-texto" x-show="esPdf(doc.nombre)"
+                      @click="abrirVisorPdf(doc.url, doc.nombre)">Ver</button>
+                    <a class="btn-texto" :href="doc.url" :title="doc.nombre"
+                      x-text="doc.formato + ' · ' + doc.nombre"></a>
+                  </span>
                 </template>
               </div>
             </template>
@@ -739,7 +748,6 @@
                                   </button>
                                   <button type="button" class="cruce-bloque"
                                     :class="{ on: nodo.elegido, parcial: nodo.parcial }"
-                                    :disabled="filaContraste().confirmada"
                                     :aria-pressed="nodo.elegido ? 'true' : 'false'"
                                     @click="alternarContraste(filaContraste(), nodo.valor, !nodo.elegido)">
                                     <span class="marca" :class="nodo.elegido && 'on'" aria-hidden="true"></span>
@@ -776,23 +784,31 @@
                             x-text="filaContraste().diferencia"></strong>
                         </p>
                         <p class="sub"
-                          x-show="!filaContraste().solo_gestion && !filaContraste().hay_cruce && !filaContraste().confirmada">
+                          x-show="!filaContraste().solo_gestion && !filaContraste().hay_cruce && (!filaContraste().confirmada || contrasteCambiado(filaContraste()))">
                           Marca el bloque que cubre este importe, o márcalo como solo gestión.
                         </p>
-                        <p class="sub" x-show="filaContraste().confirmada">Importe guardado en el Excel.</p>
+                        <p class="sub"
+                          x-show="filaContraste().confirmada && !contrasteCambiado(filaContraste())">
+                          Importe guardado. Puedes cambiar el bloque y guardar otra vez.
+                        </p>
+                        <p class="sub" x-show="filaContraste().confirmada && contrasteCambiado(filaContraste())">
+                          El bloque ha cambiado.
+                        </p>
                         <p class="sub" x-show="filaContraste().solo_gestion && !gestionPendiente(filaContraste())">
                           Importe del PDF, listo para enlazar contratos.
                         </p>
                       </div>
-                      <span class="badge badge-success" x-show="filaContraste().confirmada">Confirmado</span>
+                      <span class="badge badge-success"
+                        x-show="filaContraste().confirmada && !contrasteCambiado(filaContraste())">Confirmado</span>
                       <span class="badge badge-warning" x-show="filaContraste().solo_gestion">Solo gestión</span>
                       <button type="button" class="btn btn-secondary btn-sm"
                         x-show="!filaContraste().confirmada && !filaContraste().solo_gestion"
                         @click="marcarSoloGestion(filaContraste())">Solo gestión</button>
                       <button type="button" class="btn btn-primary btn-sm"
-                        x-show="!filaContraste().confirmada && !filaContraste().solo_gestion"
+                        x-show="!filaContraste().solo_gestion && (!filaContraste().confirmada || contrasteCambiado(filaContraste()))"
                         :disabled="!(filaContraste().elegidos || []).length"
-                        @click="confirmarImporteCliente(filaContraste())">Confirmar importe</button>
+                        @click="confirmarImporteCliente(filaContraste())"
+                        x-text="filaContraste().confirmada ? 'Guardar cambios' : 'Confirmar importe'"></button>
                       <button type="button" class="btn btn-primary btn-sm"
                         x-show="filaContraste().solo_gestion && gestionPendiente(filaContraste())"
                         @click="confirmarGestion(filaContraste())">Confirmar importe</button>
@@ -866,7 +882,7 @@
         </div>
       </template>
 
-      <template x-if="vista && screen === 'contratos' && leyendoContrato">
+      <template x-if="vista && screen === 'contratos' && (leyendoContrato || leyendoParte)">
         <div class="leyendo">
           <div class="preview-scan">
             <template x-for="(ancho, i) in lineasDoc" :key="'c' + i">
@@ -875,17 +891,19 @@
             <div class="scan"></div>
           </div>
           <div class="stack" style="justify-content: center">
-            <strong style="font-size: 18px; color: var(--p800)">Leyendo contrato…</strong>
+            <strong style="font-size: 18px; color: var(--p800)"
+              x-text="leyendoParte ? 'Leyendo parte…' : 'Leyendo contrato…'"></strong>
             <span class="sub" x-text="ficheroNombre"></span>
             <div class="stack" style="gap: 8px">
-              <span>Sonnet transcribe el PDF a markdown.</span>
-              <span class="apagado">Haiku extrae el desglose y propone apartados. Hay que asociarlos a mano.</span>
+              <span x-show="!leyendoParte">Sonnet transcribe el PDF a markdown.</span>
+              <span class="apagado" x-show="!leyendoParte">Haiku extrae el desglose y propone apartados. Hay que asociarlos a mano.</span>
+              <span x-show="leyendoParte">Se leen las horas. El parte queda pendiente hasta que lo confirmes.</span>
             </div>
           </div>
         </div>
       </template>
 
-      <template x-if="vista && screen === 'contratos' && !leyendoContrato">
+      <template x-if="vista && screen === 'contratos' && !leyendoContrato && !leyendoParte">
         <div class="stack">
           <div class="subida">
             <span>
@@ -904,7 +922,20 @@
                 <strong x-text="c.gremio"></strong><br />
                 <span class="meta" x-text="c.archivo"></span>
                 <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong><span x-show="proyecto && proyecto.inversion_sujeto_pasivo"> sin IVA</span></div>
-                <a class="btn-texto" x-show="c.tiene_fichero" :href="c.url_fichero">Descargar</a>
+                <span class="acciones-fichero" x-show="c.tiene_fichero">
+                  <button type="button" class="btn-texto" x-show="esPdf(c.archivo)"
+                    @click="abrirVisorPdf(c.url_fichero, c.archivo)">Ver</button>
+                  <a class="btn-texto" :href="c.url_fichero">Descargar</a>
+                </span>
+                <span class="meta" x-show="c.codigo" x-text="'Código ' + c.codigo"></span>
+                <form class="stack" style="gap: 6px" x-show="!c.codigo" @submit.prevent="guardarCodigoContrato(c)">
+                  <p class="ambar" x-show="c.aviso" x-text="c.aviso"></p>
+                  <label class="meta">Código de contrato
+                    <input class="campo" type="text" required maxlength="16" autocomplete="off" spellcheck="false"
+                      placeholder="PYCON244070" x-model="c.codigo_escrito">
+                  </label>
+                  <button type="submit" class="btn btn-secondary btn-sm">Guardar código</button>
+                </form>
               </div>
               <span class="flecha">→</span>
               <div class="stack" style="gap: 6px">
@@ -966,7 +997,7 @@
                     x-text="c.presupuestado"></span>
                   · <strong :class="c.supera ? 'rojo' : 'verde'" x-text="c.diferencia"></strong>
                 </span>
-                <span class="ambar" x-show="c.hay_aviso" x-text="c.aviso"></span>
+                <span class="ambar" x-show="c.hay_aviso && c.codigo" x-text="c.aviso"></span>
               </div>
               <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end">
                 <button type="button" class="btn btn-primary btn-sm" x-show="!c.asociado"
@@ -1001,6 +1032,81 @@
             <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir
               contrato</button>
           </div>
+
+          <section class="stack" style="margin-top: 28px" aria-labelledby="titulo-mano-obra">
+            <h2 id="titulo-mano-obra" class="h2">Mano de obra propia</h2>
+            <p class="sub">Trabajo de la empresa, sin contrato de proveedor. El acumulado suma los partes confirmados.</p>
+            <p class="estado-msg" role="status" x-show="errorManoObra" x-text="errorManoObra"></p>
+            <form class="stack" style="gap: 8px" aria-labelledby="titulo-mano-obra"
+              @submit.prevent="guardarPrecioHora">
+              <p class="num">Acumulado <strong x-text="vista.mano_obra.acumulado"></strong>
+                · <span x-text="vista.mano_obra.acumulado_horas"></span> h</p>
+              <label for="precio-hora">Precio por hora de la obra</label>
+              <input id="precio-hora" class="campo" name="precio_hora" type="text" inputmode="decimal"
+                autocomplete="off" spellcheck="false" required x-model="precioHoraEscrito"
+                aria-describedby="ayuda-precio-hora">
+              <p id="ayuda-precio-hora" class="ambar" x-show="!vista.mano_obra.precio_hora">Falta el precio por hora de la obra.</p>
+              <button type="submit" class="btn btn-secondary btn-sm">Guardar precio</button>
+            </form>
+            <form class="stack" style="gap: 8px" @submit.prevent="anadirLineaMano">
+              <label for="nombre-linea-mano">Nueva línea</label>
+              <input id="nombre-linea-mano" class="campo" name="nombre" type="text" required maxlength="255"
+                autocomplete="off" x-model="nombreLineaMano">
+              <button type="submit" class="btn btn-secondary btn-sm">Añadir línea</button>
+            </form>
+            <template x-for="linea in vista.mano_obra.lineas" :key="linea.id">
+              <article class="contrato" @dragover.prevent="sobreDrop = true" @dragleave="sobreDrop = false"
+                @drop.prevent="soltarParte(linea.id, $event)">
+                <div class="stack" style="gap: 8px">
+                  <form class="stack" style="gap: 6px" @submit.prevent="renombrarLineaMano(linea)">
+                    <label :for="'nombre-linea-' + linea.id">Nombre</label>
+                    <input class="campo" type="text" required maxlength="255" autocomplete="off"
+                      :id="'nombre-linea-' + linea.id" x-model="linea.nombre">
+                    <button type="submit" class="btn btn-secondary btn-sm">Guardar nombre</button>
+                  </form>
+                  <p class="num">Confirmadas <strong x-text="linea.horas"></strong> h ·
+                    <strong x-text="linea.acumulado"></strong></p>
+                  <button type="button" class="btn btn-secondary btn-sm"
+                    @click="lineaParteId = linea.id; $refs.ficheroParte.click()">Subir parte</button>
+                  <button type="button" class="btn-texto" x-show="!linea.partes.some((p) => p.estado_revision === 'confirmada')"
+                    @click="borrarLineaMano(linea)">Borrar línea</button>
+                </div>
+                <div class="stack" style="gap: 12px">
+                  <template x-for="parte in linea.partes" :key="parte.id">
+                    <div class="stack" style="gap: 6px">
+                      <strong x-text="parte.archivo"></strong>
+                      <span class="acciones-fichero" x-show="parte.tiene_fichero">
+                        <button type="button" class="btn-texto" x-show="esPdf(parte.archivo)"
+                          @click="abrirVisorPdf(parte.url_fichero, parte.archivo)">Ver</button>
+                        <a class="btn-texto" :href="parte.url_fichero">Descargar</a>
+                      </span>
+                      <span class="badge badge-warning" x-show="parte.estado_revision === 'pendiente'">Pendiente</span>
+                      <span class="badge badge-warning" x-show="parte.es_escaneado">Escaneado</span>
+                      <span class="badge badge-warning" x-show="parte.tiene_anotacion_manual">Anotación manuscrita</span>
+                      <p class="ambar" x-show="parte.aviso" x-text="parte.aviso"></p>
+                      <form class="stack" style="gap: 6px" x-show="parte.estado_revision === 'pendiente'"
+                        @submit.prevent="guardarHorasParte(parte)">
+                        <label :for="'horas-' + parte.id">Horas</label>
+                        <input class="campo" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+                          :id="'horas-' + parte.id" :name="'horas-' + parte.id" x-model="parte.horas">
+                        <label :for="'fecha-' + parte.id">Fecha</label>
+                        <input class="campo" type="date" :id="'fecha-' + parte.id" :name="'fecha-' + parte.id"
+                          x-model="parte.fecha">
+                        <button type="submit" class="btn btn-secondary btn-sm">Guardar horas</button>
+                        <button type="button" class="btn btn-primary btn-sm" :disabled="!vista.mano_obra.precio_hora"
+                          @click="confirmarParte(parte)">Confirmar</button>
+                      </form>
+                      <p class="num" x-show="parte.estado_revision === 'confirmada'">
+                        <span x-text="parte.horas"></span> h × <span x-text="parte.precio_hora_aplicado"></span>
+                        · <strong x-text="parte.importe"></strong>
+                      </p>
+                      <button type="button" class="btn-texto" @click="quitarParte(parte)">Quitar parte</button>
+                    </div>
+                  </template>
+                </div>
+              </article>
+            </template>
+          </section>
         </div>
       </template>
 
@@ -1071,8 +1177,19 @@
                       <div style="font-size: 17px; font-weight: 700; color: var(--p800)" x-text="seleccion.proveedor">
                       </div>
                       <span class="meta" x-text="seleccion.apartado"></span>
-                      <a class="btn-texto" x-show="seleccion.tiene_fichero" :href="seleccion.url_fichero">Descargar
-                        factura</a>
+                      <span class="acciones-fichero">
+                        <button type="button" class="btn-texto"
+                          x-show="seleccion.tiene_fichero && esPdf(seleccion.fichero)"
+                          @click="abrirVisorPdf(seleccion.url_fichero, seleccion.fichero)">Ver factura</button>
+                        <a class="btn-texto" x-show="seleccion.tiene_fichero" :href="seleccion.url_fichero">Descargar
+                          factura</a>
+                        <button type="button" class="btn-texto" x-show="seleccion.tiene_sello"
+                          @click="abrirVisorPdf(seleccion.url_sello, 'sello-factura.pdf')">Ver PDF con sello</button>
+                        <a class="btn-texto" x-show="seleccion.tiene_sello" :href="seleccion.url_sello">Descargar PDF con
+                          sello</a>
+                      </span>
+                      <span class="meta" x-show="seleccion.referencia_alc"
+                        x-text="'ALC/' + seleccion.referencia_alc"></span>
                     </div>
                     <button type="button" class="cerrar" @click="sel = null">×</button>
                   </div>
@@ -1091,6 +1208,19 @@
                     x-text="seleccion.aviso_duplicado"></div>
                   <div class="aviso-ambar" style="margin: 16px 20px 0" x-show="seleccion.aviso_isp"
                     x-text="seleccion.aviso_isp"></div>
+                  <div class="stack" style="gap: 6px; padding: 16px 20px 0">
+                    <span class="meta" x-show="seleccion.codigo_contrato"
+                      x-text="'Código ' + seleccion.codigo_contrato"></span>
+                    <div class="aviso-ambar" x-show="seleccion.aviso_codigo" x-text="seleccion.aviso_codigo"></div>
+                    <form class="stack" style="gap: 6px" x-show="!seleccion.codigo_contrato"
+                      @submit.prevent="guardarCodigoFactura(seleccion)">
+                      <label class="meta">Código de contrato
+                        <input class="campo" type="text" required maxlength="16" autocomplete="off" spellcheck="false"
+                          placeholder="PYCON244070" x-model="seleccion.codigo_escrito">
+                      </label>
+                      <button type="submit" class="btn btn-secondary btn-sm">Guardar código</button>
+                    </form>
+                  </div>
                   <div style="padding: 16px 20px" class="stack">
                     <span class="meta" style="font-weight: 600">Partida a partida frente al presupuesto</span>
                     <template x-for="ln in seleccion.lineas" :key="ln.codigo">
@@ -1116,7 +1246,10 @@
                         x-text="seleccion.desviacion"></strong>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap">
-                      <template x-for="accion in seleccion.acciones" :key="accion.resolucion">
+                      <button type="button" class="btn btn-secondary btn-sm" x-show="seleccion.tiene_sello"
+                        @click="abrirVisorPdf(seleccion.url_sello, 'sello-factura.pdf')">Ver PDF con sello</button>
+                      <a class="btn btn-primary btn-sm" x-show="seleccion.tiene_sello" :href="seleccion.url_sello">Descargar PDF con sello</a>
+                      <template x-for="accion in seleccion.acciones" :key="accion.etiqueta">
                         <button type="button" class="btn btn-sm"
                           :class="accion.variante === 'primary' ? 'btn-primary' : 'btn-secondary'"
                           @click="resolver(seleccion.id, accion.resolucion)" x-text="accion.etiqueta"></button>
@@ -1191,6 +1324,47 @@
         </div>
       </template>
     </main>
+    <dialog class="modal" x-ref="dialogoSello" @click="if ($event.target === $el) $el.close()"
+      @close="selloError = ''">
+      <form class="ficha-usuario" @submit.prevent="confirmarConSello()">
+        <div class="modal-cabecera">
+          <h2 class="h1" style="font-size: 20px">Referencia del sello</h2>
+          <button type="button" class="modal-cerrar" @click="$refs.dialogoSello.close()"
+            aria-label="Cerrar">×</button>
+        </div>
+        <p class="sub">Se imprime en azul en el PDF de la factura.</p>
+        <label>
+          Referencia ALC
+          <span class="alc-linea">
+            <span class="alc-fijo" aria-hidden="true">ALC/</span>
+            <input class="campo" x-ref="campoAlc" name="referencia_alc" required maxlength="48"
+              autocomplete="off" spellcheck="false" x-model="selloAlc" placeholder="00000" />
+          </span>
+        </label>
+        <p class="rojo" x-show="selloError" x-text="selloError"></p>
+        <div class="obra-acciones" style="justify-content: flex-end">
+          <button class="btn btn-secondary btn-md" type="button"
+            @click="$refs.dialogoSello.close()">Cancelar</button>
+          <button class="btn btn-primary btn-md" type="submit" :disabled="confirmandoSello">
+            <span x-text="confirmandoSello ? 'Confirmando…' : 'Confirmar y generar PDF'"></span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="visor-pdf" x-ref="visorPdf" closedby="any" aria-labelledby="visor-pdf-titulo"
+      @close="visorPdf = null">
+      <div class="visor-pdf-cabecera">
+        <h2 id="visor-pdf-titulo" x-text="visorPdf ? visorPdf.nombre : 'Documento'"></h2>
+        <div class="visor-pdf-acciones">
+          <a class="visor-pdf-descarga" x-show="visorPdf" :href="visorPdf ? visorPdf.descarga : null">Descargar</a>
+          <button type="button" class="visor-pdf-cerrar" autofocus @click="$refs.visorPdf.close()"
+            aria-label="Cerrar">×</button>
+        </div>
+      </div>
+      <template x-if="visorPdf">
+        <iframe class="visor-pdf-marco" :src="visorPdf.url" :title="visorPdf.nombre"></iframe>
+      </template>
+    </dialog>
   </div>
 </body>
 

@@ -289,6 +289,7 @@ def _payload(factura: Factura, iva: str) -> dict:
         "total": "100.00",
         "tipo": "ordinaria",
         "contrato_id": None,
+        "referencia_alc": "00001",
         "lineas": [],
     }
 

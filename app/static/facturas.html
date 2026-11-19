@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Facturas — Cuadra</title>
     <link rel="stylesheet" href="/css/app.css" />
+    <link rel="stylesheet" href="/css/visor-pdf.css?v=20261119c" />
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   </head>
   <body>
@@ -89,7 +90,7 @@
         <section class="panel">
           <h2>Revisión humana</h2>
           <p class="vacio" x-show="!seleccionada">Selecciona o sube una factura.</p>
-          <form class="form-revision-factura" x-show="seleccionada" @submit.prevent="confirmar()">
+          <form class="form-revision-factura" x-show="seleccionada" @submit.prevent="pedirAlc()">
             <div class="meta">
               <span>Contratista: <strong x-text="seleccionada?.contratista_nombre"></strong></span>
               <span>NIF: <code x-text="seleccionada?.contratista_nif"></code></span>
@@ -114,12 +115,18 @@
               <label>IRPF <input type="number" step="0.01" x-model="edicion.irpf" required /></label>
               <label>Retención garantía <input type="number" step="0.01" x-model="edicion.retencion_garantia" required /></label>
               <label>Total <input type="number" step="0.01" x-model="edicion.total" required /></label>
+              <p class="estado-msg err" x-show="seleccionada && seleccionada.aviso_codigo"
+                x-text="seleccionada.aviso_codigo"></p>
+              <label>Código de contrato
+                <input type="text" x-model="edicion.codigo_contrato" required maxlength="16"
+                  autocomplete="off" spellcheck="false" placeholder="PYCON244070" />
+              </label>
               <label>Contrato
                 <select x-model="edicion.contrato_id">
                   <option value="">Sin contrato</option>
                   <template x-for="c in seleccionada?.contratos_candidatos || []" :key="c.id">
                     <option :value="String(c.id)"
-                      x-text="'#' + c.id + ' · ' + c.contratista_nombre + ' · ' + euro(c.precio_total)"></option>
+                      x-text="(c.codigo ? c.codigo + ' · ' : '') + '#' + c.id + ' · ' + c.contratista_nombre + ' · ' + euro(c.precio_total)"></option>
                   </template>
                 </select>
               </label>
@@ -137,6 +144,12 @@
               Añadir línea
             </button>
 
+            <p x-show="seleccionada && seleccionada.tiene_sello">
+              <button type="button" class="secundario"
+                @click="abrirVisorPdf('/facturas/' + seleccionada.id + '/sello', 'sello-factura.pdf')">Ver PDF con sello</button>
+              <a :href="'/facturas/' + seleccionada.id + '/sello'">Descargar PDF con sello</a>
+              <span x-show="seleccionada.referencia_alc" x-text="'· ALC/' + seleccionada.referencia_alc"></span>
+            </p>
             <div class="acciones">
               <button class="primario" type="submit" :disabled="confirmando">
                 <span x-text="confirmando ? 'Confirmando…' : 'Confirmar factura'"></span>
@@ -144,10 +157,46 @@
               <a :href="'/proyecto.html?id=' + proyectoId">Volver al proyecto</a>
             </div>
           </form>
+          <dialog class="modal-sello" x-ref="dialogoSello" @click="if ($event.target === $el) $el.close()">
+            <form @submit.prevent="confirmar()">
+              <h2>Referencia del sello</h2>
+              <p>Se imprime en azul en el PDF de la factura.</p>
+              <label>
+                Referencia ALC
+                <span class="alc-linea">
+                  <span class="alc-fijo" aria-hidden="true">ALC/</span>
+                  <input x-ref="campoAlc" name="referencia_alc" required maxlength="48" autocomplete="off"
+                    spellcheck="false" x-model="alc" placeholder="00000" />
+                </span>
+              </label>
+              <p class="estado-msg err" x-show="errorAlc" x-text="errorAlc"></p>
+              <div class="acciones">
+                <button class="secundario" type="button" @click="$refs.dialogoSello.close()">Cancelar</button>
+                <button class="primario" type="submit" :disabled="confirmando">
+                  <span x-text="confirmando ? 'Confirmando…' : 'Confirmar y generar PDF'"></span>
+                </button>
+              </div>
+            </form>
+          </dialog>
         </section>
       </div>
+      <dialog class="visor-pdf" x-ref="visorPdf" closedby="any" aria-labelledby="visor-pdf-titulo"
+        @close="visorPdf = null">
+        <div class="visor-pdf-cabecera">
+          <h2 id="visor-pdf-titulo" x-text="visorPdf ? visorPdf.nombre : 'Documento'"></h2>
+          <div class="visor-pdf-acciones">
+            <a class="visor-pdf-descarga" x-show="visorPdf" :href="visorPdf ? visorPdf.descarga : null">Descargar</a>
+            <button type="button" class="visor-pdf-cerrar" autofocus @click="$refs.visorPdf.close()"
+              aria-label="Cerrar">×</button>
+          </div>
+        </div>
+        <template x-if="visorPdf">
+          <iframe class="visor-pdf-marco" :src="visorPdf.url" :title="visorPdf.nombre"></iframe>
+        </template>
+      </dialog>
     </div>
     <script src="/js/api.js"></script>
+    <script src="/js/visor-pdf.js?v=20261119c"></script>
     <script src="/js/facturas.js"></script>
   </body>
 </html>

@@ -9,8 +9,11 @@ function facturasApp() {
     subiendo: false,
     cargandoLista: false,
     confirmando: false,
+    alc: "",
+    errorAlc: "",
     error: "",
     mensaje: "",
+    visorPdf: null,
     euro: (v) => GestorApi.euro(v),
 
     async init() {
@@ -82,6 +85,8 @@ function facturasApp() {
           retencion_garantia: this.seleccionada.retencion_garantia,
           total: this.seleccionada.total,
           tipo: this.seleccionada.tipo,
+          codigo_contrato: this.seleccionada.codigo_contrato || "",
+          alc: this.seleccionada.referencia_alc || "",
           contrato_id: this.seleccionada.contrato_id
             ? String(this.seleccionada.contrato_id)
             : "",
@@ -96,8 +101,32 @@ function facturasApp() {
       }
     },
 
+    pedirAlc() {
+      if (!this.seleccionada) return;
+      this.error = "";
+      this.errorAlc = "";
+      if (
+        this.seleccionada.inversion_sujeto_pasivo &&
+        Number(this.edicion.iva) !== 0
+      ) {
+        this.error = "La obra está en inversión del sujeto pasivo. El IVA tiene que ser 0.";
+        return;
+      }
+      const dialogo = this.$refs.dialogoSello;
+      if (dialogo && !dialogo.open) dialogo.showModal();
+      this.$nextTick(() => {
+        if (this.$refs.campoAlc) this.$refs.campoAlc.focus();
+      });
+    },
+
     async confirmar() {
       if (!this.seleccionada) return;
+      const alc = (this.alc || "").trim();
+      if (!alc) {
+        this.errorAlc = "Indica la referencia ALC.";
+        if (this.$refs.campoAlc) this.$refs.campoAlc.focus();
+        return;
+      }
       if (
         this.seleccionada.inversion_sujeto_pasivo &&
         Number(this.edicion.iva) !== 0
@@ -114,25 +143,45 @@ function facturasApp() {
           contrato_id: this.edicion.contrato_id
             ? Number(this.edicion.contrato_id)
             : null,
+          referencia_alc: alc,
           lineas: this.edicion.lineas.map((linea) => ({
             id: linea.id || null,
             descripcion: linea.descripcion,
             importe: linea.importe,
           })),
         };
+        delete payload.alc;
         await GestorApi.postJson(
           "/facturas/" + this.seleccionada.id + "/confirmar",
           payload
         );
         const id = this.seleccionada.id;
-        this.mensaje = "Factura confirmada. Ya cuenta en el seguimiento económico.";
+        if (this.$refs.dialogoSello && this.$refs.dialogoSello.open) {
+          this.$refs.dialogoSello.close();
+        }
+        this.mensaje = "Factura confirmada. Ya puedes descargar el PDF con el sello.";
         await this.cargarLista();
         await this.abrir(id);
       } catch (err) {
-        this.error = err.message;
+        this.errorAlc = err.message;
       } finally {
         this.confirmando = false;
       }
+    },
+
+    abrirVisorPdf(url, nombre) {
+      if (!url || !esNombrePdf(nombre)) return;
+      this.visorPdf = {
+        url: urlVerPdf(url),
+        nombre: nombre,
+        descarga: url,
+      };
+      this.$nextTick(() => {
+        const dialogo = this.$refs.visorPdf;
+        if (!(dialogo instanceof HTMLDialogElement)) return;
+        prepararCierreVisor(dialogo);
+        if (!dialogo.open) dialogo.showModal();
+      });
     },
   };
 }

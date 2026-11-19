@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.tipos import Money
+from app.services.codigo_contrato import validar_codigo
 
 
 class LineaFacturaCreate(BaseModel):
@@ -71,6 +72,8 @@ class FacturaImportacionOut(BaseModel):
     factura_id: int
     contratista_nif: str
     contrato_id: int | None
+    codigo_contrato: str | None = None
+    aviso_codigo: str | None = None
     estado_revision: str
     requiere_revision: bool = True
 
@@ -79,10 +82,27 @@ class ContratoCandidatoFacturaOut(BaseModel):
     id: int
     contratista_nombre: str
     precio_total: Money
+    codigo: str | None = None
 
 
 class EnlazarContratoFacturaIn(BaseModel):
     contrato_id: int = Field(ge=1)
+
+
+class CodigoFacturaIn(BaseModel):
+    codigo: str = Field(min_length=1, max_length=16)
+
+    @field_validator("codigo")
+    @classmethod
+    def formato(cls, value: str) -> str:
+        return validar_codigo(value)
+
+
+class CodigoFacturaOut(BaseModel):
+    factura_id: int
+    codigo_contrato: str
+    contrato_id: int | None
+    aviso_codigo: str | None = None
 
 
 class FacturaResumenOut(BaseModel):
@@ -93,6 +113,8 @@ class FacturaResumenOut(BaseModel):
     contratista_nombre: str
     contratista_nif: str
     contrato_id: int | None
+    codigo_contrato: str | None = None
+    aviso_codigo: str | None = None
     contrato_etiqueta: str | None = None
     total: Money
     tipo: str
@@ -101,6 +123,8 @@ class FacturaResumenOut(BaseModel):
     tiene_fichero: bool = False
     fichero_origen: str = ""
     aviso_isp: str | None = None
+    referencia_alc: str | None = None
+    tiene_sello: bool = False
 
 
 class FacturaRevisionOut(FacturaResumenOut):
@@ -131,7 +155,28 @@ class ConfirmarFacturaIn(BaseModel):
     total: Money
     tipo: str = Field(pattern="^(ordinaria|anticipo|certificacion)$")
     contrato_id: int | None = Field(default=None, ge=1)
+    codigo_contrato: str | None = Field(default=None, max_length=16)
+    referencia_alc: str = Field(min_length=1, max_length=48)
     lineas: list[LineaFacturaRevisionIn] = Field(default_factory=list)
+
+    @field_validator("referencia_alc")
+    @classmethod
+    def referencia_alc_limpia(cls, value: str) -> str:
+        texto = " ".join(value.replace("\n", " ").replace("\r", " ").split())
+        if texto.upper().startswith("ALC/"):
+            texto = texto[4:].strip()
+        if not texto:
+            raise ValueError("Indica la referencia ALC")
+        if len(texto) > 40:
+            raise ValueError("La referencia ALC admite hasta 40 caracteres")
+        return texto
+
+    @field_validator("codigo_contrato")
+    @classmethod
+    def codigo_si_viene(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return validar_codigo(value)
 
     @field_validator("numero")
     @classmethod
@@ -148,3 +193,4 @@ class ConfirmarFacturaOut(BaseModel):
     proyecto_id: int
     contrato_id: int | None
     estado_revision: str
+    tiene_sello: bool = False

@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.casado import SugerenciaApartadoOut
+from app.schemas.mano_obra import ManoObraOut
 from app.schemas.presupuesto import ContrastarClienteOut
 from app.schemas.tipos import Money
 
@@ -111,6 +112,8 @@ class ContratoResumenOut(BaseModel):
     contratista_nombre: str
     contratista_nif: str
     precio_total: Money
+    codigo: str | None = None
+    aviso: str | None = None
     estado_extraccion: str
     nave_id: int | None = None
     # Primer apartado confirmado. El conjunto va en tarea_apartado_ids.
@@ -146,3 +149,4 @@ class ProyectoDetalleOut(ProyectoRead):
     inversion_sujeto_pasivo: bool = False
     tiene_carta_isp: bool = False
     fichero_carta_isp: str | None = None
+    mano_obra: ManoObraOut = Field(default_factory=ManoObraOut)

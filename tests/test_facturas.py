@@ -198,6 +198,8 @@ def test_factura_enlaza_el_contrato_del_proveedor_aunque_siga_pendiente(
     assert alta.status_code == 201, alta.text
     cuerpo = alta.json()
     assert cuerpo["contrato_id"] == escenario_factura["contrato_id"]
+    assert cuerpo["codigo_contrato"] is None
+    assert "Indícalo" in cuerpo["aviso_codigo"]
 
     factura = db.get(Factura, cuerpo["factura_id"])
     assert factura is not None
@@ -226,12 +228,90 @@ def test_factura_enlaza_el_contrato_del_proveedor_aunque_siga_pendiente(
             "retencion_garantia": detalle["retencion_garantia"],
             "total": detalle["total"],
             "tipo": detalle["tipo"],
+            "referencia_alc": "00001",
             "contrato_id": escenario_factura["contrato_id"],
             "lineas": [],
         },
     )
     assert confirmar.status_code == 200, confirmar.text
     assert confirmar.json()["contrato_id"] == escenario_factura["contrato_id"]
+
+
+def test_la_factura_con_codigo_elige_ese_contrato(
+    client: TestClient,
+    db: Session,
+    escenario_factura: dict,
+):
+    for codigo in ("PYCON901070", "PYCON901071"):
+        previo = db.query(Contrato).filter(Contrato.codigo == codigo).one_or_none()
+        if previo is not None:
+            previo.codigo = None
+    primero = db.get(Contrato, escenario_factura["contrato_id"])
+    assert primero is not None
+    primero.codigo = "PYCON901070"
+    segundo = Contrato(
+        proyecto_id=escenario_factura["proyecto_id"],
+        nave_id=primero.nave_id,
+        contratista_id=primero.contratista_id,
+        precio_total=Decimal("800"),
+        fichero_origen="otro_contrato_ficticio.md",
+        estado_extraccion="confirmada",
+        codigo="PYCON901071",
+    )
+    db.add(segundo)
+    db.commit()
+    texto = FIXTURE.read_text(encoding="utf-8") + "\nCódigo: PYCON901071\n"
+    alta = client.post(
+        "/facturas",
+        data={"proyecto_id": str(escenario_factura["proyecto_id"])},
+        files={"fichero": ("factura_codigo.md", texto.encode(), "text/markdown")},
+    )
+    assert alta.status_code == 201, alta.text
+    cuerpo = alta.json()
+    assert cuerpo["codigo_contrato"] == "PYCON901071"
+    assert cuerpo["contrato_id"] == segundo.id
+    assert cuerpo["aviso_codigo"] is None
+
+
+def test_el_codigo_enlaza_aunque_el_contrato_se_leyera_con_otro_nif(
+    client: TestClient,
+    db: Session,
+    escenario_factura: dict,
+):
+    codigo = "PYCON901080"
+    previo = db.query(Contrato).filter(Contrato.codigo == codigo).one_or_none()
+    if previo is not None:
+        previo.codigo = None
+    contrato = db.get(Contrato, escenario_factura["contrato_id"])
+    assert contrato is not None
+    proveedor_id = contrato.contratista_id
+    quien_encarga = (
+        db.query(Contratista).filter(Contratista.nif == "B00000099").one_or_none()
+    )
+    if quien_encarga is None:
+        quien_encarga = Contratista(
+            nif="B00000099",
+            nombre="EMPRESA_QUE_ENCARGA",
+            tipo="externo",
+        )
+        db.add(quien_encarga)
+        db.flush()
+    contrato.codigo = codigo
+    contrato.contratista_id = quien_encarga.id
+    db.commit()
+
+    texto = FIXTURE.read_text(encoding="utf-8") + f"\nCódigo: {codigo}\n"
+    alta = client.post(
+        "/facturas",
+        data={"proyecto_id": str(escenario_factura["proyecto_id"])},
+        files={"fichero": ("factura_mismo_proveedor.md", texto.encode(), "text/markdown")},
+    )
+    assert alta.status_code == 201, alta.text
+    cuerpo = alta.json()
+    assert cuerpo["contrato_id"] == contrato.id
+    assert cuerpo["aviso_codigo"] is None
+    db.refresh(contrato)
+    assert contrato.contratista_id == proveedor_id
 
 
 def test_numero_de_factura_cuando_el_valor_va_en_la_linea_siguiente():
@@ -295,6 +375,7 @@ def test_factura_pendiente_no_suma_y_confirmada_actualiza_seguimiento(
             "retencion_garantia": datos["retencion_garantia"],
             "total": datos["total"],
             "tipo": datos["tipo"],
+            "referencia_alc": "00001",
             "contrato_id": escenario_factura["contrato_id"],
             "lineas": [
                 {
@@ -393,6 +474,7 @@ def test_confirmacion_rechaza_contrato_ajeno(
             "retencion_garantia": datos["retencion_garantia"],
             "total": datos["total"],
             "tipo": datos["tipo"],
+            "referencia_alc": "00001",
             "contrato_id": contrato_ajeno.id,
             "lineas": [],
         },
@@ -438,6 +520,7 @@ def test_confirmacion_rechaza_contrato_ajeno(
             "retencion_garantia": datos["retencion_garantia"],
             "total": datos["total"],
             "tipo": datos["tipo"],
+            "referencia_alc": "00001",
             "contrato_id": contrato_otro_contratista.id,
             "lineas": [],
         },
@@ -474,3 +557,122 @@ def test_factura_escaneada_siempre_queda_pendiente(
     factura = client.get(f"/facturas/{respuesta.json()['factura_id']}").json()
     assert factura["es_escaneada"] is True
     assert factura["estado_revision"] == "pendiente"
+
+
+def test_confirmar_genera_el_pdf_con_sello(
+    client: TestClient,
+    db: Session,
+    escenario_factura: dict,
+):
+    import pymupdf
+
+    codigo = "PYCON901070"
+    previo = db.query(Contrato).filter(Contrato.codigo == codigo).one_or_none()
+    contrato = db.get(Contrato, escenario_factura["contrato_id"])
+    assert contrato is not None
+    if previo is not None and previo.id != contrato.id:
+        previo.codigo = None
+    contrato.codigo = codigo
+    db.commit()
+
+    alta = client.post(
+        "/facturas",
+        data={"proyecto_id": str(escenario_factura["proyecto_id"])},
+        files={"fichero": (FIXTURE.name, FIXTURE.read_bytes(), "text/markdown")},
+    )
+    assert alta.status_code == 201, alta.text
+    factura_id = alta.json()["factura_id"]
+    datos = client.get(f"/facturas/{factura_id}").json()
+    entrar(client, db, rol="administracion")
+    base = {
+        "numero": datos["numero"],
+        "fecha_emision": datos["fecha_emision"],
+        "base_imponible": datos["base_imponible"],
+        "iva": datos["iva"],
+        "irpf": datos["irpf"],
+        "retencion_garantia": datos["retencion_garantia"],
+        "total": datos["total"],
+        "tipo": datos["tipo"],
+        "codigo_contrato": codigo,
+        "contrato_id": contrato.id,
+        "lineas": [],
+    }
+    sin_alc = client.post(f"/facturas/{factura_id}/confirmar", json=base)
+    assert sin_alc.status_code == 422
+
+    confirmar = client.post(
+        f"/facturas/{factura_id}/confirmar",
+        json={**base, "referencia_alc": "ALC/00001"},
+    )
+    assert confirmar.status_code == 200, confirmar.text
+    assert confirmar.json()["tiene_sello"] is True
+
+    factura = db.get(Factura, factura_id)
+    assert factura is not None
+    db.refresh(factura)
+    assert factura.referencia_alc == "00001"
+    assert factura.confirmada_por == "Persona Ejemplo"
+    assert factura.ruta_sello
+
+    pdf = client.get(f"/facturas/{factura_id}/sello")
+    assert pdf.status_code == 200
+    assert pdf.content.startswith(b"%PDF")
+    documento = pymupdf.open(stream=pdf.content, filetype="pdf")
+    try:
+        texto = documento[0].get_text().replace("\xa0", " ").replace("\xad", "-")
+        assert "Ref. Proyecto ficticio para facturas" in texto
+        assert "PYCON/901 - TRABAJO/07" in texto
+        assert "ALC/00001" in texto
+        assert "Persona Ejemplo - " in texto
+        assert "Presupuestado: 5.000,00 €" in texto
+        assert "1ª factura: 1.210,00 €" in texto
+        assert "Pendiente: 3.790,00 €" in texto
+        azul = False
+        for bloque in documento[0].get_text("dict")["blocks"]:
+            for linea in bloque.get("lines", []):
+                for span in linea.get("spans", []):
+                    if "ALC/00001" not in span["text"]:
+                        continue
+                    color = span["color"]
+                    azul = (color & 0xFF) > 180 and ((color >> 16) & 0xFF) < 40
+        assert azul
+    finally:
+        documento.close()
+
+    segunda = FIXTURE.read_text(encoding="utf-8").replace("F-FICT-001", "F-FICT-002")
+    alta2 = client.post(
+        "/facturas",
+        data={"proyecto_id": str(escenario_factura["proyecto_id"])},
+        files={"fichero": ("factura_ficticia_2.md", segunda.encode(), "text/markdown")},
+    )
+    assert alta2.status_code == 201, alta2.text
+    id2 = alta2.json()["factura_id"]
+    datos2 = client.get(f"/facturas/{id2}").json()
+    confirmar2 = client.post(
+        f"/facturas/{id2}/confirmar",
+        json={
+            "numero": datos2["numero"],
+            "fecha_emision": datos2["fecha_emision"],
+            "base_imponible": datos2["base_imponible"],
+            "iva": datos2["iva"],
+            "irpf": datos2["irpf"],
+            "retencion_garantia": datos2["retencion_garantia"],
+            "total": datos2["total"],
+            "tipo": datos2["tipo"],
+            "codigo_contrato": codigo,
+            "contrato_id": contrato.id,
+            "referencia_alc": "00002",
+            "lineas": [],
+        },
+    )
+    assert confirmar2.status_code == 200, confirmar2.text
+    pdf2 = client.get(f"/facturas/{id2}/sello")
+    assert pdf2.status_code == 200
+    documento2 = pymupdf.open(stream=pdf2.content, filetype="pdf")
+    try:
+        texto2 = documento2[0].get_text().replace("\xa0", " ").replace("\xad", "-")
+    finally:
+        documento2.close()
+    assert "ALC/00002" in texto2
+    assert "2ª factura: 1.210,00 €" in texto2
+    assert "Pendiente: 2.580,00 €" in texto2

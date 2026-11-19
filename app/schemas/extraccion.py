@@ -12,7 +12,8 @@ class AnotacionManuscrita(BaseModel):
 
     campo: str
     valor_impreso: str | None = None
-    valor_manuscrito: str
+    # null si el manuscrito no se lee. No se inventa la cifra.
+    valor_manuscrito: str | None = None
     descripcion: str
 
 

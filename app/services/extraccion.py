@@ -99,7 +99,7 @@ Eres un extractor de presupuestos de obra. Devuelves SOLO JSON válido con esta 
     {
       "campo": string,
       "valor_impreso": string|null,
-      "valor_manuscrito": string,
+      "valor_manuscrito": string|null,
       "descripcion": string
     }
   ]
@@ -111,7 +111,8 @@ Reglas:
 - Si el subapartado no tiene importe propio, pon null. No copies el importe del padre.
 - unidad, cantidad y precio_unitario deben ser null si no aparecen a nivel de apartado.
 - Si hay anotación manuscrita sobre valor impreso (tachado + corrección), marca
-  tiene_anotacion_manual=true en esa fila y usa el valor manuscrito como válido.
+  tiene_anotacion_manual=true en esa fila. Si lees el valor manuscrito, úsalo
+  como válido. Si no lo lees, pon valor_manuscrito en null. No inventes la cifra.
 - No inventes importes ni campos que no estén en el documento.
 - Si la fila no muestra importe, pon null. No uses 0 salvo que el documento ponga 0.
 - La línea de gestión o honorarios (un porcentaje sobre otros apartados, junto al

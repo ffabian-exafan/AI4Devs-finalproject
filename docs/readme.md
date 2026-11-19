@@ -266,6 +266,7 @@ erDiagram
         bool inversion_sujeto_pasivo "false por defecto; lo marca una persona"
         string ruta_carta_isp "nullable, ruta relativa en uploads/"
         string fichero_carta_isp "nullable, nombre original del PDF"
+        numeric precio_hora "nullable, euros por hora de la mano de obra propia"
     }
     PRESUPUESTO {
         int id PK
@@ -298,6 +299,7 @@ erDiagram
         int contratista_id FK
         int tarea_apartado_id FK "nullable, primer apartado confirmado; el resto en contrato_apartado"
         string referencia_presupuesto "texto libre al nº de presupuesto"
+        string codigo "nullable, único. PYCON/PYEQU + 6 dígitos, o 1- + 6 dígitos. ADM si es por administración"
         decimal precio_total
         date fecha_firma
         date plazo_ejecucion
@@ -332,6 +334,7 @@ erDiagram
         int proyecto_id FK "nullable"
         int contratista_id FK
         int contrato_id FK "nullable, si la factura certifica un contrato concreto"
+        string codigo_contrato "nullable, código impreso en la factura"
         string numero
         date fecha_emision
         decimal base_imponible
@@ -344,6 +347,10 @@ erDiagram
         string ruta_almacen "nullable, ruta relativa en uploads/"
         bool es_escaneada
         string estado_revision "pendiente|revisada|confirmada"
+        string referencia_alc "nullable, texto tras ALC/ en el sello"
+        string confirmada_por "nullable, nombre de quien confirma"
+        datetime confirmada_en "nullable"
+        string ruta_sello "nullable, PDF con el sello"
     }
     LINEA_FACTURA {
         int id PK
@@ -369,13 +376,15 @@ erDiagram
 
 - **USUARIO.** Quien usa la app. `rol` define permisos (jefe de obra, administración, dirección, superadministrador). `email` único, contraseña con hash.
 - **REGISTRO_ACCION.** Una fila por cada gesto de una persona. Columnas: `usuario_id` (entero suelto, sin clave ajena), `nombre_en_el_momento`, `accion`, `tipo_documento`, `documento_id`, `etiqueta`, `ocurrido_en`. No hay columnas de importe. `GET /registro` es para dirección y superadministrador. [VERIFICAR] quién puede asignar el rol superadministrador: quien ya puede hacer `PATCH /usuarios` puede hacerlo hoy, y eso no es una regla nueva que se decida aquí.
-- **PROYECTO.** Una obra. Cabecera de todo. `tipo` distingue llave en mano de reforma. Una persona puede marcar la obra subiendo la carta del promotor (`inversion_sujeto_pasivo`). El precio con el cliente y el de la subcontrata se muestran sin IVA. Una factura de esa obra no se confirma si el IVA no es cero, y las ya confirmadas con IVA vuelven a pendiente. La carta no se lee con OCR ni con el modelo.
+- **PROYECTO.** Una obra. Cabecera de todo. `tipo` distingue llave en mano de reforma. `precio_hora` es el precio por hora de la mano de obra propia; vacío hasta que alguien lo guarda. Cambiarlo no modifica los partes ya confirmados. Una persona puede marcar la obra subiendo la carta del promotor (`inversion_sujeto_pasivo`). El precio con el cliente y el de la subcontrata se muestran sin IVA. Una factura de esa obra no se confirma si el IVA no es cero, y las ya confirmadas con IVA vuelven a pendiente. La carta no se lee con OCR ni con el modelo.
 - **PRESUPUESTO.** El fichero de origen y su versión. `formato` vale `excel_expertis` (origen de la obra, plantilla Expertis) o `pdf_cliente` (PDF de contraste o presupuestos anteriores). `es_escaneado` marca baja fiabilidad por OCR en el PDF. `ruta_almacen` apunta al fichero en `uploads/` (null en obras antiguas). Permite gestionar revisiones sin perder el histórico (los presupuestos reales llevan sufijo de versión, ej. "V2"). Enlaza con el proyecto.
 - **NAVE.** Unidad de desglose del presupuesto. Guarda su importe presupuestado.
 - **CONTRATISTA.** Equipo interno o subcontrata externa. `nif` único: es la clave del enlace fiable con las facturas.
-- **CONTRATO.** El acuerdo de ejecución firmado con un subcontratista: precio cerrado, plazo y condiciones de medición/facturación. Distinto de `PRESUPUESTO` (lo que se ofertó al cliente) y de `FACTURA` (lo que se cobra mes a mes). Puede aportar un desglose de `TAREA` más fino del que trae el presupuesto — en el ejemplo visto, por Sala con precio unitario. `referencia_presupuesto` es texto libre al nº de presupuesto. Un contrato puede cubrir varios apartados de presupuesto. El conjunto confirmado está en `contrato_apartado`; `tarea_apartado_id` guarda el primero, tras sugerencia automática y **confirmación humana** (ver `docs/flujo_ui_proyecto.md`). [VERIFICAR] el precio se prorratea entre esos apartados según la base de cada uno (montaje, o el importe del PDF si es solo gestión), porque el contrato no trae el reparto. Una línea del PDF del cliente que no está en el Excel se puede relacionar con el contrato anotando a mano nombre, importe y explicación. `ruta_almacen` guarda el PDF/imagen en disco. Se puede quitar el contrato (`DELETE /proyectos/{id}/contratos/{contrato_id}`): las facturas de la obra se quedan y dejan de apuntar a él; se borran el fichero, los enlaces a apartados y las partidas que nacieron solo de ese contrato. Los apartados del presupuesto y el contratista se quedan.
+- **CONTRATO.** El acuerdo de ejecución firmado con un subcontratista: precio cerrado, plazo y condiciones de medición/facturación. Distinto de `PRESUPUESTO` (lo que se ofertó al cliente) y de `FACTURA` (lo que se cobra mes a mes). Puede aportar un desglose de `TAREA` más fino del que trae el presupuesto — en el ejemplo visto, por Sala con precio unitario. `referencia_presupuesto` es texto libre al nº de presupuesto. `codigo` es el código impreso en el PDF (PYCON o PYEQU, 3 dígitos de proyecto, 2 de trabajo y 1 de contrato; o un pedido de serie 1 `1-` y 6 dígitos; por administración termina en ADM). Si el PDF no lo trae, se avisa y hay que escribirlo. El tramo del trabajo no corresponde a un apartado de este sistema, y ADM no es «solo gestión». Un contrato puede cubrir varios apartados de presupuesto. El conjunto confirmado está en `contrato_apartado`; `tarea_apartado_id` guarda el primero, tras sugerencia automática y **confirmación humana** (ver `docs/flujo_ui_proyecto.md`). [VERIFICAR] el precio se prorratea entre esos apartados según la base de cada uno (montaje, o el importe del PDF si es solo gestión), porque el contrato no trae el reparto. Una línea del PDF del cliente que no está en el Excel se puede relacionar con el contrato anotando a mano nombre, importe y explicación. `ruta_almacen` guarda el PDF/imagen en disco. Se puede quitar el contrato (`DELETE /proyectos/{id}/contratos/{contrato_id}`): las facturas de la obra se quedan y dejan de apuntar a él; se borran el fichero, los enlaces a apartados y las partidas que nacieron solo de ese contrato. Los apartados del presupuesto y el contratista se quedan.
 - **TAREA.** Partida del presupuesto o del contrato, colgada de una nave. **Es jerárquica** (`tarea_padre_id`): un presupuesto suele generar filas de `nivel = "apartado"` con `importe_presupuestado` pero sin `unidad`/`cantidad`/`precio_unitario`; un contrato puede generar filas hijas de `nivel = "partida"` con esos campos rellenos. `presupuesto_id` y `contrato_id` (ambos nullable) registran de qué documento vino cada fila, para poder citar la fuente de cualquier cifra. `tiene_anotacion_manual` marca cuándo el valor impreso fue corregido a mano — fuerza `estado_revision = "pendiente"` sin excepción. En el Excel, `es_montaje` marca la línea que la subcontrata presupuesta y factura. Si está dentro de su subapartado, se agrupa en «Montaje {producto}». Si el montaje está en otra parte del Excel, se asocia al subapartado cuyo nombre aparece en la línea o en el bloque. Lo que no casa y sigue en GENERAL lo propone el LLM (solo nombres). Lo que no es de un solo subapartado queda en «Montaje general». `descuento_pct`, `referencia` y `referencia_alt` guardan `Dto. %`, `Ref. (1)` y `Ref. (2)`. `importe_contrato_cliente` (solo en el apartado) es el importe del PDF del cliente tras confirmación humana. Las líneas `ELEMENTOS DE MONTAJE` no son montaje: se quedan en su bloque. `estado` (económico/administrativo) y `avance_fisico_pct` (ejecución real) van separados a propósito: pagado no es ejecutado. `solo_gestion` marca un apartado creado desde una línea de importe del PDF del cliente: Exafan lo gestiona y no lo suministra. No tiene partidas ni montaje. El importe de la línea es `importe_presupuestado` e `importe_contrato_cliente`. Si el importe es manuscrito, nace pendiente y no admite contrato hasta confirmarlo. Varios contratos pueden enlazarse a ese apartado; lo contratado es la suma, comparada con el importe de la línea. `linea_pdf_cliente_id` apunta a la línea del PDF del cliente cuando el apartado se anota a mano sobre un apartado de ese PDF que no está en el Excel: guarda el nombre, el importe y, en el enlace, la explicación.
-- **FACTURA.** Documento del contratista. Siempre enlaza con un contratista (por NIF) y, cuando existe, con el `CONTRATO` que certifica — esto permite comparar contratado vs. facturado con precisión, no solo por contratista en bloque. Guarda base, IVA, IRPF, retención de garantía y `tipo` (ordinaria, anticipo, certificación). `estado_revision` controla la revisión humana; `es_escaneada` avisa de baja fiabilidad. `ruta_almacen` guarda el fichero subido. Si la obra tiene `inversion_sujeto_pasivo`, confirmar con IVA distinto de cero responde 422 y no guarda. El IVA tiene que ser 0. El listado trae `aviso_isp` en esas facturas.
+- **LINEA_MANO_OBRA.** Apartado de trabajo propio, creado a mano en Contratos. Tiene nombre y cuelga de la obra. No es una `TAREA`: no tiene nave, importe previsto, contrato ni proveedor. Una obra puede tener varias y el nombre no tiene que ser único.
+- **PARTE_TRABAJO.** Documento (PDF o imagen) colgado de una línea de mano de obra. El sistema lee las horas y, si viene, la fecha. Queda `pendiente` hasta que una persona lo confirma. Al confirmar se copian `precio_hora_aplicado` e `importe` (`horas × precio`, half-up a céntimos). Esos dos campos no cambian si luego cambia el precio de la obra. Un parte pendiente no entra en el acumulado. El acumulado no entra en presupuestado, contratado ni facturado. `es_escaneado` y `tiene_anotacion_manual` marcan la lectura débil y siguen pendientes hasta confirmar. `ruta_almacen` guarda el fichero en `uploads/{proyecto}/parte/`.
+- **FACTURA.** Documento del contratista. Siempre enlaza con un contratista (por NIF). Si el PDF trae el código del contrato, enlaza con el `CONTRATO` de esa obra que tiene el mismo `codigo`. Si ese contrato se leyó con el NIF de quien encarga la obra, pasa a quedar a nombre de quien factura. Si no lo trae, se avisa y hay que indicarlo. Si no hay código y el proveedor solo tiene un contrato en la obra, se propone ese. Ese enlace permite comparar contratado vs. facturado con precisión, no solo por contratista en bloque. Guarda base, IVA, IRPF, retención de garantía y `tipo` (ordinaria, anticipo, certificación). `estado_revision` controla la revisión humana; `es_escaneada` avisa de baja fiabilidad. `ruta_almacen` guarda el fichero subido. Al confirmar hay que indicar `referencia_alc`: se genera un PDF con sello azul (`ruta_sello`) con la obra, `PYCON` o `PYEQU` y los 3 primeros dígitos del código, `TRABAJO` con el 4º y el 5º, `ALC/…`, quien confirma y la fecha, el precio del contrato, el ordinal de la factura y el pendiente (precio del contrato menos la suma de totales confirmados de ese contrato). [VERIFICAR] en un pedido de serie 1 el prefijo del sello es `1-`. Si la obra tiene `inversion_sujeto_pasivo`, confirmar con IVA distinto de cero responde 422 y no guarda. El IVA tiene que ser 0. El listado trae `aviso_isp` en esas facturas.
 - **LINEA_FACTURA.** Detalle de la factura, si lo hay. `embedding` alimenta el casado semántico con `pgvector`.
 - **ASIGNACION.** Tabla puente del casado. Reparte el importe de una factura a nave o tarea/partida. `es_estimacion` marca cuándo el reparto es proporcional al presupuesto (no medido). `metodo` y `confianza` registran cómo se hizo el enlace y `revisado_por` quién lo confirmó.
 
@@ -468,6 +477,29 @@ paths:
     get:
       summary: Descarga la carta. 404 si no hay
 
+  /proyectos/{id}/precio-hora:
+    patch:
+      summary: Guarda el precio por hora de la obra. No toca los partes ya confirmados
+  /proyectos/{id}/lineas-mano-obra:
+    post:
+      summary: Añade a mano una línea de mano de obra propia
+  /proyectos/{id}/lineas-mano-obra/{linea_id}:
+    patch:
+      summary: Cambia el nombre de la línea
+    delete:
+      summary: Borra la línea si no tiene partes confirmados. 409 si los tiene
+  /proyectos/{id}/lineas-mano-obra/{linea_id}/partes:
+    post:
+      summary: Sube un parte. Queda pendiente y no suma al acumulado
+  /proyectos/{id}/partes/{parte_id}:
+    patch:
+      summary: Corrige horas y fecha de un parte pendiente. 409 si ya está confirmado
+  /proyectos/{id}/partes/{parte_id}/confirmar:
+    post:
+      summary: Copia el precio por hora de la obra y calcula el importe
+  /proyectos/{id}/partes/{parte_id}/fichero:
+    get:
+      summary: Descarga el parte
   /proyectos/{id}/importar-contrato:
     post:
       summary: Sube un contrato de subcontrata y lo enlaza al proyecto (y, si aporta desglose fino, a sus partidas)
@@ -621,8 +653,8 @@ paths:
 
   /facturas/{id}/confirmar:
     post:
-      summary: Confirma o corrige la factura y su contrato asociado
-      description: Solo después de esta confirmación la factura entra en el control económico.
+      summary: Confirma la factura, pide la referencia ALC y genera el PDF con sello
+      description: Solo después de esta confirmación la factura entra en el control económico. El cuerpo lleva referencia_alc. El PDF se descarga en GET /facturas/{id}/sello.
 
   /proyectos/{id}/control-economico:
     get:

@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.mano_obra import ManoObraOut
+
 Resolucion = Literal[
     "Reclamada",
     "Desviación aprobada",
@@ -204,3 +206,4 @@ class VistaObraOut(BaseModel):
     contratos: ContratosVistaOut
     facturas: list[FacturaFilaOut]
     control: ControlVistaOut
+    mano_obra: ManoObraOut = Field(default_factory=ManoObraOut)

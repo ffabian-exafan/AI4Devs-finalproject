@@ -16,6 +16,12 @@ from app.schemas.contrato import ImportarContratoOut
 from app.schemas.extraccion import ContratoExtraido, NodoTareaExtraido, PresupuestoExtraido
 from app.schemas.presupuesto import ImportarPresupuestoOut
 from app.config import get_settings
+from app.services.codigo_contrato import (
+    AVISO_REPETIDO,
+    AVISO_SIN_CODIGO,
+    AVISO_VARIOS,
+    codigos_en_texto,
+)
 from app.services import almacen as almacen_svc
 from app.services import casado as casado_svc
 from app.services import extraccion as extraccion_svc
@@ -352,7 +358,13 @@ def importar_contrato(
     if leido.es_escaneado:
         extraido = extraido.model_copy(update={"requiere_revision": True})
     return persistir_contrato(
-        db, proyecto, extraido, nombre_fichero, contenido, nave_id
+        db,
+        proyecto,
+        extraido,
+        nombre_fichero,
+        contenido,
+        nave_id,
+        texto=leido.texto,
     )
 
 
@@ -368,6 +380,7 @@ def persistir_contrato(
     nombre_fichero: str,
     contenido: bytes,
     nave_id: int | None = None,
+    texto: str = "",
 ) -> ImportarContratoOut:
     nave = _resolver_nave(db, proyecto, nave_id)
     contratista = _get_or_create_contratista(db, extraido)
@@ -396,6 +409,7 @@ def persistir_contrato(
         contenido,
     )
     _guardar_sugerencia_modelo(contrato, extraido)
+    _aplicar_codigo_leido(db, contrato, texto)
 
     for nodo in extraido.arbol_tareas:
         _persistir_nodo_tarea(
@@ -419,8 +433,26 @@ def persistir_contrato(
         precio_total=contrato.precio_total,
         partidas_detalle_detectadas=extraido.partidas_detalle,
         requiere_revision=extraido.requiere_revision,
+        codigo=contrato.codigo,
+        aviso=contrato.aviso,
         sugerencias_apartado=sugerencias,
     )
+
+
+def _aplicar_codigo_leido(db: Session, contrato: Contrato, texto: str) -> None:
+    encontrados = codigos_en_texto(texto)
+    if len(encontrados) > 1:
+        contrato.aviso = AVISO_VARIOS
+        return
+    if not encontrados:
+        contrato.aviso = AVISO_SIN_CODIGO
+        return
+    codigo = encontrados[0]
+    otro = db.query(Contrato).filter(Contrato.codigo == codigo).first()
+    if otro is not None:
+        contrato.aviso = AVISO_REPETIDO
+        return
+    contrato.codigo = codigo
 
 
 def _guardar_sugerencia_modelo(contrato: Contrato, extraido: ContratoExtraido) -> None:

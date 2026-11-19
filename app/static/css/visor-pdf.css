@@ -1,0 +1,95 @@
+.visor-pdf {
+  width: min(960px, calc(100vw - 32px));
+  height: min(860px, calc(100vh - 32px));
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line, #d9d3cb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--ink, #1f1c19);
+  box-shadow: 0 18px 48px rgba(31, 28, 25, 0.28);
+}
+
+.visor-pdf[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.visor-pdf:modal {
+  overscroll-behavior: contain;
+}
+
+.visor-pdf::backdrop {
+  background: rgba(31, 28, 25, 0.48);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.visor-pdf-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line, #d9d3cb);
+}
+
+.visor-pdf-cabecera h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visor-pdf-acciones {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.visor-pdf-descarga {
+  border: 1px solid var(--line, #d9d3cb);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 8px 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.visor-pdf-descarga:hover {
+  background: var(--p50, #f4f1ec);
+}
+
+.visor-pdf-cerrar {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted, #6b6560);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.visor-pdf-cerrar:hover {
+  background: var(--p50, #f4f1ec);
+  color: var(--ink, #1f1c19);
+}
+
+.visor-pdf-marco {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #525659;
+}

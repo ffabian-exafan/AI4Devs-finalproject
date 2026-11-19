@@ -16,7 +16,15 @@ from pydantic import BaseModel, Field
 from app.schemas.tipos import Money
 
 _HOJAS_IGNORADAS = {"traduce", "data"}
-_HOJAS_GENERICAS = {"presupuesto", "hoja 1", "hoja1", "sheet", "sheet1", "sheet 1"}
+_HOJAS_GENERICAS = {
+    "presupuesto",
+    "expertis",
+    "hoja 1",
+    "hoja1",
+    "sheet",
+    "sheet1",
+    "sheet 1",
+}
 _ETIQUETAS = {
     "cliente",
     "nombre",
@@ -78,7 +86,7 @@ class ExcelLeido(BaseModel):
 
 
 def leer_excel_expertis(contenido: bytes) -> ExcelLeido:
-    """Lee el primer libro con la cabecera Expertis y devuelve el árbol."""
+    """Lee la pestaña Expertis si trae la cabecera; si no, la hoja válida más larga."""
     if not contenido:
         raise ValueError("El fichero está vacío")
     try:
@@ -105,7 +113,11 @@ def leer_excel_expertis(contenido: bytes) -> ExcelLeido:
                 "El Excel no tiene la cabecera de presupuesto Expertis "
                 "(Cant., Cod., Descripción, Euros, TOTAL)"
             )
-        candidatos.sort(key=lambda item: item[0], reverse=True)
+        # En alimentación conviven Expertis y Presupuesto. Expertis es el origen.
+        candidatos.sort(
+            key=lambda item: (_normalizar(item[1]) == "expertis", item[0]),
+            reverse=True,
+        )
         _, nombre, filas_f, filas_v, negritas, cursivas = candidatos[0]
         return _leer_hoja(nombre, filas_f, filas_v, negritas, cursivas)
     finally:

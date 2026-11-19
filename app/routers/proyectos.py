@@ -1,5 +1,7 @@
 """Endpoints de proyectos (ingesta de presupuesto y contrato)."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
@@ -13,7 +15,7 @@ from app.schemas.casado import (
     EnlazarApartadoIn,
     EnlazarApartadoOut,
 )
-from app.schemas.contrato import ImportarContratoOut
+from app.schemas.contrato import CodigoContratoIn, CodigoContratoOut, ImportarContratoOut
 from app.schemas.control_economico import ControlEconomicoOut
 from app.schemas.presupuesto import (
     ContrastarClienteOut,
@@ -569,6 +571,25 @@ async def importar_contrato(
 
 
 @router.post(
+    "/proyectos/{proyecto_id}/contratos/{contrato_id}/codigo",
+    response_model=CodigoContratoOut,
+)
+def guardar_codigo_contrato(
+    proyecto_id: int,
+    contrato_id: int,
+    body: CodigoContratoIn,
+    db: Session = Depends(get_db),
+) -> CodigoContratoOut:
+    try:
+        contrato = proyectos_svc.asignar_codigo_contrato(
+            db, proyecto_id, contrato_id, body.codigo
+        )
+    except ValueError as exc:
+        raise _error_valor(exc) from exc
+    return CodigoContratoOut(contrato_id=contrato.id, codigo=contrato.codigo or body.codigo)
+
+
+@router.post(
     "/proyectos/{proyecto_id}/contratos/{contrato_id}/enlazar-apartado",
     response_model=EnlazarApartadoOut,
 )
@@ -700,6 +721,7 @@ def descargar_carta_isp(
 def descargar_presupuesto(
     proyecto_id: int,
     presupuesto_id: int,
+    ver: bool = False,
     db: Session = Depends(get_db),
 ) -> FileResponse:
     doc = db.get(Presupuesto, presupuesto_id)
@@ -708,13 +730,14 @@ def descargar_presupuesto(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Presupuesto no encontrado",
         )
-    return _responder_fichero(doc.ruta_almacen, doc.fichero_origen)
+    return _responder_fichero(doc.ruta_almacen, doc.fichero_origen, ver=ver)
 
 
 @router.get("/proyectos/{proyecto_id}/contratos/{contrato_id}/fichero")
 def descargar_contrato(
     proyecto_id: int,
     contrato_id: int,
+    ver: bool = False,
     db: Session = Depends(get_db),
 ) -> FileResponse:
     doc = db.get(Contrato, contrato_id)
@@ -723,13 +746,14 @@ def descargar_contrato(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Contrato no encontrado",
         )
-    return _responder_fichero(doc.ruta_almacen, doc.fichero_origen)
+    return _responder_fichero(doc.ruta_almacen, doc.fichero_origen, ver=ver)
 
 
 @router.get("/proyectos/{proyecto_id}/facturas/{factura_id}/fichero")
 def descargar_factura(
     proyecto_id: int,
     factura_id: int,
+    ver: bool = False,
     db: Session = Depends(get_db),
 ) -> FileResponse:
     doc = db.get(Factura, factura_id)
@@ -738,18 +762,27 @@ def descargar_factura(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Factura no encontrada",
         )
-    return _responder_fichero(doc.ruta_almacen, doc.fichero_origen)
+    return _responder_fichero(doc.ruta_almacen, doc.fichero_origen, ver=ver)
 
 
-def _responder_fichero(ruta_almacen: str | None, nombre: str) -> FileResponse:
+def _responder_fichero(
+    ruta_almacen: str | None,
+    nombre: str,
+    *,
+    ver: bool = False,
+    ausente: str = "El fichero no está guardado",
+) -> FileResponse:
     ruta = almacen_svc.abrir_si_existe(ruta_almacen)
     if ruta is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="El fichero no está guardado",
+            detail=ausente,
         )
+    nombre_final = nombre or ruta.name
+    en_linea = ver and Path(nombre_final).suffix.lower() == ".pdf"
     return FileResponse(
         path=ruta,
-        filename=nombre or ruta.name,
-        media_type="application/octet-stream",
+        filename=nombre_final,
+        media_type="application/pdf" if en_linea else "application/octet-stream",
+        content_disposition_type="inline" if en_linea else "attachment",
     )

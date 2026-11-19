@@ -20,6 +20,10 @@ ACCIONES = (
     "inicio_sesion",
     "marcar_isp",
     "quitar_isp",
+    "guardar_precio_hora",
+    "borrar_linea_mano_obra",
+    "confirmar_parte",
+    "borrar_parte",
 )
 
 

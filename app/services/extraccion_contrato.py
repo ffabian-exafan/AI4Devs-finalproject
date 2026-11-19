@@ -59,6 +59,8 @@ Reglas:
 - apartado_sugerido_codigo tiene que ser uno de los códigos que te paso, o null si ninguno encaja.
 - No elijas un descuento ni una línea de gestión.
 - requiere_revision es siempre true.
+- contratista_nif y contratista_nombre son de quien ejecuta la obra y emitirá las facturas.
+- Si el documento tiene dos partes, no uses el NIF de quien encarga el trabajo.
 """
 
 

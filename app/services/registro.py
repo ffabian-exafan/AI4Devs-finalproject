@@ -24,6 +24,10 @@ ETIQUETAS = {
     "inicio_sesion": "Entró",
     "marcar_isp": "Marcó la inversión del sujeto pasivo",
     "quitar_isp": "Quitó la inversión del sujeto pasivo",
+    "guardar_precio_hora": "Guardó el precio por hora",
+    "borrar_linea_mano_obra": "Borró la línea de mano de obra",
+    "confirmar_parte": "Confirmó el parte",
+    "borrar_parte": "Borró el parte",
 }
 
 if set(ETIQUETAS) != set(ACCIONES):

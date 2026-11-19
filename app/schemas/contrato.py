@@ -2,10 +2,11 @@
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.casado import SugerenciaApartadoOut
 from app.schemas.tipos import Money
+from app.services.codigo_contrato import validar_codigo
 
 
 class ContratoCreate(BaseModel):
@@ -30,6 +31,7 @@ class ContratoRead(BaseModel):
     nave_id: int | None
     contratista_id: int
     referencia_presupuesto: str | None
+    codigo: str | None = None
     tarea_apartado_id: int | None = None
     precio_total: Money
     fecha_firma: date | None
@@ -47,4 +49,20 @@ class ImportarContratoOut(BaseModel):
     precio_total: Money
     partidas_detalle_detectadas: int
     requiere_revision: bool
+    codigo: str | None = None
+    aviso: str | None = None
     sugerencias_apartado: list[SugerenciaApartadoOut] = Field(default_factory=list)
+
+
+class CodigoContratoIn(BaseModel):
+    codigo: str = Field(min_length=1, max_length=16)
+
+    @field_validator("codigo")
+    @classmethod
+    def formato(cls, value: str) -> str:
+        return validar_codigo(value)
+
+
+class CodigoContratoOut(BaseModel):
+    contrato_id: int
+    codigo: str

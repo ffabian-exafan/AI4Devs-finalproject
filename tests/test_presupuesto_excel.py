@@ -695,6 +695,49 @@ def test_el_titulo_del_apartado_es_el_nombre_del_fichero():
     assert leido.nombre_apartado == "alimentacion-ficticia-v2"
 
 
+def _libro_expertis_y_presupuesto() -> bytes:
+    """Presupuesto es más larga. La partida buena está en la pestaña Expertis."""
+    wb = Workbook()
+    presupuesto = wb.active
+    presupuesto.title = "Presupuesto"
+    expertis = wb.create_sheet("Expertis")
+    wb.create_sheet("Traduce")["A1"] = "no leer"
+    cabeceras = {
+        "B": "Cant.",
+        "C": "Cod.",
+        "D": "Descripción",
+        "J": "Euros",
+        "L": "TOTAL",
+    }
+    for hoja in (presupuesto, expertis):
+        for col, texto in cabeceras.items():
+            hoja[f"{col}1"] = texto
+    presupuesto["B2"] = 1
+    presupuesto["C2"] = "01"
+    presupuesto["D2"] = "LINEA DE LA PESTAÑA PRESUPUESTO"
+    presupuesto["J2"] = 99
+    presupuesto["L2"] = 99
+    for fila in range(3, 12):
+        presupuesto[f"D{fila}"] = "RELLENO"
+    expertis["B2"] = 1
+    expertis["C2"] = "08"
+    expertis["D2"] = "LINEA DE LA PESTAÑA EXPERTIS"
+    expertis["J2"] = 7
+    expertis["L2"] = 7
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_si_hay_pestana_expertis_no_lee_presupuesto():
+    leido = leer_excel_expertis(_libro_expertis_y_presupuesto())
+
+    assert leido.partidas == 1
+    assert leido.nodos[0].descripcion == "LINEA DE LA PESTAÑA EXPERTIS"
+    assert leido.nodos[0].importe == Decimal("7.00")
+    assert leido.nombre_apartado == "Apartado"
+
+
 def test_calcula_el_total_cuando_la_formula_no_trae_cache():
     leido = leer_excel_expertis(_libro_formula())
 
@@ -1040,6 +1083,41 @@ def test_el_descuento_de_cierre_no_resta_cada_linea():
     assert [linea.importe_pdf for linea in lineas] == [Decimal("80.00"), Decimal("20.00")]
     assert all(linea.importe_bruto is None for linea in lineas)
     assert [descuento.importe for descuento in descuentos] == [Decimal("5.00"), Decimal("5.00")]
+
+
+def test_el_importe_de_un_subapartado_tambien_entra_al_contraste():
+    from app.schemas.extraccion import ApartadoExtraido, NaveExtraida, PresupuestoExtraido
+    from app.services.presupuesto_excel import _construir_sugerencias
+
+    extraido = PresupuestoExtraido(
+        nombre_proyecto="Obra ficticia",
+        naves=[
+            NaveExtraida(
+                codigo="N1",
+                descripcion="Nave ficticia",
+                apartados=[
+                    ApartadoExtraido(
+                        codigo="1",
+                        descripcion="Capítulo sin cifra",
+                        importe=None,
+                        subapartados=[
+                            ApartadoExtraido(
+                                codigo="1.1",
+                                descripcion="Cubierta ficticia",
+                                importe=Decimal("40.00"),
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    lineas, descuentos = _construir_sugerencias(extraido)
+
+    assert [linea.codigo_pdf for linea in lineas] == ["1.1"]
+    assert lineas[0].importe_pdf == Decimal("40.00")
+    assert descuentos == []
 
 
 def test_colocacion_guardada_pasa_al_bloque_de_montaje(db: Session):

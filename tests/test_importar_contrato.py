@@ -87,6 +87,9 @@ def test_importar_contrato_fixture_electricidad(
     assert contrato.plazo_ejecucion.isoformat() == "2026-07-15"
     assert contrato.condiciones_facturacion
     assert "factura" in contrato.condiciones_facturacion.lower()
+    assert contrato.codigo is None
+    assert contrato.aviso is not None
+    assert "Indícalo" in contrato.aviso
 
     tareas = db.query(Tarea).filter(Tarea.contrato_id == contrato.id).all()
     assert all(t.presupuesto_id is None for t in tareas), (
@@ -109,6 +112,59 @@ def test_importar_contrato_fixture_electricidad(
         if sala.codigo == "4":
             codigos = {p.codigo for p in partidas_sala}
             assert any(c.startswith("4.3.1") for c in codigos)
+
+
+def _liberar_codigo(db: Session, codigo: str) -> None:
+    previo = db.query(Contrato).filter(Contrato.codigo == codigo).one_or_none()
+    if previo is not None:
+        previo.codigo = None
+        db.commit()
+
+
+def test_el_codigo_escrito_en_el_pdf_se_guarda(
+    client: TestClient,
+    db: Session,
+    proyecto_con_nave: Proyecto,
+):
+    _liberar_codigo(db, "PYEQU901070")
+    texto = FIXTURE.read_text(encoding="utf-8") + "\nCódigo: PYEQU901070\n"
+    response = client.post(
+        f"/proyectos/{proyecto_con_nave.id}/importar-contrato",
+        files={"fichero": ("contrato_con_codigo.md", texto.encode(), "text/markdown")},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["codigo"] == "PYEQU901070"
+    assert body["aviso"] is None
+    contrato = db.get(Contrato, body["contrato_id"])
+    assert contrato is not None
+    assert contrato.codigo == "PYEQU901070"
+
+
+def test_si_falta_el_codigo_se_puede_indicar(
+    client: TestClient,
+    db: Session,
+    proyecto_con_nave: Proyecto,
+):
+    _liberar_codigo(db, "PYCON901080")
+    with FIXTURE.open("rb") as fh:
+        alta = client.post(
+            f"/proyectos/{proyecto_con_nave.id}/importar-contrato",
+            files={"fichero": (FIXTURE.name, fh, "text/markdown")},
+        )
+    assert alta.status_code == 201, alta.text
+    contrato_id = alta.json()["contrato_id"]
+    mal = client.post(
+        f"/proyectos/{proyecto_con_nave.id}/contratos/{contrato_id}/codigo",
+        json={"codigo": "NO-VALIDO"},
+    )
+    assert mal.status_code == 422
+    bien = client.post(
+        f"/proyectos/{proyecto_con_nave.id}/contratos/{contrato_id}/codigo",
+        json={"codigo": "pycon901080"},
+    )
+    assert bien.status_code == 200, bien.text
+    assert bien.json()["codigo"] == "PYCON901080"
 
 
 def _partidas_descendientes(db: Session, raiz_id: int) -> list[Tarea]:

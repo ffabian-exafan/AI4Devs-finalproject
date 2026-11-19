@@ -43,6 +43,7 @@ from app.services.excel_expertis import (
     _es_dietas,
     _repartir_pesos,
 )
+from app.services.filas_pdf import filas_oferta
 from app.services.ingesta import leer_presupuesto
 from app.services.jerarquia import mapa_padres
 
@@ -188,8 +189,15 @@ def contrastar_presupuesto_cliente(
         raise ValueError("La obra no tiene subapartados de Excel con los que contrastar")
     _exigir_fichero_nuevo(db, proyecto_id, "pdf_cliente", nombre_fichero, contenido)
 
-    leido = leer_presupuesto(contenido, nombre_fichero, forzar_vision=forzar_vision)
-    extraido = extraccion_svc.extraer_presupuesto(leido.texto)
+    oferta = _sugerencias_oferta(contenido)
+    if oferta is not None:
+        sugerencias, descuentos = oferta, []
+        es_escaneado = False
+    else:
+        leido = leer_presupuesto(contenido, nombre_fichero, forzar_vision=forzar_vision)
+        extraido = extraccion_svc.extraer_presupuesto(leido.texto)
+        sugerencias, descuentos = _construir_sugerencias(extraido)
+        es_escaneado = leido.es_escaneado
     version = (
         db.query(Presupuesto)
         .filter(Presupuesto.proyecto_id == proyecto_id, Presupuesto.formato == "pdf_cliente")
@@ -201,7 +209,7 @@ def contrastar_presupuesto_cliente(
         version=version,
         fichero_origen=nombre_fichero[:512],
         estado_extraccion="extraido",
-        es_escaneado=leido.es_escaneado,
+        es_escaneado=es_escaneado,
         formato="pdf_cliente",
         ver_pagina=forzar_vision,
     )
@@ -215,7 +223,6 @@ def contrastar_presupuesto_cliente(
         contenido,
     )
 
-    sugerencias, descuentos = _construir_sugerencias(extraido)
     _persistir_lineas(db, presupuesto.id, sugerencias, descuentos)
     from app.services.linea_pdf_manual import copiar_al_presupuesto
 
@@ -234,6 +241,9 @@ def obtener_contraste_cliente(db: Session, proyecto_id: int) -> ContrastarClient
     if presupuesto is None:
         raise ValueError("Esta obra no tiene PDF del cliente")
     cambio = False
+    if _corregir_oferta_si_falta(db, presupuesto):
+        _proponer_relaciones(db, proyecto_id, presupuesto.id)
+        cambio = True
     if not _hay_lineas_importe(db, presupuesto.id):
         ruta = almacen_svc.abrir_si_existe(presupuesto.ruta_almacen)
         if ruta is None:
@@ -256,9 +266,14 @@ def obtener_contraste_cliente(db: Session, proyecto_id: int) -> ContrastarClient
 
 
 def contraste_guardado(db: Session, proyecto_id: int) -> ContrastarClienteOut | None:
-    """Líneas ya guardadas. No vuelve a leer el PDF."""
+    """Líneas ya guardadas. Si el cuadro en euros se leyó de menos, lo completa."""
     presupuesto = _ultimo_pdf_cliente(db, proyecto_id)
-    if presupuesto is None or not _hay_lineas_importe(db, presupuesto.id):
+    if presupuesto is None:
+        return None
+    if _corregir_oferta_si_falta(db, presupuesto):
+        _proponer_relaciones(db, proyecto_id, presupuesto.id)
+        db.commit()
+    if not _hay_lineas_importe(db, presupuesto.id):
         return None
     return _salida_contraste(db, presupuesto)
 
@@ -301,6 +316,7 @@ def confirmar_importes_cliente(
         fila.id: fila
         for fila in db.query(Tarea).filter(Tarea.presupuesto_id.in_(presupuesto_ids)).all()
     }
+    previas = _bloques_confirmados(db, linea_id) if linea_id is not None else []
     partes = _repartir_importe(
         Decimal(importe),
         [_importe_con_montaje(tarea, por_id) for tarea in tareas],
@@ -309,6 +325,10 @@ def confirmar_importes_cliente(
         tarea.importe_contrato_cliente = parte
     if linea_id is not None:
         _enlazar_linea(db, proyecto_id, linea_id, vistos)
+        nuevos = set(vistos)
+        for previa in previas:
+            if previa.id not in nuevos:
+                previa.importe_contrato_cliente = None
     if registrar_fila and usuario is not None:
         proyecto = db.get(Proyecto, proyecto_id)
         if len(tareas) == 1:
@@ -384,14 +404,80 @@ def _hay_lineas_importe(db: Session, presupuesto_id: int) -> bool:
     )
 
 
+def _sugerencias_oferta(contenido: bytes) -> list[SugerenciaContrasteOut] | None:
+    """El cuadro en euros de la oferta. None si no hay al menos dos conceptos."""
+    filas = filas_oferta(contenido)
+    if len(filas) < 2:
+        return None
+    return [
+        SugerenciaContrasteOut(
+            descripcion_pdf=fila.descripcion,
+            codigo_pdf=str(orden),
+            importe_pdf=fila.importe,
+        )
+        for orden, fila in enumerate(filas, start=1)
+    ]
+
+
+def _corregir_oferta_si_falta(db: Session, presupuesto: Presupuesto) -> bool:
+    """Sustituye una lectura de una línea cuando el PDF trae el cuadro en euros.
+
+    No toca líneas escritas a mano ni un contraste ya confirmado.
+    """
+    ruta = almacen_svc.abrir_si_existe(presupuesto.ruta_almacen)
+    if ruta is None:
+        return False
+    sugerencias = _sugerencias_oferta(ruta.read_bytes())
+    if sugerencias is None:
+        return False
+    leidas = (
+        db.query(LineaPdfCliente)
+        .filter(
+            LineaPdfCliente.presupuesto_id == presupuesto.id,
+            LineaPdfCliente.tipo == "importe",
+            LineaPdfCliente.es_manual.is_(False),
+        )
+        .all()
+    )
+    if len(leidas) >= len(sugerencias):
+        return False
+    ids = [fila.id for fila in leidas]
+    if ids:
+        confirmada = (
+            db.query(LineaPdfClienteTarea.linea_id)
+            .filter(
+                LineaPdfClienteTarea.linea_id.in_(ids),
+                LineaPdfClienteTarea.es_sugerencia.is_(False),
+            )
+            .first()
+        )
+        if confirmada is not None:
+            return False
+        db.execute(delete(LineaPdfClienteTarea).where(LineaPdfClienteTarea.linea_id.in_(ids)))
+        db.execute(delete(LineaPdfCliente).where(LineaPdfCliente.id.in_(ids)))
+    for orden, sugerencia in enumerate(sugerencias):
+        db.add(
+            LineaPdfCliente(
+                presupuesto_id=presupuesto.id,
+                orden=orden,
+                tipo="importe",
+                codigo=(sugerencia.codigo_pdf or "")[:128],
+                descripcion=(sugerencia.descripcion_pdf or "Importe")[:512],
+                importe=Decimal(sugerencia.importe_pdf),
+                importe_bruto=None,
+                es_manuscrito=False,
+                es_manual=False,
+            )
+        )
+    db.flush()
+    return True
+
+
 def _construir_sugerencias(extraido) -> tuple[list[SugerenciaContrasteOut], list[DescuentoContrasteOut]]:
     lineas = [
         apartado
         for nave in extraido.naves
-        for apartado in nave.apartados
-        if apartado.importe is not None
-        and not apartado.excluido_de_suma
-        and not apartado.codigo.startswith("descuento")
+        for apartado in _apartados_con_importe(nave.apartados)
     ]
     lineas_pdf = [
         SugerenciaContrasteOut(
@@ -411,6 +497,18 @@ def _construir_sugerencias(extraido) -> tuple[list[SugerenciaContrasteOut], list
         for descuento in extraido.descuentos
     ]
     return sugerencias, descuentos
+
+
+def _apartados_con_importe(apartados):
+    """Incluye el importe de un subapartado. Si solo se mira la raíz, el contraste sale vacío."""
+    for apartado in apartados:
+        if (
+            apartado.importe is not None
+            and not apartado.excluido_de_suma
+            and not apartado.codigo.startswith("descuento")
+        ):
+            yield apartado
+        yield from _apartados_con_importe(apartado.subapartados)
 
 
 def _persistir_lineas(
@@ -526,6 +624,22 @@ def _salida_contraste(db: Session, presupuesto: Presupuesto) -> ContrastarClient
         sugerencias=sugerencias,
         descuentos=descuentos,
     )
+
+
+def _bloques_confirmados(db: Session, linea_id: int) -> list[Tarea]:
+    """Bloques ya confirmados de esta línea, antes de sustituir el enlace."""
+    ids = [
+        fila.tarea_id
+        for fila in db.query(LineaPdfClienteTarea)
+        .filter(
+            LineaPdfClienteTarea.linea_id == linea_id,
+            LineaPdfClienteTarea.es_sugerencia.is_(False),
+        )
+        .all()
+    ]
+    if not ids:
+        return []
+    return db.query(Tarea).filter(Tarea.id.in_(ids)).all()
 
 
 def _enlazar_linea(db: Session, proyecto_id: int, linea_id: int, tarea_ids: list[int]) -> None:

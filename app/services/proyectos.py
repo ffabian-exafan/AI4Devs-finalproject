@@ -16,6 +16,11 @@ from app.models import (
     Tarea,
     Usuario,
 )
+from app.services.codigo_contrato import (
+    AVISO_REPETIDO,
+    AVISO_SIN_CODIGO,
+    AVISO_VARIOS,
+)
 from app.services.registro import registrar
 from app.schemas.proyecto import (
     ApartadoContratoOut,
@@ -30,6 +35,7 @@ from app.schemas.proyecto import (
 )
 from app.services import almacen as almacen_svc
 from app.services import casado as casado_svc
+from app.services import mano_obra as mano_obra_svc
 from app.services.jerarquia import asegurar_apartados_padre, mapa_padres
 from app.services.presupuesto_excel import (
     contraste_guardado,
@@ -378,6 +384,8 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
                 contratista_nombre=c.contratista.nombre if c.contratista else "—",
                 contratista_nif=c.contratista.nif if c.contratista else "—",
                 precio_total=c.precio_total,
+                codigo=c.codigo,
+                aviso=c.aviso,
                 estado_extraccion=c.estado_extraccion,
                 nave_id=c.nave_id,
                 tarea_apartado_id=de_excel[0].id if de_excel else None,
@@ -434,6 +442,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         inversion_sujeto_pasivo=bool(proyecto.inversion_sujeto_pasivo),
         tiene_carta_isp=bool(proyecto.ruta_carta_isp),
         fichero_carta_isp=proyecto.fichero_carta_isp,
+        mano_obra=mano_obra_svc.bloque(db, proyecto.id),
     )
 
 
@@ -668,6 +677,45 @@ def borrar_proyecto(db: Session, proyecto_id: int, usuario: Usuario) -> None:
     db.execute(text("DELETE FROM contrato WHERE proyecto_id = :id"), params)
     db.execute(text("DELETE FROM presupuesto WHERE proyecto_id = :id"), params)
     db.execute(text("DELETE FROM nave WHERE proyecto_id = :id"), params)
+    mano_obra_svc.borrar_partes_de_la_obra(db, proyecto_id)
     db.delete(proyecto)
     db.commit()
     almacen_svc.borrar_proyecto(proyecto_id)
+
+
+def asignar_codigo_contrato(
+    db: Session,
+    proyecto_id: int,
+    contrato_id: int,
+    codigo: str,
+) -> Contrato:
+    """Guarda el código que la persona indica cuando el PDF no lo traía."""
+    contrato = db.get(Contrato, contrato_id)
+    if contrato is None or contrato.proyecto_id != proyecto_id:
+        raise ValueError(f"Contrato {contrato_id} no encontrado")
+    otro = (
+        db.query(Contrato)
+        .filter(Contrato.codigo == codigo, Contrato.id != contrato.id)
+        .first()
+    )
+    if otro is not None:
+        raise ValueError("Ese código ya está en otro contrato.")
+    contrato.codigo = codigo
+    if contrato.aviso in {AVISO_SIN_CODIGO, AVISO_VARIOS, AVISO_REPETIDO}:
+        contrato.aviso = None
+    pendientes = (
+        db.query(Factura)
+        .filter(
+            Factura.proyecto_id == proyecto_id,
+            Factura.contratista_id == contrato.contratista_id,
+            Factura.codigo_contrato == codigo,
+            Factura.contrato_id.is_(None),
+        )
+        .all()
+    )
+    for factura in pendientes:
+        factura.contrato_id = contrato.id
+        factura.aviso_codigo = None
+    db.commit()
+    db.refresh(contrato)
+    return contrato

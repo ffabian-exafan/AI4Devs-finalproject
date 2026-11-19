@@ -14,8 +14,9 @@ import pymupdf
 from app.config import get_settings
 from app.services import llm as llm_svc
 
-# La API de Claude admite 100 páginas por documento. Dejamos margen.
-PAGINAS_POR_LLAMADA = 80
+# La API admite 100 páginas, pero una sola llamada resume y se deja los importes.
+# Seis páginas caben en el tope de salida con las cifras.
+PAGINAS_POR_LLAMADA = 6
 
 _PROMPT = """\
 Transcribes presupuestos de obra a Markdown fiel.
@@ -28,7 +29,8 @@ No inventes cifras ni apartados que no se lean.
 
 _PEDIDO = (
     "Transforma este PDF de presupuesto a Markdown. "
-    "No resumas. No calcules importes que el documento no muestre."
+    "No resumas. Cada línea con importe tiene que salir con esa cifra. "
+    "No calcules importes que el documento no muestre."
 )
 
 

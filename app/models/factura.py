@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -36,6 +36,9 @@ class Factura(Base):
         nullable=False,
         index=True,
     )
+    # Código impreso en la factura. Sirve para encontrar el contrato.
+    codigo_contrato: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    aviso_codigo: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Si la factura certifica un contrato concreto
     contrato_id: Mapped[int | None] = mapped_column(
         ForeignKey("contrato.id"),
@@ -63,6 +66,15 @@ class Factura(Base):
     es_escaneada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # pendiente | revisada | confirmada
     estado_revision: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Texto que se imprime como ALC/… en el sello. Lo escribe quien confirma.
+    referencia_alc: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    confirmada_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    confirmada_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # PDF de la factura con el sello azul. Ruta relativa bajo UPLOADS_DIR.
+    ruta_sello: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     # Reclamada | Desviación aprobada | Descartada | Validada. Null si sigue abierta.
     resolucion: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Otra factura ya recibida con el mismo proveedor, número e importe.

@@ -307,6 +307,11 @@ a:hover {
   transition: background 180ms ease, border-color 180ms ease, transform 120ms ease;
 }
 
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
 .btn:active:not(:disabled) {
   transform: translateY(1px);
 }
@@ -1063,12 +1068,27 @@ a:focus-visible {
   border-top: 1px solid var(--line-soft);
 }
 
-.docs-obra .btn-texto {
+.docs-obra-fila {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.docs-obra-fila .btn-texto:last-child {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
+  min-width: 0;
+}
+
+.acciones-fichero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
 }
 
 .partidas {
@@ -2408,4 +2428,20 @@ select.apartado {
 .modal-cerrar:hover {
   background: var(--p50);
   color: var(--ink);
+}
+
+.alc-linea {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alc-linea .alc-fijo {
+  color: #0033cc;
+  font-weight: 700;
+}
+
+.alc-linea input {
+  flex: 1;
+  min-width: 0;
 }

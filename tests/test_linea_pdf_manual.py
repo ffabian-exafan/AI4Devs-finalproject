@@ -452,3 +452,32 @@ def test_un_pdf_nuevo_conserva_las_lineas_manuales(
     finally:
         get_settings.cache_clear()
         borrar_proyecto(db, pid, _usuario_limpieza(db))
+
+
+def test_reconfirmar_pasa_el_importe_al_bloque_nuevo(client: TestClient, db: Session):
+    obra = _obra(db)
+    linea = _linea(db, obra["pdf"].id, importe=Decimal("40.00"))
+    db.commit()
+    pid = obra["proyecto"].id
+    try:
+        entrar(client, db, rol="direccion")
+        primero = client.post(
+            f"/proyectos/{pid}/importe-cliente",
+            json={"tarea_ids": [obra["uno"].id], "importe": 40, "linea_id": linea.id},
+        )
+        assert primero.status_code == 200, primero.text
+        segundo = client.post(
+            f"/proyectos/{pid}/importe-cliente",
+            json={"tarea_ids": [obra["dos"].id], "importe": 40, "linea_id": linea.id},
+        )
+        assert segundo.status_code == 200, segundo.text
+        db.expire_all()
+        assert db.get(Tarea, obra["uno"].id).importe_contrato_cliente is None
+        assert db.get(Tarea, obra["dos"].id).importe_contrato_cliente == Decimal("40.00")
+        contraste = client.get(f"/proyectos/{pid}/contraste-cliente")
+        assert contraste.status_code == 200, contraste.text
+        fila = next(item for item in contraste.json()["sugerencias"] if item["id"] == linea.id)
+        assert fila["confirmada"] is True
+        assert fila["tarea_ids"] == [obra["dos"].id]
+    finally:
+        borrar_proyecto(db, pid, _usuario_limpieza(db))

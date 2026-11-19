@@ -30,7 +30,7 @@ Detalle de pantallas y API: `docs/flujo_ui_proyecto.md` (acordado 15 sept. 2026)
 
 ## 3. Contexto técnico cerrado
 
-- **Formatos de entrada (presupuestos de origen):** Excel `.xlsx` / `.xlsm` de plantilla Expertis. Un fichero por sistema. La lectura es la rejilla `Cant.` / `Cod.` / `Descripción` / `Ref. (1)` / `Ref. (2)` / `Euros` / `Dto. %` / `TOTAL`. Las hojas `DATA` y `Traduce` no se leen. El PDF al cliente queda como contraste de importes, no como origen del desglose.
+- **Formatos de entrada (presupuestos de origen):** Excel `.xlsx` / `.xlsm` de plantilla Expertis. Un fichero por sistema. La lectura es la rejilla `Cant.` / `Cod.` / `Descripción` / `Ref. (1)` / `Ref. (2)` / `Euros` / `Dto. %` / `TOTAL`. Las hojas `DATA` y `Traduce` no se leen. Si el libro trae a la vez las pestañas `Expertis` y `Presupuesto`, se lee `Expertis`. El PDF al cliente queda como contraste de importes, no como origen del desglose.
 - **Formatos de entrada (PDF al cliente y facturas):** PDF nativo, PDF escaneado o imagen. Los escaneados pasan por **OCR**.
 - **PDF nativo** (cuando lo es): lectura fiable en el texto impreso. Puede llevar correcciones **manuscritas** sobre el valor impreso; el manuscrito prevalece. Revisión humana también aquí.
 - **Escaneado / imagen:** OCR vía API cloud o visión LLM (**sin instalar Tesseract en el SO**) → baja fiabilidad → `es_escaneado = true` y revisión humana **obligatoria** sin excepción.
