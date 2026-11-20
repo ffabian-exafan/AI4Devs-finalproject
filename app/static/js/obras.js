@@ -27,9 +27,9 @@ function gestionObras() {
     leyendoContrato: false,
     leyendoParte: false,
     errorManoObra: "",
+    manoObraAbierta: false,
     precioHoraEscrito: "",
-    nombreLineaMano: "",
-    lineaParteId: null,
+    sobreDropParte: false,
     leyendoFactura: false,
     selloFacturaId: null,
     selloAlc: "",
@@ -1271,7 +1271,8 @@ function gestionObras() {
       this.proyecto = proyecto;
       this.proyectoId = proyecto.id;
       this.vista = this._armarVista(proyecto, facturas, control);
-      this.precioHoraEscrito = (proyecto.mano_obra && proyecto.mano_obra.precio_hora) || "";
+      const precioGuardado = proyecto.mano_obra && proyecto.mano_obra.precio_hora;
+      this.precioHoraEscrito = precioGuardado ? Number(precioGuardado) : "";
       this.errorManoObra = "";
       const lineasMano = (this.vista.mano_obra && this.vista.mano_obra.lineas) || [];
       lineasMano.forEach((linea) => {
@@ -2359,8 +2360,9 @@ function gestionObras() {
       if (!this.proyectoId) return;
       this.errorManoObra = "";
       try {
+        const precio = Number(this.precioHoraEscrito);
         await GestorApi.patchJson("/proyectos/" + this.proyectoId + "/precio-hora", {
-          precio_hora: this.precioHoraEscrito,
+          precio_hora: Number.isFinite(precio) ? precio.toFixed(4) : this.precioHoraEscrito,
         });
         await this._cargarVistaProyecto(this.proyectoId);
         this.screen = "contratos";
@@ -2369,87 +2371,42 @@ function gestionObras() {
       }
     },
 
-    async anadirLineaMano() {
-      if (!this.proyectoId) return;
-      this.errorManoObra = "";
-      try {
-        await GestorApi.postJson("/proyectos/" + this.proyectoId + "/lineas-mano-obra", {
-          nombre: this.nombreLineaMano,
-        });
-        this.nombreLineaMano = "";
-        await this._cargarVistaProyecto(this.proyectoId);
-        this.screen = "contratos";
-      } catch (err) {
-        this.errorManoObra = err.message || "No se ha podido añadir la línea";
-      }
-    },
-
-    async renombrarLineaMano(linea) {
-      if (!this.proyectoId || !linea) return;
-      this.errorManoObra = "";
-      try {
-        await GestorApi.patchJson(
-          "/proyectos/" + this.proyectoId + "/lineas-mano-obra/" + linea.id,
-          { nombre: linea.nombre }
-        );
-        await this._cargarVistaProyecto(this.proyectoId);
-        this.screen = "contratos";
-      } catch (err) {
-        this.errorManoObra = err.message || "No se ha podido guardar el nombre";
-      }
-    },
-
-    async borrarLineaMano(linea) {
-      if (!this.proyectoId || !linea) return;
-      this.errorManoObra = "";
-      try {
-        await GestorApi.borrar(
-          "/proyectos/" + this.proyectoId + "/lineas-mano-obra/" + linea.id
-        );
-        await this._cargarVistaProyecto(this.proyectoId);
-        this.screen = "contratos";
-      } catch (err) {
-        this.errorManoObra = err.message || "No se ha podido borrar la línea";
-      }
+    partesManoObra() {
+      const lineas = (this.vista && this.vista.mano_obra && this.vista.mano_obra.lineas) || [];
+      return lineas.flatMap((linea) => linea.partes || []);
     },
 
     async elegirParte(event) {
-      const entrada = event.target;
-      const fichero = entrada.files && entrada.files[0];
-      const lineaId = this.lineaParteId;
-      entrada.value = "";
-      if (!fichero || !lineaId) return;
-      try {
-        const copia = await GestorApi.copiarFichero(fichero);
-        await this.subirParte(lineaId, copia);
-      } catch (err) {
-        this.errorManoObra = err.message || "No se ha podido leer el fichero";
-      }
+      const lista = await this._ficherosDeInput(event);
+      await this.subirPartes(lista);
     },
 
-    async soltarParte(lineaId, event) {
-      this.sobreDrop = false;
-      const ficheros = await this._ficherosSoltados(event);
-      if (ficheros[0]) await this.subirParte(lineaId, ficheros[0]);
+    async soltarPartes(event) {
+      this.sobreDropParte = false;
+      const lista = await this._ficherosSoltados(event);
+      await this.subirPartes(lista);
     },
 
-    async subirParte(lineaId, fichero) {
-      if (this.leyendoParte || !fichero || !this.proyectoId) return;
+    async subirPartes(lista) {
+      if (!lista.length || this.leyendoParte || !this.proyectoId) return;
       this.errorManoObra = "";
       this.leyendoParte = true;
-      this.ficheroNombre = fichero.name;
       this.screen = "contratos";
-      const fd = new FormData();
-      fd.append("fichero", fichero, fichero.name);
       try {
-        await GestorApi.postForm(
-          "/proyectos/" + this.proyectoId + "/lineas-mano-obra/" + lineaId + "/partes",
-          fd
-        );
+        for (const fichero of lista) {
+          this.ficheroNombre = fichero.name;
+          const fd = new FormData();
+          fd.append("fichero", fichero, fichero.name);
+          await GestorApi.postForm("/proyectos/" + this.proyectoId + "/partes", fd);
+        }
         await this._cargarVistaProyecto(this.proyectoId);
         this.screen = "contratos";
       } catch (err) {
         this.errorManoObra = err.message || "No se ha podido leer el parte";
+        if (this.proyectoId) {
+          await this._cargarVistaProyecto(this.proyectoId);
+          this.screen = "contratos";
+        }
       } finally {
         this.leyendoParte = false;
       }

@@ -129,6 +129,22 @@ def borrar_linea(
     db.commit()
 
 
+def subir_parte_directo(
+    db: Session,
+    proyecto_id: int,
+    nombre: str,
+    contenido: bytes,
+) -> ManoObraOut:
+    """El parte se sube a la obra. La línea solo guarda el nombre del fichero."""
+    _obra(db, proyecto_id)
+    _validar_fichero(nombre, contenido)
+    titulo = Path(Path(nombre).name).stem.strip()[:255] or "Parte"
+    linea = LineaManoObra(proyecto_id=proyecto_id, nombre=titulo)
+    db.add(linea)
+    db.flush()
+    return subir_parte(db, proyecto_id, linea.id, nombre, contenido)
+
+
 def subir_parte(
     db: Session,
     proyecto_id: int,

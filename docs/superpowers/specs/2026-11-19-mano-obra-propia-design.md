@@ -2,7 +2,7 @@
 
 Fecha: 19 de noviembre de 2026.
 
-En Contratos hay trabajo que ejecuta la propia empresa. Ese trabajo no tiene contrato de proveedor ni factura. Una persona añade a mano una línea con nombre y sube partes de trabajo (PDF o imagen). El sistema lee las horas. El parte queda pendiente hasta que alguien confirma. Al confirmar se copia el precio por hora de la obra y el importe es horas × ese precio. El acumulado de la línea es la suma de los partes confirmados. No se compara con presupuesto, contrato ni montaje.
+En Contratos hay trabajo que ejecuta la propia empresa. Ese trabajo no tiene contrato de proveedor ni factura. Una persona sube partes de trabajo (PDF o imagen) directamente. El sistema lee las horas. El parte queda pendiente hasta que alguien confirma. Al confirmar se copia el precio por hora de la obra y el importe es horas × ese precio. El acumulado de la línea es la suma de los partes confirmados. No se compara con presupuesto, contrato ni montaje.
 
 ## Decisiones cerradas
 
@@ -107,9 +107,13 @@ Cuerpo: `{ "nombre": "..." }`. Misma regla de nombre. No se registra. Respuesta 
 
 Si queda algún parte confirmado, 409 con «Quita antes los partes confirmados.» y no se borra nada. Si solo hay pendientes, se borran sus ficheros y sus filas, luego la línea. Se registra una sola fila, `borrar_linea_mano_obra`. No se registra `borrar_parte` por cada pendiente. Respuesta 204.
 
+`POST /proyectos/{proyecto_id}/partes`
+
+`multipart`, campo `fichero`. Crea el parte en la obra, en `pendiente`. No hace falta una línea previa. No confirma y no suma. Respuesta 201, `ManoObraOut`.
+
 `POST /proyectos/{proyecto_id}/lineas-mano-obra/{linea_id}/partes`
 
-`multipart`, campo `fichero`. Crea el parte en `pendiente`. No confirma y no suma. Respuesta 201, `ManoObraOut`.
+`multipart`, campo `fichero`. Crea el parte en una línea ya creada, en `pendiente`. No confirma y no suma. Respuesta 201, `ManoObraOut`.
 
 `GET /proyectos/{proyecto_id}/partes/{parte_id}/fichero`
 
@@ -142,13 +146,10 @@ Borra la fila y el fichero. Si estaba confirmado, deja de contar en el acumulado
 En Contratos, debajo del bloque de los gremios, un bloque «Mano de obra propia». Subir un contrato no cambia.
 
 - Arriba del bloque se ven el acumulado de la obra y el campo de precio por hora, con un botón para guardarlo. Si el precio está vacío, se puede subir un parte y el botón de confirmar se ve deshabilitado, con el texto «Falta el precio por hora de la obra.»
-- «Añadir línea» pide el nombre.
-- Cada línea muestra el nombre editable, las horas confirmadas y el acumulado en euros.
-- En la línea se arrastra el parte. Mientras se lee, el mismo estado de espera que un contrato.
+- El parte se arrastra o se elige en el bloque. No hace falta crear antes una línea con nombre. Mientras se lee, el mismo estado de espera que un contrato.
 - El parte pendiente enseña el fichero (ver si es PDF, descargar), las horas editables y la fecha si existe. Escaneo y anotación manuscrita se marcan y siguen pendientes.
 - Confirmar deja las horas y la fecha quietas y muestra el precio copiado y el importe.
 - Quitar un parte, pendiente o confirmado, lo borra. Al recargar la vista el acumulado ya no lo incluye.
-- Borrar la línea solo se ofrece si no tiene partes confirmados.
 
 Tras cada gesto con éxito la pantalla vuelve a cargar la vista de la obra. Un 422 o un 409 se enseña junto al bloque, sin dar el parte por confirmado.
 

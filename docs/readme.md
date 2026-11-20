@@ -488,9 +488,12 @@ paths:
       summary: Cambia el nombre de la línea
     delete:
       summary: Borra la línea si no tiene partes confirmados. 409 si los tiene
+  /proyectos/{id}/partes:
+    post:
+      summary: Sube un parte a la obra. Queda pendiente y no suma al acumulado
   /proyectos/{id}/lineas-mano-obra/{linea_id}/partes:
     post:
-      summary: Sube un parte. Queda pendiente y no suma al acumulado
+      summary: Sube un parte a una línea ya creada. Queda pendiente y no suma al acumulado
   /proyectos/{id}/partes/{parte_id}:
     patch:
       summary: Corrige horas y fecha de un parte pendiente. 409 si ya está confirmado

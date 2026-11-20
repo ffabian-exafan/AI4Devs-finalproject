@@ -2445,3 +2445,69 @@ select.apartado {
   flex: 1;
   min-width: 0;
 }
+
+.mano-obra {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.mano-obra-cab {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+
+.mano-obra-cab .h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mano-obra-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.mano-obra-toggle:focus-visible {
+  outline: 2px solid var(--ambar);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.mano-obra-resumen {
+  margin: 0;
+  color: var(--muted);
+}
+
+.mano-obra-precio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mano-obra-precio .campo {
+  width: 8.5rem;
+}
+
+.parte-obra {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}

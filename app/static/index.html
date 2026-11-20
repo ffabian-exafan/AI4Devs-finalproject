@@ -6,14 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cuadra</title>
   <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261119c" />
+  <link rel="stylesheet" href="/css/exafan.css?v=20261120b" />
   <link rel="stylesheet" href="/css/visor-pdf.css?v=20261119c" />
   <script src="/js/menu-acciones.js?v=20261117c"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js?v=20261116g"></script>
   <script src="/js/sesion.js?v=20261116i"></script>
   <script src="/js/visor-pdf.js?v=20261119c"></script>
-  <script src="/js/obras.js?v=20261119d"></script>
+  <script src="/js/obras.js?v=20261120b"></script>
 </head>
 
 <body>
@@ -62,7 +62,7 @@
       <input class="oculto" type="file" x-ref="ficheroContrato"
         accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp,.md,.txt,application/pdf,image/*"
         @change="elegirContrato($event)" />
-      <input class="oculto" type="file" x-ref="ficheroParte"
+      <input class="oculto" type="file" x-ref="ficheroParte" multiple
         accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,image/jpeg,image/png,image/tiff"
         @change="elegirParte($event)" />
       <input class="oculto" type="file" x-ref="ficheroFactura"
@@ -1033,79 +1033,74 @@
               contrato</button>
           </div>
 
-          <section class="stack" style="margin-top: 28px" aria-labelledby="titulo-mano-obra">
-            <h2 id="titulo-mano-obra" class="h2">Mano de obra propia</h2>
+          <section class="stack mano-obra" aria-labelledby="titulo-mano-obra">
+            <div class="mano-obra-cab">
+              <h2 id="titulo-mano-obra" class="h2">
+                <button type="button" class="mano-obra-toggle" aria-controls="panel-mano-obra"
+                  :aria-expanded="manoObraAbierta ? 'true' : 'false'"
+                  @click="manoObraAbierta = !manoObraAbierta">
+                  <span class="cruce-tri" :class="manoObraAbierta && 'abierto'" aria-hidden="true"></span>
+                  Mano de obra propia
+                </button>
+              </h2>
+              <p class="num mano-obra-resumen">Acumulado <strong x-text="vista.mano_obra.acumulado"></strong>
+                · <span x-text="vista.mano_obra.acumulado_horas"></span> h
+                <span class="ambar" x-show="!vista.mano_obra.precio_hora">· sin precio por hora</span>
+              </p>
+            </div>
+            <div id="panel-mano-obra" class="stack" x-show="manoObraAbierta" x-cloak>
             <p class="sub">Trabajo de la empresa, sin contrato de proveedor. El acumulado suma los partes confirmados.</p>
             <p class="estado-msg" role="status" x-show="errorManoObra" x-text="errorManoObra"></p>
-            <form class="stack" style="gap: 8px" aria-labelledby="titulo-mano-obra"
-              @submit.prevent="guardarPrecioHora">
-              <p class="num">Acumulado <strong x-text="vista.mano_obra.acumulado"></strong>
-                · <span x-text="vista.mano_obra.acumulado_horas"></span> h</p>
-              <label for="precio-hora">Precio por hora de la obra</label>
-              <input id="precio-hora" class="campo" name="precio_hora" type="text" inputmode="decimal"
-                autocomplete="off" spellcheck="false" required x-model="precioHoraEscrito"
-                aria-describedby="ayuda-precio-hora">
-              <p id="ayuda-precio-hora" class="ambar" x-show="!vista.mano_obra.precio_hora">Falta el precio por hora de la obra.</p>
+            <form class="mano-obra-precio" @submit.prevent="guardarPrecioHora">
+              <label for="precio-hora">Precio por hora</label>
+              <input id="precio-hora" class="campo" name="precio_hora" type="number" inputmode="decimal"
+                step="0.0001" min="0.0001" autocomplete="off" spellcheck="false" required
+                x-model.number="precioHoraEscrito"
+                :aria-describedby="vista.mano_obra.precio_hora ? null : 'ayuda-precio-hora'">
               <button type="submit" class="btn btn-secondary btn-sm">Guardar precio</button>
             </form>
-            <form class="stack" style="gap: 8px" @submit.prevent="anadirLineaMano">
-              <label for="nombre-linea-mano">Nueva línea</label>
-              <input id="nombre-linea-mano" class="campo" name="nombre" type="text" required maxlength="255"
-                autocomplete="off" x-model="nombreLineaMano">
-              <button type="submit" class="btn btn-secondary btn-sm">Añadir línea</button>
-            </form>
-            <template x-for="linea in vista.mano_obra.lineas" :key="linea.id">
-              <article class="contrato" @dragover.prevent="sobreDrop = true" @dragleave="sobreDrop = false"
-                @drop.prevent="soltarParte(linea.id, $event)">
-                <div class="stack" style="gap: 8px">
-                  <form class="stack" style="gap: 6px" @submit.prevent="renombrarLineaMano(linea)">
-                    <label :for="'nombre-linea-' + linea.id">Nombre</label>
-                    <input class="campo" type="text" required maxlength="255" autocomplete="off"
-                      :id="'nombre-linea-' + linea.id" x-model="linea.nombre">
-                    <button type="submit" class="btn btn-secondary btn-sm">Guardar nombre</button>
-                  </form>
-                  <p class="num">Confirmadas <strong x-text="linea.horas"></strong> h ·
-                    <strong x-text="linea.acumulado"></strong></p>
-                  <button type="button" class="btn btn-secondary btn-sm"
-                    @click="lineaParteId = linea.id; $refs.ficheroParte.click()">Subir parte</button>
-                  <button type="button" class="btn-texto" x-show="!linea.partes.some((p) => p.estado_revision === 'confirmada')"
-                    @click="borrarLineaMano(linea)">Borrar línea</button>
-                </div>
-                <div class="stack" style="gap: 12px">
-                  <template x-for="parte in linea.partes" :key="parte.id">
-                    <div class="stack" style="gap: 6px">
-                      <strong x-text="parte.archivo"></strong>
-                      <span class="acciones-fichero" x-show="parte.tiene_fichero">
-                        <button type="button" class="btn-texto" x-show="esPdf(parte.archivo)"
-                          @click="abrirVisorPdf(parte.url_fichero, parte.archivo)">Ver</button>
-                        <a class="btn-texto" :href="parte.url_fichero">Descargar</a>
-                      </span>
-                      <span class="badge badge-warning" x-show="parte.estado_revision === 'pendiente'">Pendiente</span>
-                      <span class="badge badge-warning" x-show="parte.es_escaneado">Escaneado</span>
-                      <span class="badge badge-warning" x-show="parte.tiene_anotacion_manual">Anotación manuscrita</span>
-                      <p class="ambar" x-show="parte.aviso" x-text="parte.aviso"></p>
-                      <form class="stack" style="gap: 6px" x-show="parte.estado_revision === 'pendiente'"
-                        @submit.prevent="guardarHorasParte(parte)">
-                        <label :for="'horas-' + parte.id">Horas</label>
-                        <input class="campo" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
-                          :id="'horas-' + parte.id" :name="'horas-' + parte.id" x-model="parte.horas">
-                        <label :for="'fecha-' + parte.id">Fecha</label>
-                        <input class="campo" type="date" :id="'fecha-' + parte.id" :name="'fecha-' + parte.id"
-                          x-model="parte.fecha">
-                        <button type="submit" class="btn btn-secondary btn-sm">Guardar horas</button>
-                        <button type="button" class="btn btn-primary btn-sm" :disabled="!vista.mano_obra.precio_hora"
-                          @click="confirmarParte(parte)">Confirmar</button>
-                      </form>
-                      <p class="num" x-show="parte.estado_revision === 'confirmada'">
-                        <span x-text="parte.horas"></span> h × <span x-text="parte.precio_hora_aplicado"></span>
-                        · <strong x-text="parte.importe"></strong>
-                      </p>
-                      <button type="button" class="btn-texto" @click="quitarParte(parte)">Quitar parte</button>
-                    </div>
-                  </template>
-                </div>
+            <p id="ayuda-precio-hora" class="ambar" x-show="!vista.mano_obra.precio_hora">Falta el precio por hora de la obra.</p>
+            <div class="subida" :class="sobreDropParte && 'sobre'" @dragover.prevent="sobreDropParte = true"
+              @dragleave="sobreDropParte = false" @drop.prevent="soltarPartes($event)">
+              <span>
+                <strong style="color: var(--p800)">Arrastra aquí los partes de trabajo.</strong>
+                <span class="sub">PDF o imagen. El parte queda pendiente hasta que lo confirmes.</span>
+              </span>
+              <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroParte.click()">Subir
+                partes</button>
+            </div>
+            <template x-for="parte in partesManoObra()" :key="parte.id">
+              <article class="parte-obra">
+                <strong x-text="parte.archivo"></strong>
+                <span class="acciones-fichero" x-show="parte.tiene_fichero">
+                  <button type="button" class="btn-texto" x-show="esPdf(parte.archivo)"
+                    @click="abrirVisorPdf(parte.url_fichero, parte.archivo)">Ver</button>
+                  <a class="btn-texto" :href="parte.url_fichero">Descargar</a>
+                </span>
+                <span class="badge badge-warning" x-show="parte.estado_revision === 'pendiente'">Pendiente</span>
+                <span class="badge badge-warning" x-show="parte.es_escaneado">Escaneado</span>
+                <span class="badge badge-warning" x-show="parte.tiene_anotacion_manual">Anotación manuscrita</span>
+                <p class="ambar" x-show="parte.aviso" x-text="parte.aviso"></p>
+                <form class="stack" style="gap: 6px" x-show="parte.estado_revision === 'pendiente'"
+                  @submit.prevent="guardarHorasParte(parte)">
+                  <label :for="'horas-' + parte.id">Horas</label>
+                  <input class="campo" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
+                    :id="'horas-' + parte.id" :name="'horas-' + parte.id" x-model="parte.horas">
+                  <label :for="'fecha-' + parte.id">Fecha</label>
+                  <input class="campo" type="date" :id="'fecha-' + parte.id" :name="'fecha-' + parte.id"
+                    x-model="parte.fecha">
+                  <button type="submit" class="btn btn-secondary btn-sm">Guardar horas</button>
+                  <button type="button" class="btn btn-primary btn-sm" :disabled="!vista.mano_obra.precio_hora"
+                    @click="confirmarParte(parte)">Confirmar</button>
+                </form>
+                <p class="num" x-show="parte.estado_revision === 'confirmada'">
+                  <span x-text="parte.horas"></span> h × <span x-text="parte.precio_hora_aplicado"></span>
+                  · <strong x-text="parte.importe"></strong>
+                </p>
+                <button type="button" class="btn-texto" @click="quitarParte(parte)">Quitar parte</button>
               </article>
             </template>
+            </div>
           </section>
         </div>
       </template>

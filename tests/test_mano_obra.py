@@ -126,6 +126,28 @@ def test_el_nombre_vacio_no_crea_linea(client: TestClient, db: Session):
     assert creado.json()["lineas"][0]["acumulado"] == "0,00 €"
 
 
+def test_el_parte_se_sube_sin_crear_linea(client: TestClient, db: Session, uploads, lectura):
+    obra = _obra(db)
+    entrar(client, db)
+    respuesta = client.post(
+        f"/proyectos/{obra.id}/partes",
+        files={"fichero": ("Montaje comederos.pdf", _pdf("Parte ficticio"), "application/pdf")},
+    )
+    assert respuesta.status_code == 201, respuesta.text
+    cuerpo = respuesta.json()
+    assert cuerpo["lineas"][0]["nombre"] == "Montaje comederos"
+    parte = _parte(cuerpo)
+    assert parte["estado_revision"] == "pendiente"
+    assert parte["horas"] == "8.00"
+    assert cuerpo["acumulado"] == "0,00 €"
+    malo = client.post(
+        f"/proyectos/{obra.id}/partes",
+        files={"fichero": ("falso.pdf", b"no es pdf", "application/pdf")},
+    )
+    assert malo.status_code == 422
+    assert len(client.get(f"/proyectos/{obra.id}").json()["mano_obra"]["lineas"]) == 1
+
+
 def test_subir_un_parte_lo_deja_pendiente(client: TestClient, db: Session, uploads, lectura):
     obra = _obra(db)
     entrar(client, db)

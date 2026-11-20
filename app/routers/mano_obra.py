@@ -94,6 +94,30 @@ def borrar_linea(
 
 
 @router.post(
+    "/proyectos/{proyecto_id}/partes",
+    response_model=ManoObraOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def subir_parte_directo(
+    proyecto_id: int,
+    fichero: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+) -> ManoObraOut:
+    del actual
+    contenido = await fichero.read()
+    try:
+        return mano_obra_svc.subir_parte_directo(
+            db,
+            proyecto_id,
+            fichero.filename or "parte",
+            contenido,
+        )
+    except (Conflicto, ValueError) as exc:
+        raise _http(exc) from exc
+
+
+@router.post(
     "/proyectos/{proyecto_id}/lineas-mano-obra/{linea_id}/partes",
     response_model=ManoObraOut,
     status_code=status.HTTP_201_CREATED,

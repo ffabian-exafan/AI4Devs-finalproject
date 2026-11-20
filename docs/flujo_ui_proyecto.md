@@ -127,5 +127,5 @@ Reglas:
 - El PDF firmado con el cliente no crea partidas ni sustituye el árbol del Excel.
 - No mezcla el árbol del contrato bajo el apartado del presupuesto al importar: el enlace es a nivel contrato ↔ apartado, no un `tarea_padre_id` cruzado.
 - No da por guardado un documento OCR/LLM sin revisión humana. Un parte de mano de obra propia sigue esa regla: pendiente hasta confirmar, y su acumulado no entra en el desvío.
-- La mano de obra propia no crea contrato ni factura. La línea se añade a mano y el coste es horas confirmadas por el precio por hora de la obra, copiado en el parte al confirmar.
+- La mano de obra propia no crea contrato ni factura. El parte se sube directo y queda pendiente hasta confirmar. El coste es horas confirmadas por el precio por hora de la obra, copiado en el parte al confirmar.
 - No incluye facturas pendientes en los importes facturados.
