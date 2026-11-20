@@ -14,6 +14,8 @@ import pymupdf
 
 # Azul de boli, como el sello de papel. Sin borde.
 AZUL = (0.0, 0.2, 0.85)
+# Verde de boli para la certificación de montaje. Sin borde.
+VERDE = (0.0, 0.45, 0.18)
 _TAMANO = 8
 _INTERLINEADO = 10
 _MARGEN = 18
@@ -56,6 +58,16 @@ def lineas_sello(datos: DatosSello) -> list[str]:
     ]
 
 
+def lineas_certificacion(nombre: str, fecha: date, codigo: str | None) -> list[str]:
+    """Sello verde: nombre, fecha y PYCON (o PYEQU / serie 1)."""
+    return [
+        "Certificación de montaje",
+        (nombre or "").strip() or "—",
+        fecha.strftime("%d/%m/%Y"),
+        linea_codigo(codigo),
+    ]
+
+
 def linea_codigo(codigo: str | None) -> str:
     """PYCON/123 - TRABAJO/45 a partir de PYCON123456.
 
@@ -80,18 +92,23 @@ def euros(valor: Decimal) -> str:
     return f"{signo}{'.'.join(reversed(grupos))},{decimal} €"
 
 
-def pdf_con_sello(origen: Path | None, lineas: list[str]) -> bytes:
+def pdf_con_sello(
+    origen: Path | None,
+    lineas: list[str],
+    color: tuple[float, float, float] = AZUL,
+) -> bytes:
     """Devuelve el PDF de la factura con el sello en un hueco en blanco.
 
     Si el origen no es un PDF ni una imagen, el resultado es una hoja en blanco
-    con el sello.
+    con el sello. El color por defecto es el azul; la certificación de montaje
+    usa verde.
     """
     try:
         documento = _documento(origen)
     except Exception as exc:
         raise ValueError("No se pudo abrir la factura para estamparla") from exc
     try:
-        _estampar(documento, lineas)
+        _estampar(documento, lineas, color)
         return documento.tobytes()
     finally:
         documento.close()
@@ -119,7 +136,11 @@ def _ruta_fuente() -> str | None:
     return None
 
 
-def _estampar(documento: pymupdf.Document, lineas: list[str]) -> None:
+def _estampar(
+    documento: pymupdf.Document,
+    lineas: list[str],
+    color: tuple[float, float, float],
+) -> None:
     ruta_fuente = _ruta_fuente()
     fuente = pymupdf.Font(fontfile=ruta_fuente) if ruta_fuente else pymupdf.Font("helv")
     pagina_base = documento[0]
@@ -138,7 +159,7 @@ def _estampar(documento: pymupdf.Document, lineas: list[str]) -> None:
     pagina = documento[indice]
     pagina.draw_rect(rect, color=None, fill=(1, 1, 1), width=0)
     y = rect.y0 + _RELLENO + _TAMANO
-    opciones = {"fontsize": _TAMANO, "color": AZUL}
+    opciones = {"fontsize": _TAMANO, "color": color}
     if ruta_fuente:
         opciones["fontname"] = "sello"
         opciones["fontfile"] = ruta_fuente

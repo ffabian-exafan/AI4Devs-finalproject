@@ -1,3 +1,15 @@
+function fechaMadrid(iso) {
+  if (!iso) return "";
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return "";
+  return new Intl.DateTimeFormat("es-ES", {
+    timeZone: "Europe/Madrid",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(fecha);
+}
+
 function gestionObras() {
   return {
     ...sesionLateral(),
@@ -1297,12 +1309,13 @@ function gestionObras() {
       const gestiones = todos.filter((ap) => !this._esDescuento(ap) && this._esRecargo(ap));
       const apartados = todos.filter((ap) => !this._esDescuento(ap) && !this._esRecargo(ap));
       const contratables = apartados.filter((ap) => !this._gestionPendiente(ap));
-      const opciones = contratables.map((ap) => ({
-        valor: String(ap.id),
-        etiqueta: this._nombreCortoApartado(ap),
-        prefijo: ap.solo_gestion ? "Solo gestión" : "Montaje",
-        cuantia: euro(this._baseContrato(ap)),
-      }));
+      const opciones = contratables
+        .map((ap) => this._coberturaApartado(ap))
+        .filter(Boolean);
+      const catalogoLineas = [];
+      opciones.forEach((grupo) => {
+        catalogoLineas.push.apply(catalogoLineas, this._piezasDeGrupo(grupo));
+      });
       const filas = (proyecto.contratos || []).map((contrato) => {
         const sugerencia = (contrato.sugerencias || [])[0];
         const confirmados = (contrato.tarea_apartado_ids || []).map(String);
@@ -1363,11 +1376,33 @@ function gestionObras() {
           nuevo_importe: "",
           nuevo_explicacion: "",
         };
-        this._pintarBaseContrato(fila, contratables);
         return fila;
       });
+      filas.forEach((fila) => {
+        if (!fila.asociado) return;
+        fila.apartado_ids = this._expandirCobertura(fila.apartado_ids, opciones);
+      });
+      const tomadas = {};
+      filas.forEach((fila) => {
+        if (!fila.asociado) return;
+        fila.apartado_ids.forEach((valor) => {
+          if (!tomadas[valor]) tomadas[valor] = { contratoId: fila.id, gremio: fila.gremio };
+        });
+      });
+      filas.forEach((fila) => {
+        if (fila.asociado) {
+          this._pintarBaseContrato(fila, catalogoLineas);
+          return;
+        }
+        fila.apartado_ids = this._expandirCobertura(fila.apartado_ids, opciones).filter(
+          (valor) => !tomadas[valor]
+        );
+        this._pintarBaseContrato(fila, catalogoLineas);
+      });
       const pendientesContrato = filas.filter((fila) => !fila.asociado).length;
-      const sinApartado = contratables.filter((ap) => !(ap.contratos || []).length).length;
+      const sinApartado = opciones.filter((grupo) =>
+        this._piezasDeGrupo(grupo).some((pieza) => !tomadas[pieza.valor])
+      ).length;
       const facturasVista = (facturas || []).map((factura) => ({
         id: factura.id,
         proveedor: factura.contratista_nombre,
@@ -1397,13 +1432,36 @@ function gestionObras() {
         referencia_alc: factura.referencia_alc || null,
         tiene_sello: Boolean(factura.tiene_sello),
         url_sello: factura.tiene_sello ? "/facturas/" + factura.id + "/sello" : null,
+        tiene_certificacion: Boolean(factura.tiene_certificacion_montaje),
+        certificacion_por: factura.certificacion_montaje_por || "",
+        certificacion_fecha: fechaMadrid(factura.certificacion_montaje_en),
+        certificacion_usuario_id: factura.certificacion_montaje_usuario_id || null,
+        url_certificacion: factura.tiene_certificacion_montaje
+          ? "/facturas/" + factura.id + "/certificacion"
+          : null,
+        certificacion_omitida: Boolean(factura.certificacion_montaje_omitida),
+        falta_otra_persona: Boolean(
+          factura.tiene_certificacion_montaje &&
+            factura.estado_revision !== "confirmada" &&
+            this.yo &&
+            factura.certificacion_montaje_usuario_id === this.yo.id
+        ),
         acciones: factura.aviso_isp
           ? []
           : factura.estado_revision === "confirmada"
             ? factura.tiene_sello
               ? []
               : [{ etiqueta: "Generar sello", variante: "primary", resolucion: "Validada" }]
-            : [{ etiqueta: "Confirmar factura", variante: "primary", resolucion: "Validada" }],
+            : factura.tiene_certificacion_montaje
+              ? this.yo && factura.certificacion_montaje_usuario_id === this.yo.id
+                ? []
+                : [{ etiqueta: "Confirmar factura", variante: "primary", resolucion: "Validada" }]
+              : factura.certificacion_montaje_omitida
+                ? [{ etiqueta: "Confirmar factura", variante: "primary", resolucion: "Validada" }]
+                : [
+                    { etiqueta: "Certificar montaje", variante: "primary", resolucion: "Certificar" },
+                    { etiqueta: "No es necesario", variante: "secondary", resolucion: "Omitir" },
+                  ],
         lineas: [],
       }));
       const incidencias = facturasVista.filter((fila) => fila.kind !== "ok").length;
@@ -1562,8 +1620,9 @@ function gestionObras() {
           sin_contrato: sinApartado + (sinApartado === 1 ? " apartado" : " apartados"),
           hay_sin_contrato: sinApartado > 0,
           opciones,
+          tomadas,
+          apartados_contrato: catalogoLineas,
           filas,
-          apartados_contrato: contratables,
           lineas_pdf_sin_excel: (
             (proyecto.contraste_cliente && proyecto.contraste_cliente.sugerencias) || []
           )
@@ -1708,12 +1767,148 @@ function gestionObras() {
       return Boolean(nodo.solo_gestion && nodo.estado_revision !== "confirmada");
     },
 
+    _piezaCobertura(nodo, nivel) {
+      return {
+        tipo: "linea",
+        id: String(nodo.id),
+        valor: String(nodo.id),
+        etiqueta: this._nombreCortoApartado(nodo),
+        prefijo: nodo.solo_gestion ? "Solo gestión" : "Montaje",
+        cuantia: GestorApi.euro(this._baseContrato(nodo)),
+        nivel: nivel,
+        solo_gestion: Boolean(nodo.solo_gestion),
+        importe_montaje: nodo.importe_montaje,
+        importe_presupuestado: nodo.importe_presupuestado,
+      };
+    },
+
+    _coberturaApartado(ap) {
+      const filas = [];
+      const volcar = (nodo, nivel) => {
+        const salida = [];
+        for (const hijo of nodo.subapartados || []) {
+          const dentro = volcar(hijo, nivel + 1);
+          if (hijo.es_montaje) {
+            if (!this._montajeEnCero(hijo)) salida.push(this._piezaCobertura(hijo, nivel));
+            salida.push.apply(salida, dentro);
+            continue;
+          }
+          if (!dentro.length) continue;
+          salida.push({
+            tipo: "titulo",
+            valor: "t-" + hijo.id,
+            etiqueta: this._nombreCortoApartado(hijo),
+            nivel: nivel,
+          });
+          salida.push.apply(salida, dentro);
+        }
+        return salida;
+      };
+      filas.push.apply(filas, volcar(ap, 1));
+      if (!filas.some((fila) => fila.tipo === "linea")) {
+        if (!ap.solo_gestion && this._montajeEnCero(ap)) return null;
+        return {
+          id: String(ap.id),
+          nombre: this._nombreCortoApartado(ap),
+          simple: true,
+          filas: [],
+          pieza: this._piezaCobertura(ap, 0),
+        };
+      }
+      return {
+        id: String(ap.id),
+        nombre: this._nombreCortoApartado(ap),
+        simple: false,
+        filas: filas,
+        pieza: null,
+      };
+    },
+
+    _piezasDeGrupo(grupo) {
+      if (!grupo) return [];
+      if (grupo.simple) return grupo.pieza ? [grupo.pieza] : [];
+      return (grupo.filas || []).filter((fila) => fila.tipo === "linea");
+    },
+
+    _expandirCobertura(ids, opciones) {
+      const set = new Set((ids || []).map(String));
+      const salida = [];
+      (opciones || []).forEach((grupo) => {
+        const piezas = this._piezasDeGrupo(grupo);
+        const entero = set.has(String(grupo.id));
+        piezas.forEach((pieza) => {
+          if (entero || set.has(pieza.valor)) salida.push(pieza.valor);
+        });
+      });
+      return salida;
+    },
+
+    textoDesglose(fila, grupo) {
+      const piezas = this._piezasDeGrupo(grupo);
+      const ids = new Set(fila.apartado_ids || []);
+      const marcadas = piezas.filter((pieza) => ids.has(pieza.valor)).length;
+      const n = piezas.length;
+      const lineas = n === 1 ? "1 línea" : n + " líneas";
+      if (!marcadas) return lineas;
+      return marcadas + " de " + n;
+    },
+
+    ocupanteLinea(fila, valor) {
+      const tomadas = (this.vista && this.vista.contratos && this.vista.contratos.tomadas) || {};
+      const toma = tomadas[String(valor)];
+      if (!toma || String(toma.contratoId) === String(fila.id)) return "";
+      return toma.gremio || "otro contrato";
+    },
+
+    _piezasLibres(fila, grupo) {
+      return this._piezasDeGrupo(grupo).filter((pieza) => !this.ocupanteLinea(fila, pieza.valor));
+    },
+
+    apartadoMarcado(fila, grupo) {
+      const libres = this._piezasLibres(fila, grupo);
+      if (!libres.length) return false;
+      const ids = new Set(fila.apartado_ids || []);
+      return libres.every((pieza) => ids.has(pieza.valor));
+    },
+
+    apartadoParcial(fila, grupo) {
+      const libres = this._piezasLibres(fila, grupo);
+      const ids = new Set(fila.apartado_ids || []);
+      const marcadas = libres.filter((pieza) => ids.has(pieza.valor)).length;
+      return marcadas > 0 && marcadas < libres.length;
+    },
+
+    apartadoBloqueado(fila, grupo) {
+      const piezas = this._piezasDeGrupo(grupo);
+      return piezas.length > 0 && piezas.every((pieza) => this.ocupanteLinea(fila, pieza.valor));
+    },
+
+    toggleGrupo(id, grupo, marcado) {
+      if (!this.vista) return;
+      const fila = this.vista.contratos.filas.find((c) => c.id === id);
+      if (!fila || fila.asociado) return;
+      const valores = new Set(this._piezasDeGrupo(grupo).map((pieza) => pieza.valor));
+      let ids = (fila.apartado_ids || []).filter((item) => !valores.has(item));
+      if (marcado) {
+        this._piezasDeGrupo(grupo).forEach((pieza) => {
+          if (this.ocupanteLinea(fila, pieza.valor)) return;
+          ids.push(pieza.valor);
+        });
+      }
+      fila.apartado_ids = ids;
+      this._pintarBaseContrato(fila, this.vista.contratos.apartados_contrato || []);
+    },
+
     _baseContrato(apartado) {
       if (!apartado) return 0;
       if (apartado.solo_gestion) {
         return Number(apartado.importe_presupuestado) || 0;
       }
       return Number(apartado.importe_montaje) || 0;
+    },
+
+    _montajeEnCero(nodo) {
+      return Math.abs(Number(nodo && nodo.importe_montaje) || 0) < 0.005;
     },
 
     _nombreCortoApartado(ap) {
@@ -2498,7 +2693,7 @@ function gestionObras() {
 
     async quitarIsp() {
       if (!this.proyectoId) return;
-      if (!window.confirm("¿Quitar la inversión del sujeto pasivo de esta obra?")) return;
+      if (!window.confirm("¿Volver a facturar esta obra con IVA?")) return;
       this.error = "";
       try {
         await GestorApi.borrar(
@@ -2670,7 +2865,47 @@ function gestionObras() {
       return this.vista.facturas.find((f) => f.id === this.sel) || null;
     },
 
+    async certificarMontaje(id) {
+      this.error = "";
+      try {
+        const detalle = await GestorApi.getJson("/facturas/" + id);
+        if (!detalle.codigo_contrato) {
+          this.error =
+            detalle.aviso_codigo || "La factura no trae código de contrato. Indícalo.";
+          return;
+        }
+        await GestorApi.postVacio("/facturas/" + id + "/certificar-montaje");
+        this.sel = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "facturas";
+        await this.seleccionarFactura(id);
+      } catch (err) {
+        this.error = err.message || "No se ha podido certificar el montaje";
+      }
+    },
+
+    async omitirCertificacion(id) {
+      this.error = "";
+      try {
+        await GestorApi.postVacio("/facturas/" + id + "/omitir-certificacion-montaje");
+        this.sel = null;
+        await this._cargarVistaProyecto(this.proyectoId);
+        this.screen = "facturas";
+        await this.seleccionarFactura(id);
+      } catch (err) {
+        this.error = err.message || "No se ha podido omitir la certificación";
+      }
+    },
+
     async resolver(id, resolucion) {
+      if (resolucion === "Certificar") {
+        await this.certificarMontaje(id);
+        return;
+      }
+      if (resolucion === "Omitir") {
+        await this.omitirCertificacion(id);
+        return;
+      }
       if (this.proyectoId) {
         if (resolucion !== "Validada") {
           this.error = "Para que la factura cuente hay que confirmarla.";

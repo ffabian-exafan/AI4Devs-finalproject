@@ -10,6 +10,8 @@ from app.db import Base
 ACCIONES = (
     "confirmar_revision",
     "confirmar_factura",
+    "certificar_montaje",
+    "omitir_certificacion_montaje",
     "confirmar_importe_cliente",
     "confirmar_importes_cliente",
     "confirmar_solo_gestion",

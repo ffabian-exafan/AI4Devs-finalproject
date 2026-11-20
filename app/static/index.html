@@ -6,14 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cuadra</title>
   <link rel="icon" type="image/png" href="/assets/cuadra-favicon.png?v=20261111g" />
-  <link rel="stylesheet" href="/css/exafan.css?v=20261120b" />
+    <link rel="stylesheet" href="/css/exafan.css?v=20261120i" />
   <link rel="stylesheet" href="/css/visor-pdf.css?v=20261119c" />
   <script src="/js/menu-acciones.js?v=20261117c"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="/js/api.js?v=20261116g"></script>
   <script src="/js/sesion.js?v=20261116i"></script>
   <script src="/js/visor-pdf.js?v=20261119c"></script>
-  <script src="/js/obras.js?v=20261120b"></script>
+  <script src="/js/obras.js?v=20261120i"></script>
 </head>
 
 <body>
@@ -159,32 +159,45 @@
               <h1 class="h1 h1-obra" x-text="tituloObra"></h1>
               <p class="sub" x-text="subtituloObra"></p>
             </div>
-            <div class="stack" style="gap: 8px; align-items: flex-end">
-              <p class="sub" x-show="proyecto && proyecto.inversion_sujeto_pasivo">
-                Facturación al promotor: sin IVA
-              </p>
-              <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end">
-                <template x-if="proyecto && !proyecto.inversion_sujeto_pasivo">
-                  <button type="button" class="btn btn-secondary btn-sm"
-                    @click="$refs.cartaIsp.click()">Marcar inversión del sujeto pasivo</button>
-                </template>
-                <template x-if="proyecto && proyecto.inversion_sujeto_pasivo">
-                  <span style="display: contents">
-                    <a class="btn btn-secondary btn-sm"
-                      :href="'/proyectos/' + proyecto.id + '/carta-isp'">Ver carta</a>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                      @click="$refs.cartaIsp.click()">Sustituir carta</button>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                      @click="quitarIsp()">Quitar la marca</button>
-                  </span>
-                </template>
-                <button type="button" class="btn btn-secondary btn-sm" x-show="proyecto"
-                  @click="borrarObra(proyecto)">Borrar obra</button>
-              </div>
-              <input type="file" accept="application/pdf,.pdf" hidden x-ref="cartaIsp"
-                @change="marcarIsp($event)">
-            </div>
+            <button type="button" class="btn btn-secondary btn-sm" x-show="proyecto"
+              @click="borrarObra(proyecto)">Borrar obra</button>
           </div>
+          <section class="isp" x-show="proyecto"
+            :class="proyecto && proyecto.inversion_sujeto_pasivo ? 'isp-on' : 'isp-off'"
+            aria-live="polite">
+            <div class="isp-estado">
+              <span class="isp-pill"
+                x-text="proyecto && proyecto.inversion_sujeto_pasivo ? 'Sin IVA' : 'Con IVA'"></span>
+              <div>
+                <p class="isp-titulo"
+                  x-text="proyecto && proyecto.inversion_sujeto_pasivo ? 'Esta obra factura sin IVA' : 'Esta obra factura con IVA'"></p>
+                <p class="isp-ayuda" x-show="proyecto && !proyecto.inversion_sujeto_pasivo">
+                  Si el promotor se autorrepercute el IVA, sube su carta. La obra pasa a inversión del sujeto pasivo y los importes se ven sin IVA.
+                </p>
+                <p class="isp-ayuda" x-show="proyecto && proyecto.inversion_sujeto_pasivo">
+                  Inversión del sujeto pasivo. El promotor se autorrepercute el IVA. Los importes del contrato se muestran sin IVA.
+                </p>
+              </div>
+            </div>
+            <div class="isp-acciones">
+              <template x-if="proyecto && !proyecto.inversion_sujeto_pasivo">
+                <button type="button" class="btn btn-secondary btn-sm"
+                  @click="$refs.cartaIsp.click()">Subir carta y facturar sin IVA</button>
+              </template>
+              <template x-if="proyecto && proyecto.inversion_sujeto_pasivo">
+                <span class="isp-acciones">
+                  <a class="btn btn-secondary btn-sm"
+                    :href="'/proyectos/' + proyecto.id + '/carta-isp'">Ver carta</a>
+                  <button type="button" class="btn btn-secondary btn-sm"
+                    @click="$refs.cartaIsp.click()">Cambiar carta</button>
+                  <button type="button" class="btn btn-secondary btn-sm"
+                    @click="quitarIsp()">Volver a facturar con IVA</button>
+                </span>
+              </template>
+            </div>
+            <input type="file" accept="application/pdf,.pdf" hidden x-ref="cartaIsp"
+              @change="marcarIsp($event)">
+          </section>
           <template x-if="vista && vista.pasos && vista.pasos.length">
             <div class="pasos">
               <template x-for="(paso, i) in vista.pasos" :key="paso.id">
@@ -834,7 +847,7 @@
                 <h2 class="h2" style="font-size: 15px">Resumen por apartado</h2>
                 <div class="grid-resumen th">
                   <span>Apartado</span>
-                  <span class="der">Contrato cliente<span x-show="proyecto && proyecto.inversion_sujeto_pasivo"> sin IVA</span></span>
+                  <span class="der">Contrato cliente <span class="badge badge-warning" x-show="proyecto && proyecto.inversion_sujeto_pasivo">Sin IVA</span></span>
                   <span class="der">Presupuesto</span>
                   <span class="der">Diferencia</span>
                 </div>
@@ -921,7 +934,7 @@
               <div>
                 <strong x-text="c.gremio"></strong><br />
                 <span class="meta" x-text="c.archivo"></span>
-                <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong><span x-show="proyecto && proyecto.inversion_sujeto_pasivo"> sin IVA</span></div>
+                <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong> <span class="badge badge-warning" x-show="proyecto && proyecto.inversion_sujeto_pasivo">Sin IVA</span></div>
                 <span class="acciones-fichero" x-show="c.tiene_fichero">
                   <button type="button" class="btn-texto" x-show="esPdf(c.archivo)"
                     @click="abrirVisorPdf(c.url_fichero, c.archivo)">Ver</button>
@@ -939,18 +952,54 @@
               </div>
               <span class="flecha">→</span>
               <div class="stack" style="gap: 6px">
-                <span class="meta">Apartados que cubre el contrato. Puedes marcar varios.</span>
+                <span class="meta">Líneas de montaje que cubre el contrato. Un apartado se puede repartir.</span>
                 <p class="meta" x-show="!vista.contratos.opciones.length">No hay apartados contratables.</p>
                 <div class="elige-varios" x-show="vista.contratos.opciones.length"
                   :class="c.asociado && 'bloqueado'">
-                  <template x-for="op in vista.contratos.opciones" :key="c.id + '-' + op.valor">
-                    <label>
-                      <input type="checkbox" :value="op.valor" :disabled="c.asociado"
-                        :checked="c.apartado_ids.includes(op.valor)"
-                        @change="toggleApartado(c.id, op.valor, $event.target.checked)">
-                      <span><span class="meta" x-text="op.prefijo"></span> <span x-text="op.etiqueta"></span></span>
-                      <span class="cuantia num" x-text="op.cuantia"></span>
-                    </label>
+                  <template x-for="grupo in vista.contratos.opciones" :key="c.id + '-g-' + grupo.id">
+                    <fieldset class="cubre-ap">
+                      <legend>
+                        <label>
+                          <input type="checkbox"
+                            x-effect="$el.indeterminate = apartadoParcial(c, grupo)"
+                            :checked="apartadoMarcado(c, grupo)"
+                            :disabled="c.asociado || apartadoBloqueado(c, grupo)"
+                            @change="toggleGrupo(c.id, grupo, $event.target.checked)">
+                          <span>
+                            <span class="meta" x-show="grupo.simple && grupo.pieza" x-text="grupo.pieza.prefijo"></span>
+                            <span x-text="grupo.nombre"></span>
+                          </span>
+                          <span class="cuantia num" x-show="grupo.simple && grupo.pieza" x-text="grupo.pieza.cuantia"></span>
+                        </label>
+                      </legend>
+                      <template x-if="!grupo.simple">
+                        <details class="cubre-desglose">
+                          <summary>
+                            <span class="cruce-tri" aria-hidden="true"></span>
+                            <span x-text="textoDesglose(c, grupo)"></span>
+                          </summary>
+                          <template x-for="op in grupo.filas" :key="c.id + '-' + op.valor">
+                            <div class="cubre-fila" :class="'nivel-' + op.nivel">
+                              <template x-if="op.tipo === 'titulo'">
+                                <span class="meta" x-text="op.etiqueta"></span>
+                              </template>
+                              <template x-if="op.tipo !== 'titulo'">
+                                <label>
+                                  <input type="checkbox" :value="op.valor"
+                                    :disabled="c.asociado || !!ocupanteLinea(c, op.valor)"
+                                    :checked="c.apartado_ids.includes(op.valor)"
+                                    @change="toggleApartado(c.id, op.valor, $event.target.checked)">
+                                  <span><span class="meta" x-text="op.prefijo"></span> <span x-text="op.etiqueta"></span>
+                                    <span class="meta en-otro" x-show="ocupanteLinea(c, op.valor)"
+                                      x-text="'En ' + ocupanteLinea(c, op.valor)"></span></span>
+                                  <span class="cuantia num" x-text="op.cuantia"></span>
+                                </label>
+                              </template>
+                            </div>
+                          </template>
+                        </details>
+                      </template>
+                    </fieldset>
                   </template>
                 </div>
                 <div class="stack" style="gap: 6px">
@@ -1028,7 +1077,7 @@
             </article>
           </template>
           <div class="aviso-rojo" x-show="vista.contratos.hay_sin_contrato">
-            <span><strong x-text="vista.contratos.sin_contrato"></strong> sin contrato asociado.</span>
+            <span><strong x-text="vista.contratos.sin_contrato"></strong> con alguna línea sin contrato.</span>
             <button type="button" class="btn btn-secondary btn-sm" @click="$refs.ficheroContrato.click()">Subir
               contrato</button>
           </div>
@@ -1178,11 +1227,16 @@
                           @click="abrirVisorPdf(seleccion.url_fichero, seleccion.fichero)">Ver factura</button>
                         <a class="btn-texto" x-show="seleccion.tiene_fichero" :href="seleccion.url_fichero">Descargar
                           factura</a>
+                        <button type="button" class="btn-texto" x-show="seleccion.tiene_certificacion && !seleccion.tiene_sello"
+                          @click="abrirVisorPdf(seleccion.url_certificacion, 'certificacion-montaje.pdf')">Ver certificación</button>
                         <button type="button" class="btn-texto" x-show="seleccion.tiene_sello"
                           @click="abrirVisorPdf(seleccion.url_sello, 'sello-factura.pdf')">Ver PDF con sello</button>
                         <a class="btn-texto" x-show="seleccion.tiene_sello" :href="seleccion.url_sello">Descargar PDF con
                           sello</a>
                       </span>
+                      <span class="meta verde" x-show="seleccion.tiene_certificacion"
+                        x-text="'Certificación de montaje · ' + seleccion.certificacion_por + ' · ' + seleccion.certificacion_fecha"></span>
+                      <span class="meta" x-show="seleccion.certificacion_omitida && !seleccion.tiene_certificacion">Certificación de montaje no necesaria</span>
                       <span class="meta" x-show="seleccion.referencia_alc"
                         x-text="'ALC/' + seleccion.referencia_alc"></span>
                     </div>
@@ -1241,6 +1295,10 @@
                         x-text="seleccion.desviacion"></strong>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                      <p class="sub" x-show="seleccion.falta_otra_persona">El sello lo tiene que poner otra persona.</p>
+                      <button type="button" class="btn btn-secondary btn-sm"
+                        x-show="seleccion.tiene_certificacion && !seleccion.tiene_sello"
+                        @click="abrirVisorPdf(seleccion.url_certificacion, 'certificacion-montaje.pdf')">Ver certificación</button>
                       <button type="button" class="btn btn-secondary btn-sm" x-show="seleccion.tiene_sello"
                         @click="abrirVisorPdf(seleccion.url_sello, 'sello-factura.pdf')">Ver PDF con sello</button>
                       <a class="btn btn-primary btn-sm" x-show="seleccion.tiene_sello" :href="seleccion.url_sello">Descargar PDF con sello</a>
@@ -1262,7 +1320,10 @@
 
       <template x-if="vista && screen === 'control'">
         <div class="stack">
-          <p class="sub" x-show="proyecto && proyecto.inversion_sujeto_pasivo">Importes sin IVA.</p>
+          <p class="isp isp-on" x-show="proyecto && proyecto.inversion_sujeto_pasivo">
+            <span class="isp-pill">Sin IVA</span>
+            <span>Importes sin IVA.</span>
+          </p>
           <div class="kpis">
             <template x-for="kpi in vista.control.kpis" :key="kpi.etiqueta">
               <div class="kpi">

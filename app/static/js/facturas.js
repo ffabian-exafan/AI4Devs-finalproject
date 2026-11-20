@@ -1,3 +1,15 @@
+function fechaCertificacion(iso) {
+  if (!iso) return "";
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return "";
+  return new Intl.DateTimeFormat("es-ES", {
+    timeZone: "Europe/Madrid",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(fecha);
+}
+
 function facturasApp() {
   return {
     proyectos: [],
@@ -6,9 +18,12 @@ function facturasApp() {
     fichero: null,
     seleccionada: null,
     edicion: { lineas: [] },
+    yo: null,
     subiendo: false,
     cargandoLista: false,
     confirmando: false,
+    certificando: false,
+    omitiendo: false,
     alc: "",
     errorAlc: "",
     error: "",
@@ -16,7 +31,25 @@ function facturasApp() {
     visorPdf: null,
     euro: (v) => GestorApi.euro(v),
 
+    fechaCertificacion,
+
+    faltaOtraPersona() {
+      const factura = this.seleccionada;
+      return Boolean(
+        factura &&
+          factura.tiene_certificacion_montaje &&
+          factura.estado_revision !== "confirmada" &&
+          this.yo &&
+          factura.certificacion_montaje_usuario_id === this.yo.id
+      );
+    },
+
     async init() {
+      try {
+        this.yo = await GestorApi.getJson("/auth/yo");
+      } catch {
+        this.yo = null;
+      }
       try {
         this.proyectos = await GestorApi.getJson("/proyectos");
         const preseleccionado = new URLSearchParams(window.location.search).get(
@@ -101,10 +134,70 @@ function facturasApp() {
       }
     },
 
+    async omitirCertificacion() {
+      if (!this.seleccionada) return;
+      this.error = "";
+      this.mensaje = "";
+      this.omitiendo = true;
+      try {
+        await GestorApi.postVacio(
+          "/facturas/" + this.seleccionada.id + "/omitir-certificacion-montaje"
+        );
+        const id = this.seleccionada.id;
+        this.mensaje = "Certificación de montaje no necesaria. Ya puedes poner el sello azul.";
+        await this.cargarLista();
+        await this.abrir(id);
+      } catch (err) {
+        this.error = err.message;
+      } finally {
+        this.omitiendo = false;
+      }
+    },
+
+    async certificar() {
+      if (!this.seleccionada) return;
+      this.error = "";
+      this.mensaje = "";
+      if (!this.edicion.codigo_contrato) {
+        this.error = "La factura no trae código de contrato. Indícalo.";
+        return;
+      }
+      this.certificando = true;
+      try {
+        if ((this.edicion.codigo_contrato || "") !== (this.seleccionada.codigo_contrato || "")) {
+          await GestorApi.postJson("/facturas/" + this.seleccionada.id + "/codigo", {
+            codigo: this.edicion.codigo_contrato,
+          });
+        }
+        await GestorApi.postVacio(
+          "/facturas/" + this.seleccionada.id + "/certificar-montaje"
+        );
+        const id = this.seleccionada.id;
+        this.mensaje = "Certificación de montaje puesta. El sello azul lo pone otra persona.";
+        await this.cargarLista();
+        await this.abrir(id);
+      } catch (err) {
+        this.error = err.message;
+      } finally {
+        this.certificando = false;
+      }
+    },
+
     pedirAlc() {
       if (!this.seleccionada) return;
       this.error = "";
       this.errorAlc = "";
+      if (
+        !this.seleccionada.tiene_certificacion_montaje &&
+        !this.seleccionada.certificacion_montaje_omitida
+      ) {
+        this.error = "Falta la certificación de montaje.";
+        return;
+      }
+      if (this.faltaOtraPersona()) {
+        this.error = "El sello lo tiene que poner otra persona.";
+        return;
+      }
       if (
         this.seleccionada.inversion_sujeto_pasivo &&
         Number(this.edicion.iva) !== 0

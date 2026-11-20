@@ -209,6 +209,7 @@ def enlazar_contrato_apartado(
             _validar_enlace(db, proyecto_id, contrato, tarea_id, padres, textos)
         )
     apartados.sort(key=lambda ap: (ap.presupuesto_id is None, ap.codigo, ap.id))
+    _rechazar_solape(db, proyecto_id, contrato, apartados, padres)
 
     contrato.enlaces_apartado.clear()
     db.flush()
@@ -318,6 +319,79 @@ def _crear_apartado_de_contrato(
     return tarea
 
 
+def _rechazar_solape(
+    db: Session,
+    proyecto_id: int,
+    contrato: Contrato,
+    apartados: list[Tarea],
+    padres: dict[int, int | None],
+) -> None:
+    """Una línea de montaje no va en dos contratos, ni junto al bloque que la contiene.
+
+    El apartado de solo gestión sigue entero y lo pueden compartir varios contratos.
+    """
+    de_excel = [
+        ap for ap in apartados if ap.presupuesto_id is not None and not ap.solo_gestion
+    ]
+    if not de_excel:
+        return
+
+    hijos: dict[int, list[int]] = {}
+    for hijo_id, padre_id in padres.items():
+        if padre_id is not None:
+            hijos.setdefault(padre_id, []).append(hijo_id)
+
+    def descendientes(tarea_id: int) -> list[int]:
+        pila = list(hijos.get(tarea_id, []))
+        vistos: list[int] = []
+        while pila:
+            nodo = pila.pop()
+            vistos.append(nodo)
+            pila.extend(hijos.get(nodo, []))
+        return vistos
+
+    def ancestros(tarea_id: int) -> list[int]:
+        cadena: list[int] = []
+        actual = padres.get(tarea_id)
+        while actual is not None:
+            cadena.append(actual)
+            actual = padres.get(actual)
+        return cadena
+
+    elegidos = {ap.id for ap in de_excel}
+    for ap in de_excel:
+        if any(anc in elegidos for anc in ancestros(ap.id)):
+            raise ValueError(
+                "No se puede enlazar un apartado y una línea que ya cuelga de él"
+            )
+
+    ocupados: dict[int, str] = {}
+    otros = (
+        db.query(Contrato)
+        .options(
+            joinedload(Contrato.contratista),
+            joinedload(Contrato.enlaces_apartado),
+        )
+        .filter(Contrato.proyecto_id == proyecto_id, Contrato.id != contrato.id)
+        .all()
+    )
+    for otro in otros:
+        nombre = otro.contratista.nombre if otro.contratista else "otro contrato"
+        for tarea_id in ids_apartados_enlazados(otro):
+            tarea = db.get(Tarea, tarea_id)
+            if tarea is None or tarea.solo_gestion:
+                continue
+            ocupados.setdefault(tarea_id, nombre)
+            for desc in descendientes(tarea_id):
+                ocupados.setdefault(desc, nombre)
+    for ap in de_excel:
+        if ap.id in ocupados:
+            raise ValueError(f"Esa línea ya la cubre {ocupados[ap.id]}")
+        for desc in descendientes(ap.id):
+            if desc in ocupados:
+                raise ValueError(f"Parte de ese apartado ya la cubre {ocupados[desc]}")
+
+
 def _validar_enlace(
     db: Session,
     proyecto_id: int,
@@ -357,14 +431,20 @@ def _validar_apartado(
         raise ValueError(f"Apartado {tarea_apartado_id} no encontrado")
     if apartado.presupuesto_id is None:
         raise ValueError("La tarea indicada no proviene de un presupuesto")
-    if apartado.nivel != "apartado" or apartado.tarea_padre_id is not None:
-        raise ValueError("Solo se puede enlazar a una tarea de nivel 'apartado'")
-    if padres.get(apartado.id) is not None:
-        raise ValueError("Solo se puede enlazar a un apartado, no a un subapartado")
     if apartado.codigo.startswith("descuento."):
         raise ValueError("Un descuento de cierre no es un apartado contratable")
     if apartado.solo_gestion and apartado.estado_revision != "confirmada":
         raise ValueError("El apartado de solo gestión sigue pendiente de revisión")
+    if _es_recargo(apartado):
+        raise ValueError("Un recargo no es un apartado contratable")
+
+    es_raiz = padres.get(apartado.id) is None and apartado.nivel == "apartado"
+    es_subapartado = padres.get(apartado.id) is not None and apartado.nivel in (
+        "apartado",
+        "subapartado",
+    )
+    if not (es_raiz or es_subapartado or apartado.es_montaje or apartado.solo_gestion):
+        raise ValueError("Solo se puede enlazar un apartado o una línea de montaje")
 
     nave = db.get(Nave, apartado.nave_id)
     if nave is None or nave.proyecto_id != proyecto_id:

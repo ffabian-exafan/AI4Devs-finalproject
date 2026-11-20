@@ -26,7 +26,10 @@
         Presupuestado vs. contratado vs. facturado confirmado.
         El desvío por nave se marca como estimación cuando no hay certificación medida.
       </p>
-      <p class="aviso" x-show="datos && datos.inversion_sujeto_pasivo">Importes sin IVA.</p>
+      <p class="isp isp-on" x-show="datos && datos.inversion_sujeto_pasivo">
+        <span class="isp-pill">Sin IVA</span>
+        <span>Importes sin IVA. El promotor se autorrepercute el IVA (inversión del sujeto pasivo).</span>
+      </p>
 
       <section class="panel">
         <h2>Proyecto</h2>

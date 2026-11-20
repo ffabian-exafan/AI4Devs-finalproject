@@ -333,10 +333,12 @@ a.btn {
 
 .btn-primary:hover {
   background: var(--p500);
+  color: var(--on-accent);
 }
 
 .btn-primary:active:not(:disabled) {
   background: var(--p900);
+  color: var(--on-accent);
 }
 
 .btn-primary:disabled {
@@ -1679,12 +1681,59 @@ select.apartado {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 180px;
+  max-height: 320px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 10px;
   background: var(--surface);
+}
+
+.cubre-ap {
+  border: 0;
+  margin: 0;
+  padding: 0 0 8px;
+  min-inline-size: 0;
+}
+
+.cubre-ap legend {
+  padding: 0;
+  font-weight: 700;
+}
+
+.cubre-desglose {
+  margin: 2px 0 0 22px;
+}
+
+.cubre-desglose > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  list-style: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--p700);
+}
+
+.cubre-desglose > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cubre-desglose[open] > summary .cruce-tri {
+  transform: rotate(90deg);
+}
+
+.cubre-fila.nivel-1 {
+  padding-left: 18px;
+}
+
+.cubre-fila.nivel-2 {
+  padding-left: 36px;
+}
+
+.cubre-ap .en-otro {
+  font-weight: 500;
 }
 
 .elige-varios label {
@@ -2510,4 +2559,80 @@ select.apartado {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
+}
+
+.isp {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 20px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.isp-on {
+  background: var(--warn-bg);
+  border-color: var(--warn-line, var(--warn-border));
+}
+
+.isp-estado {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: min(100%, 22rem);
+  flex: 1 1 22rem;
+}
+
+.isp-pill {
+  flex: none;
+  margin-top: 1px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--line-soft);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.isp-on .isp-pill {
+  border-color: var(--warn-line, var(--warn-border));
+  background: #fff;
+  color: var(--warn-text, #7a4e06);
+}
+
+.isp-titulo {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14.5px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.isp-ayuda {
+  margin: 2px 0 0;
+  max-width: 68ch;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.isp-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .isp-estado,
+  .isp-acciones {
+    flex-basis: 100%;
+  }
 }

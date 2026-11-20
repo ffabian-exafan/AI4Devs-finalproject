@@ -9,6 +9,8 @@ from app.deps import usuario_actual
 from app.models import Factura, Usuario
 from app.schemas.bandeja_factura import BandejaFacturaOut, BarridoOut
 from app.schemas.factura import (
+    CertificarMontajeOut,
+    OmitirCertificacionOut,
     CodigoFacturaIn,
     CodigoFacturaOut,
     ConfirmarFacturaIn,
@@ -114,6 +116,65 @@ def obtener_factura(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/{factura_id}/omitir-certificacion-montaje",
+    response_model=OmitirCertificacionOut,
+)
+def omitir_certificacion_montaje(
+    factura_id: int,
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+) -> OmitirCertificacionOut:
+    try:
+        return facturas_svc.omitir_certificacion_montaje(db, factura_id, actual)
+    except ValueError as exc:
+        detail = str(exc)
+        codigo = (
+            status.HTTP_404_NOT_FOUND
+            if "no encontrad" in detail.lower()
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+@router.post("/{factura_id}/certificar-montaje", response_model=CertificarMontajeOut)
+def certificar_montaje(
+    factura_id: int,
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+) -> CertificarMontajeOut:
+    try:
+        return facturas_svc.certificar_montaje(db, factura_id, actual)
+    except ValueError as exc:
+        detail = str(exc)
+        codigo = (
+            status.HTTP_404_NOT_FOUND
+            if "no encontrad" in detail.lower()
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+@router.get("/{factura_id}/certificacion")
+def descargar_certificacion(
+    factura_id: int,
+    ver: bool = False,
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    factura = db.get(Factura, factura_id)
+    if factura is None or not factura.ruta_certificacion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La certificación de montaje no está generada",
+        )
+    return _responder_fichero(
+        factura.ruta_certificacion,
+        "certificacion-montaje.pdf",
+        ver=ver,
+        ausente="La certificación de montaje no está generada",
+    )
 
 
 @router.get("/{factura_id}/sello")

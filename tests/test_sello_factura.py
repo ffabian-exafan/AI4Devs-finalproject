@@ -6,7 +6,14 @@ from pathlib import Path
 
 import pymupdf
 
-from app.services.sello_factura import DatosSello, lineas_sello, linea_codigo, pdf_con_sello
+from app.services.sello_factura import (
+    VERDE,
+    DatosSello,
+    lineas_certificacion,
+    lineas_sello,
+    linea_codigo,
+    pdf_con_sello,
+)
 
 
 def _plano(texto: str) -> str:
@@ -98,6 +105,42 @@ def _datos() -> DatosSello:
         importe_factura=Decimal("1210"),
         pendiente=Decimal("3790"),
     )
+
+
+def test_la_certificacion_queda_en_verde(tmp_path: Path):
+    origen = tmp_path / "factura.pdf"
+    documento = pymupdf.open()
+    pagina = documento.new_page()
+    pagina.insert_text((40, 500), "TEXTO ORIGINAL FICTICIO")
+    documento.save(origen)
+    documento.close()
+
+    lineas = lineas_certificacion("Persona Ejemplo", date(2026, 11, 20), "PYCON123456")
+    assert lineas == [
+        "Certificación de montaje",
+        "Persona Ejemplo",
+        "20/11/2026",
+        "PYCON/123 - TRABAJO/45",
+    ]
+    pdf = pdf_con_sello(origen, lineas, VERDE)
+    abierto = pymupdf.open(stream=pdf, filetype="pdf")
+    try:
+        texto = _plano(abierto[0].get_text())
+        assert "Certificación de montaje" in texto
+        assert "Persona Ejemplo" in texto
+        assert "20/11/2026" in texto
+        assert "PYCON/123 - TRABAJO/45" in texto
+        verde = False
+        for bloque in abierto[0].get_text("dict")["blocks"]:
+            for linea in bloque.get("lines", []):
+                for span in linea.get("spans", []):
+                    if "Certificación de montaje" not in _plano(span["text"]):
+                        continue
+                    color = span["color"]
+                    verde = ((color >> 8) & 0xFF) > 80 and ((color >> 16) & 0xFF) < 40
+        assert verde
+    finally:
+        abierto.close()
 
 
 def test_el_sello_queda_en_azul_sobre_el_pdf(tmp_path: Path):

@@ -249,7 +249,7 @@ def _por_apartado(db: Session, proyecto_id: int) -> list[DesvioApartadoOut]:
             continue
         if tarea.solo_gestion and tarea.estado_revision != "confirmada":
             continue
-        trozos = partes.get(tarea.id, [])
+        trozos = _trozos_con_hijos(tarea.id, partes, hijos)
         contratado = sum((precio for precio, _fact in trozos), Decimal("0"))
         facturado = sum((fact for _precio, fact in trozos), Decimal("0"))
         salida.append(
@@ -267,6 +267,18 @@ def _por_apartado(db: Session, proyecto_id: int) -> list[DesvioApartadoOut]:
         )
     salida.sort(key=lambda fila: fila.codigo)
     return salida
+
+
+def _trozos_con_hijos(
+    tarea_id: int,
+    partes: dict[int, list[tuple[Decimal, Decimal]]],
+    hijos: dict[int, list[Tarea]],
+) -> list[tuple[Decimal, Decimal]]:
+    """El precio enlazado a una línea de montaje cuenta en su apartado."""
+    acumulado = list(partes.get(tarea_id, []))
+    for hijo in hijos.get(tarea_id, []):
+        acumulado.extend(_trozos_con_hijos(hijo.id, partes, hijos))
+    return acumulado
 
 
 def _por_nave(db: Session, proyecto_id: int) -> list[DesvioNaveOut]:

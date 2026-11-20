@@ -14,7 +14,7 @@ from app.main import app
 from app.models import Contratista, Factura, Proyecto, RegistroAccion
 from app.models.registro_accion import ACCIONES
 from app.services.registro import ETIQUETAS
-from tests.sesion import entrar
+from tests.sesion import certificar_montaje, entrar
 
 PDF = b"%PDF-1.4\n%carta ficticia\n%%EOF\n"
 NIF_FICTICIO = "B00000001"
@@ -316,6 +316,8 @@ def test_confirmar_en_obra_marcada_exige_iva_cero(client: TestClient, db: Sessio
     db.refresh(factura)
     assert factura.estado_revision == "pendiente"
     assert factura.iva == Decimal("21.00")
+    certificar_montaje(client, db, factura.id)
+    entrar(client, db)
     bien = client.post(f"/facturas/{factura.id}/confirmar", json=_payload(factura, "0"))
     assert bien.status_code == 200, bien.text
     db.refresh(factura)
@@ -326,6 +328,7 @@ def test_confirmar_en_obra_marcada_exige_iva_cero(client: TestClient, db: Sessio
 def test_sin_marca_se_puede_confirmar_con_iva(client: TestClient, db: Session):
     obra = _obra(db)
     factura = _factura(db, obra, "21.00", "pendiente")
+    certificar_montaje(client, db, factura.id)
     entrar(client, db)
     respuesta = client.post(
         f"/facturas/{factura.id}/confirmar",
@@ -402,11 +405,11 @@ def test_el_control_marca_la_obra_sin_cambiar_el_facturado(
 def test_la_ficha_nombra_la_inversion():
     html = Path("app/static/index.html").read_text(encoding="utf-8")
     js = Path("app/static/js/obras.js").read_text(encoding="utf-8")
-    assert "Marcar inversión del sujeto pasivo" in html
-    assert "Facturación al promotor: sin IVA" in html
+    assert "Subir carta y facturar sin IVA" in html
+    assert "Esta obra factura sin IVA" in html
     assert "Ver carta" in html
-    assert "Quitar la marca" in html
-    assert "Contrato cliente" in html and "sin IVA" in html
+    assert "Volver a facturar con IVA" in html
+    assert "Contrato cliente" in html and "Sin IVA" in html
     assert "Importes sin IVA" in html
     assert "marcarIsp" in js
     assert "quitarIsp" in js
@@ -422,8 +425,8 @@ def test_las_otras_pantallas_nombran_la_inversion():
     assert "inversion_sujeto_pasivo" in facturas
     assert "La obra está en inversión del sujeto pasivo" in facturas_js
     assert "Importes sin IVA" in control
-    assert "Facturación al promotor: sin IVA" in proyecto
-    assert "sin IVA" in proyecto
+    assert "Esta obra factura sin IVA" in proyecto
+    assert "Sin IVA" in proyecto
     assert "marcarIsp" in proyecto_js
 
 

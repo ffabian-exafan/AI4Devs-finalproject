@@ -1,6 +1,6 @@
 """Schemas de factura, líneas e ingesta."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -125,6 +125,11 @@ class FacturaResumenOut(BaseModel):
     aviso_isp: str | None = None
     referencia_alc: str | None = None
     tiene_sello: bool = False
+    tiene_certificacion_montaje: bool = False
+    certificacion_montaje_por: str | None = None
+    certificacion_montaje_en: datetime | None = None
+    certificacion_montaje_usuario_id: int | None = None
+    certificacion_montaje_omitida: bool = False
 
 
 class FacturaRevisionOut(FacturaResumenOut):
@@ -185,6 +190,19 @@ class ConfirmarFacturaIn(BaseModel):
         if not value:
             raise ValueError("El número de factura no puede estar vacío")
         return value
+
+
+class OmitirCertificacionOut(BaseModel):
+    ok: bool
+    factura_id: int
+    certificacion_montaje_omitida: bool = True
+
+
+class CertificarMontajeOut(BaseModel):
+    ok: bool
+    factura_id: int
+    tiene_certificacion_montaje: bool = True
+    certificacion_montaje_por: str
 
 
 class ConfirmarFacturaOut(BaseModel):

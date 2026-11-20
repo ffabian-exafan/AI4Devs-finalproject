@@ -14,6 +14,8 @@ PAGE_SIZE = 50
 ETIQUETAS = {
     "confirmar_revision": "Confirmó la revisión",
     "confirmar_factura": "Confirmó la factura",
+    "certificar_montaje": "Certificó el montaje",
+    "omitir_certificacion_montaje": "Marcó que el montaje no necesita sello",
     "confirmar_importe_cliente": "Confirmó el importe de cliente",
     "confirmar_importes_cliente": "Confirmó los importes de cliente",
     "confirmar_solo_gestion": "Confirmó el apartado de solo gestión",

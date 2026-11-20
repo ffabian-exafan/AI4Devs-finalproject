@@ -55,7 +55,7 @@ function proyectoApp() {
 
     async quitarIsp() {
       if (!this.proyectoId) return;
-      if (!window.confirm("¿Quitar la inversión del sujeto pasivo de esta obra?")) return;
+      if (!window.confirm("¿Volver a facturar esta obra con IVA?")) return;
       this.error = "";
       try {
         await GestorApi.borrar(

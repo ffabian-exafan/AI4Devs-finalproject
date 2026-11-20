@@ -706,6 +706,94 @@ button.secundario:disabled {
   min-width: 0;
 }
 
+.isp {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 20px;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.isp-on {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+}
+
+.isp-estado {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: min(100%, 22rem);
+  flex: 1 1 22rem;
+}
+
+.isp-pill {
+  flex: none;
+  margin-top: 1px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--line-soft);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.isp-on .isp-pill {
+  border-color: var(--warn-border);
+  background: #fff;
+  color: #7a4e06;
+}
+
+.isp-titulo {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.isp-ayuda {
+  margin: 2px 0 0;
+  max-width: 68ch;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.isp-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .isp-estado,
+  .isp-acciones {
+    flex-basis: 100%;
+  }
+}
+
+.isp a.secundario {
+  display: inline-block;
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 0.55rem 0.9rem;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.panel .isp {
+  margin-bottom: 0.85rem;
+}
+
 @media (max-width: 720px) {
   .shell {
     padding: 1rem;

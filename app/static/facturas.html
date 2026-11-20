@@ -144,14 +144,36 @@
               Añadir línea
             </button>
 
+            <p class="estado-msg ok" x-show="seleccionada && seleccionada.tiene_certificacion_montaje">
+              Certificación de montaje ·
+              <span x-text="seleccionada.certificacion_montaje_por"></span>
+              · <span x-text="fechaCertificacion(seleccionada.certificacion_montaje_en)"></span>
+              <button type="button" class="secundario" x-show="!seleccionada.tiene_sello"
+                @click="abrirVisorPdf('/facturas/' + seleccionada.id + '/certificacion', 'certificacion-montaje.pdf')">Ver certificación</button>
+            </p>
             <p x-show="seleccionada && seleccionada.tiene_sello">
               <button type="button" class="secundario"
                 @click="abrirVisorPdf('/facturas/' + seleccionada.id + '/sello', 'sello-factura.pdf')">Ver PDF con sello</button>
               <a :href="'/facturas/' + seleccionada.id + '/sello'">Descargar PDF con sello</a>
               <span x-show="seleccionada.referencia_alc" x-text="'· ALC/' + seleccionada.referencia_alc"></span>
             </p>
+            <p x-show="seleccionada && seleccionada.certificacion_montaje_omitida && !seleccionada.tiene_certificacion_montaje">
+              Certificación de montaje no necesaria.
+            </p>
+            <p class="estado-msg err" x-show="faltaOtraPersona()">El sello lo tiene que poner otra persona.</p>
             <div class="acciones">
-              <button class="primario" type="submit" :disabled="confirmando">
+              <button class="primario" type="button"
+                x-show="seleccionada && !seleccionada.tiene_certificacion_montaje && !seleccionada.certificacion_montaje_omitida"
+                :disabled="certificando" @click="certificar()">
+                <span x-text="certificando ? 'Certificando…' : 'Certificar montaje'"></span>
+              </button>
+              <button class="secundario" type="button"
+                x-show="seleccionada && !seleccionada.tiene_certificacion_montaje && !seleccionada.certificacion_montaje_omitida"
+                :disabled="omitiendo" @click="omitirCertificacion()">
+                No es necesario
+              </button>
+              <button class="primario" type="submit" :disabled="confirmando"
+                x-show="seleccionada && (seleccionada.tiene_certificacion_montaje || seleccionada.certificacion_montaje_omitida) && !faltaOtraPersona()">
                 <span x-text="confirmando ? 'Confirmando…' : 'Confirmar factura'"></span>
               </button>
               <a :href="'/proyecto.html?id=' + proyectoId">Volver al proyecto</a>

@@ -22,7 +22,7 @@ from app.models import (
 )
 from app.services.facturas import _contratista_por_nif, _parsear_factura
 from app.services.ocr import ResultadoOcr
-from tests.sesion import entrar
+from tests.sesion import certificar_montaje, entrar
 
 FIXTURE = (
     Path(__file__).resolve().parents[1]
@@ -216,6 +216,7 @@ def test_factura_enlaza_el_contrato_del_proveedor_aunque_siga_pendiente(
     assert fila["contrato_etiqueta"] == "SUBCONTRATISTA_1"
 
     detalle = client.get(f"/facturas/{cuerpo['factura_id']}").json()
+    certificar_montaje(client, db, cuerpo["factura_id"])
     entrar(client, db, rol="administracion")
     confirmar = client.post(
         f"/facturas/{cuerpo['factura_id']}/confirmar",
@@ -363,6 +364,7 @@ def test_factura_pendiente_no_suma_y_confirmada_actualiza_seguimiento(
     assert datos["es_escaneada"] is False
     assert len(datos["contratos_candidatos"]) == 1
 
+    certificar_montaje(client, db, factura_id)
     entrar(client, db, rol="administracion")
     confirmar = client.post(
         f"/facturas/{factura_id}/confirmar",
@@ -583,6 +585,7 @@ def test_confirmar_genera_el_pdf_con_sello(
     assert alta.status_code == 201, alta.text
     factura_id = alta.json()["factura_id"]
     datos = client.get(f"/facturas/{factura_id}").json()
+    certificar_montaje(client, db, factura_id)
     entrar(client, db, rol="administracion")
     base = {
         "numero": datos["numero"],
@@ -648,6 +651,8 @@ def test_confirmar_genera_el_pdf_con_sello(
     assert alta2.status_code == 201, alta2.text
     id2 = alta2.json()["factura_id"]
     datos2 = client.get(f"/facturas/{id2}").json()
+    certificar_montaje(client, db, id2)
+    entrar(client, db, rol="administracion")
     confirmar2 = client.post(
         f"/facturas/{id2}/confirmar",
         json={
@@ -676,3 +681,168 @@ def test_confirmar_genera_el_pdf_con_sello(
     assert "ALC/00002" in texto2
     assert "2ª factura: 1.210,00 €" in texto2
     assert "Pendiente: 2.580,00 €" in texto2
+
+
+def test_el_sello_verde_va_antes_y_lo_pone_otra_persona(
+    client: TestClient,
+    db: Session,
+    escenario_factura: dict,
+):
+    import pymupdf
+
+    codigo = "PYCON246810"
+    previo = db.query(Contrato).filter(Contrato.codigo == codigo).one_or_none()
+    contrato = db.get(Contrato, escenario_factura["contrato_id"])
+    assert contrato is not None
+    if previo is not None and previo.id != contrato.id:
+        previo.codigo = None
+    contrato.codigo = codigo
+    db.commit()
+
+    alta = client.post(
+        "/facturas",
+        data={"proyecto_id": str(escenario_factura["proyecto_id"])},
+        files={"fichero": (FIXTURE.name, FIXTURE.read_bytes(), "text/markdown")},
+    )
+    assert alta.status_code == 201, alta.text
+    factura_id = alta.json()["factura_id"]
+    factura_alta = db.get(Factura, factura_id)
+    assert factura_alta is not None
+    factura_alta.codigo_contrato = codigo
+    factura_alta.contrato_id = contrato.id
+    db.commit()
+    datos = client.get(f"/facturas/{factura_id}").json()
+    cuerpo = {
+        "numero": datos["numero"],
+        "fecha_emision": datos["fecha_emision"],
+        "base_imponible": datos["base_imponible"],
+        "iva": datos["iva"],
+        "irpf": datos["irpf"],
+        "retencion_garantia": datos["retencion_garantia"],
+        "total": datos["total"],
+        "tipo": datos["tipo"],
+        "codigo_contrato": codigo,
+        "contrato_id": contrato.id,
+        "referencia_alc": "00011",
+        "lineas": [],
+    }
+    entrar(client, db, rol="administracion")
+    sin_verde = client.post(f"/facturas/{factura_id}/confirmar", json=cuerpo)
+    assert sin_verde.status_code == 422
+    assert "certificación de montaje" in sin_verde.text
+
+    primera = entrar(client, db, rol="jefe_obra")
+    primera.nombre = "Persona Montaje"
+    db.commit()
+    client.post("/auth/logout")
+    client.post(
+        "/auth/login",
+        json={"email": primera.email, "password": "clave-ficticia"},
+    )
+    certificada = client.post(f"/facturas/{factura_id}/certificar-montaje")
+    assert certificada.status_code == 200, certificada.text
+    factura = db.get(Factura, factura_id)
+    assert factura is not None
+    db.refresh(factura)
+    assert factura.estado_revision == "pendiente"
+    assert factura.certificacion_montaje_por == "Persona Montaje"
+    assert factura.certificacion_montaje_usuario_id == primera.id
+
+    verde = client.get(f"/facturas/{factura_id}/certificacion")
+    assert verde.status_code == 200
+    documento = pymupdf.open(stream=verde.content, filetype="pdf")
+    try:
+        texto = documento[0].get_text().replace("\xa0", " ").replace("\xad", "-")
+        assert "Certificación de montaje" in texto
+        assert "Persona Montaje" in texto
+        assert "PYCON/246 - TRABAJO/81" in texto
+        assert "ALC/" not in texto
+        color_verde = False
+        for bloque in documento[0].get_text("dict")["blocks"]:
+            for linea in bloque.get("lines", []):
+                for span in linea.get("spans", []):
+                    if "Certificación de montaje" not in span["text"].replace("\xa0", " "):
+                        continue
+                    color = span["color"]
+                    color_verde = ((color >> 8) & 0xFF) > 80 and ((color >> 16) & 0xFF) < 40
+        assert color_verde
+    finally:
+        documento.close()
+
+    misma = client.post(f"/facturas/{factura_id}/confirmar", json=cuerpo)
+    assert misma.status_code == 422
+    assert "otra persona" in misma.text
+    db.refresh(factura)
+    assert factura.estado_revision == "pendiente"
+
+    entrar(client, db, rol="administracion")
+    confirmar = client.post(f"/facturas/{factura_id}/confirmar", json=cuerpo)
+    assert confirmar.status_code == 200, confirmar.text
+    pdf = client.get(f"/facturas/{factura_id}/sello")
+    assert pdf.status_code == 200
+    final = pymupdf.open(stream=pdf.content, filetype="pdf")
+    try:
+        texto_final = final[0].get_text().replace("\xa0", " ").replace("\xad", "-")
+        assert "Certificación de montaje" in texto_final
+        assert "Persona Montaje" in texto_final
+        assert "PYCON/246 - TRABAJO/81" in texto_final
+        assert "ALC/00011" in texto_final
+    finally:
+        final.close()
+
+
+def test_se_puede_saltar_el_sello_verde(
+    client: TestClient,
+    db: Session,
+    escenario_factura: dict,
+):
+    import pymupdf
+
+    alta = client.post(
+        "/facturas",
+        data={"proyecto_id": str(escenario_factura["proyecto_id"])},
+        files={"fichero": (FIXTURE.name, FIXTURE.read_bytes(), "text/markdown")},
+    )
+    assert alta.status_code == 201, alta.text
+    factura_id = alta.json()["factura_id"]
+    datos = client.get(f"/facturas/{factura_id}").json()
+    cuerpo = {
+        "numero": datos["numero"],
+        "fecha_emision": datos["fecha_emision"],
+        "base_imponible": datos["base_imponible"],
+        "iva": datos["iva"],
+        "irpf": datos["irpf"],
+        "retencion_garantia": datos["retencion_garantia"],
+        "total": datos["total"],
+        "tipo": datos["tipo"],
+        "contrato_id": escenario_factura["contrato_id"],
+        "referencia_alc": "00021",
+        "lineas": [],
+    }
+    usuario = entrar(client, db, rol="administracion")
+    omitir = client.post(f"/facturas/{factura_id}/omitir-certificacion-montaje")
+    assert omitir.status_code == 200, omitir.text
+    assert omitir.json()["certificacion_montaje_omitida"] is True
+    factura = db.get(Factura, factura_id)
+    assert factura is not None
+    db.refresh(factura)
+    assert factura.estado_revision == "pendiente"
+    assert factura.ruta_certificacion is None
+
+    verde = client.post(f"/facturas/{factura_id}/certificar-montaje")
+    assert verde.status_code == 422
+    assert "no es necesaria" in verde.text
+
+    confirmar = client.post(f"/facturas/{factura_id}/confirmar", json=cuerpo)
+    assert confirmar.status_code == 200, confirmar.text
+    db.refresh(factura)
+    assert factura.confirmada_por == usuario.nombre
+    pdf = client.get(f"/facturas/{factura_id}/sello")
+    assert pdf.status_code == 200
+    documento = pymupdf.open(stream=pdf.content, filetype="pdf")
+    try:
+        texto = documento[0].get_text().replace("\xa0", " ").replace("\xad", "-")
+    finally:
+        documento.close()
+    assert "ALC/00021" in texto
+    assert "Certificación de montaje" not in texto

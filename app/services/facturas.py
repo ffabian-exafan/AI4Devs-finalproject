@@ -28,9 +28,17 @@ from app.services.codigo_contrato import (
     codigos_en_texto,
 )
 from app.services.registro import ZONA, registrar
-from app.services.sello_factura import DatosSello, lineas_sello, pdf_con_sello
+from app.services.sello_factura import (
+    VERDE,
+    DatosSello,
+    lineas_certificacion,
+    lineas_sello,
+    pdf_con_sello,
+)
 from app.services.sujeto_pasivo import AVISO_ISP, aviso_de
 from app.schemas.factura import (
+    CertificarMontajeOut,
+    OmitirCertificacionOut,
     ConfirmarFacturaIn,
     ConfirmarFacturaOut,
     ContratoCandidatoFacturaOut,
@@ -201,6 +209,101 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
     )
 
 
+def certificar_montaje(
+    db: Session,
+    factura_id: int,
+    usuario: Usuario,
+) -> CertificarMontajeOut:
+    """Sello verde. No confirma la factura ni entra en el control económico."""
+    factura = db.get(Factura, factura_id)
+    if factura is None:
+        raise ValueError(f"Factura {factura_id} no encontrada")
+    if factura.proyecto_id is None:
+        raise ValueError(f"La factura {factura_id} no tiene proyecto")
+    if factura.estado_revision == "confirmada":
+        raise ValueError("La factura ya está confirmada")
+    if factura.certificacion_montaje_omitida:
+        raise ValueError("Se marcó que la certificación de montaje no es necesaria")
+    if factura.certificacion_montaje_usuario_id is not None:
+        raise ValueError("La certificación de montaje ya está puesta")
+
+    contrato = db.get(Contrato, factura.contrato_id) if factura.contrato_id else None
+    codigo = factura.codigo_contrato or (contrato.codigo if contrato is not None else None)
+    if not codigo:
+        raise ValueError(AVISO_SIN_CODIGO_FACTURA)
+
+    proyecto = db.get(Proyecto, factura.proyecto_id)
+    ahora = datetime.now(ZONA)
+    nombre = (usuario.nombre or "").strip() or "—"
+    origen = almacen_svc.abrir_si_existe(factura.ruta_almacen)
+    contenido = pdf_con_sello(
+        origen,
+        lineas_certificacion(nombre, ahora.astimezone(ZONA).date(), codigo),
+        VERDE,
+    )
+    factura.ruta_certificacion = almacen_svc.guardar(
+        factura.proyecto_id,
+        "factura",
+        factura.id,
+        "certificacion-montaje.pdf",
+        contenido,
+    )
+    factura.certificacion_montaje_por = nombre
+    factura.certificacion_montaje_en = ahora
+    factura.certificacion_montaje_usuario_id = usuario.id
+    registrar(
+        db,
+        usuario,
+        "certificar_montaje",
+        tipo_documento="factura",
+        documento_id=factura.id,
+        etiqueta=f"{factura.numero} · {proyecto.nombre if proyecto is not None else '—'}",
+    )
+    db.commit()
+    return CertificarMontajeOut(
+        ok=True,
+        factura_id=factura.id,
+        tiene_certificacion_montaje=True,
+        certificacion_montaje_por=nombre,
+    )
+
+
+def omitir_certificacion_montaje(
+    db: Session,
+    factura_id: int,
+    usuario: Usuario,
+) -> OmitirCertificacionOut:
+    """El verde no hace falta. El sello azul puede ir después, también la misma persona."""
+    factura = db.get(Factura, factura_id)
+    if factura is None:
+        raise ValueError(f"Factura {factura_id} no encontrada")
+    if factura.proyecto_id is None:
+        raise ValueError(f"La factura {factura_id} no tiene proyecto")
+    if factura.estado_revision == "confirmada":
+        raise ValueError("La factura ya está confirmada")
+    if factura.certificacion_montaje_usuario_id is not None:
+        raise ValueError("La certificación de montaje ya está puesta")
+    if factura.certificacion_montaje_omitida:
+        raise ValueError("Ya está marcado que la certificación de montaje no es necesaria")
+
+    proyecto = db.get(Proyecto, factura.proyecto_id)
+    factura.certificacion_montaje_omitida = True
+    registrar(
+        db,
+        usuario,
+        "omitir_certificacion_montaje",
+        tipo_documento="factura",
+        documento_id=factura.id,
+        etiqueta=f"{factura.numero} · {proyecto.nombre if proyecto is not None else '—'}",
+    )
+    db.commit()
+    return OmitirCertificacionOut(
+        ok=True,
+        factura_id=factura.id,
+        certificacion_montaje_omitida=True,
+    )
+
+
 def confirmar_factura(
     db: Session,
     factura_id: int,
@@ -239,6 +342,21 @@ def confirmar_factura(
             raise ValueError("El contrato no pertenece al contratista de la factura")
         factura.contrato_id = contrato.id
 
+    certificada = (
+        factura.certificacion_montaje_usuario_id is not None
+        and bool(factura.ruta_certificacion)
+    )
+    if not factura.certificacion_montaje_omitida and not certificada:
+        raise ValueError("Falta la certificación de montaje")
+    if certificada and factura.certificacion_montaje_usuario_id == usuario.id:
+        raise ValueError("El sello lo tiene que poner otra persona")
+    if certificada:
+        origen_sello = almacen_svc.abrir_si_existe(factura.ruta_certificacion)
+        if origen_sello is None:
+            raise ValueError("No está el PDF de la certificación de montaje")
+    else:
+        origen_sello = almacen_svc.abrir_si_existe(factura.ruta_almacen)
+
     factura.numero = payload.numero
     factura.fecha_emision = payload.fecha_emision
     factura.base_imponible = payload.base_imponible
@@ -269,8 +387,7 @@ def confirmar_factura(
     proyecto = db.get(Proyecto, factura.proyecto_id)
     ahora = datetime.now(ZONA)
     datos = _datos_sello(db, factura, proyecto, usuario, ahora)
-    origen = almacen_svc.abrir_si_existe(factura.ruta_almacen)
-    contenido = pdf_con_sello(origen, lineas_sello(datos))
+    contenido = pdf_con_sello(origen_sello, lineas_sello(datos))
     factura.ruta_sello = almacen_svc.guardar(
         factura.proyecto_id,
         "factura",
@@ -405,6 +522,7 @@ def borrar_factura(db: Session, factura_id: int, usuario: Usuario) -> None:
     )
     ruta = factura.ruta_almacen
     ruta_sello = factura.ruta_sello
+    ruta_certificacion = factura.ruta_certificacion
     db.query(Factura).filter(Factura.duplicado_de_id == factura.id).update(
         {Factura.duplicado_de_id: None},
         synchronize_session=False,
@@ -420,6 +538,8 @@ def borrar_factura(db: Session, factura_id: int, usuario: Usuario) -> None:
     almacen_svc.borrar_fichero(ruta)
     if ruta_sello != ruta:
         almacen_svc.borrar_fichero(ruta_sello)
+    if ruta_certificacion not in {ruta, ruta_sello}:
+        almacen_svc.borrar_fichero(ruta_certificacion)
 
 
 def guardar_codigo_factura(db: Session, factura_id: int, codigo: str) -> Factura:
@@ -596,6 +716,11 @@ def _a_resumen(factura: Factura) -> FacturaResumenOut:
         aviso_isp=aviso_de(marcada, factura.iva),
         referencia_alc=factura.referencia_alc,
         tiene_sello=bool(factura.ruta_sello),
+        tiene_certificacion_montaje=bool(factura.ruta_certificacion),
+        certificacion_montaje_por=factura.certificacion_montaje_por,
+        certificacion_montaje_en=factura.certificacion_montaje_en,
+        certificacion_montaje_usuario_id=factura.certificacion_montaje_usuario_id,
+        certificacion_montaje_omitida=bool(factura.certificacion_montaje_omitida),
     )
 
 

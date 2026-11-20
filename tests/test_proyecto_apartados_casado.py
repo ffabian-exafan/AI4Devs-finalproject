@@ -404,6 +404,143 @@ def test_contrato_enlaza_varios_apartados(client: TestClient, db: Session):
         borrar_proyecto(db, proyecto.id, _usuario_limpieza(db))
 
 
+def test_un_apartado_se_reparte_entre_contratos(client: TestClient, db: Session):
+    """Las líneas de montaje de un apartado pueden ir a contratos distintos."""
+    from app.models import Contratista, Presupuesto
+    from app.services.proyectos import borrar_proyecto
+
+    proyecto = Proyecto(
+        nombre="Obra ficticia apartado repartido",
+        tipo="llave_en_mano",
+        estado="borrador",
+    )
+    db.add(proyecto)
+    db.flush()
+    nave = Nave(
+        proyecto_id=proyecto.id,
+        codigo="N1",
+        descripcion="Nave ficticia",
+        importe_presupuestado=Decimal("0"),
+    )
+    db.add(nave)
+    db.flush()
+    excel = Presupuesto(
+        proyecto_id=proyecto.id,
+        version=1,
+        fichero_origen="repartido-ficticio.xlsx",
+        estado_extraccion="pendiente",
+        es_escaneado=False,
+        formato="excel_expertis",
+    )
+    db.add(excel)
+    db.flush()
+    apartado, linea_a = _apartado(nave.id, excel.id, "9.1", "200.00")
+    db.add(apartado)
+    db.flush()
+    linea_a.tarea_padre_id = apartado.id
+    linea_b = Tarea(
+        nave_id=nave.id,
+        presupuesto_id=excel.id,
+        tarea_padre_id=apartado.id,
+        codigo="9.1.2",
+        nivel="partida",
+        descripcion="MONTAJE ficticio 9.1.2",
+        importe_presupuestado=Decimal("100.00"),
+        es_montaje=True,
+        tiene_anotacion_manual=False,
+        estado_revision="confirmada",
+        estado="no_iniciada",
+        avance_fisico_pct=Decimal("0"),
+    )
+    material = Tarea(
+        nave_id=nave.id,
+        presupuesto_id=excel.id,
+        tarea_padre_id=apartado.id,
+        codigo="9.1.3",
+        nivel="partida",
+        descripcion="MATERIAL ficticio 9.1.3",
+        importe_presupuestado=Decimal("10.00"),
+        es_montaje=False,
+        tiene_anotacion_manual=False,
+        estado_revision="confirmada",
+        estado="no_iniciada",
+        avance_fisico_pct=Decimal("0"),
+    )
+    db.add_all([linea_a, linea_b, material])
+    nif_a = "B" + uuid.uuid4().hex[:8].upper()
+    nif_b = "B" + uuid.uuid4().hex[:8].upper()
+    uno = Contratista(nif=nif_a, nombre="GREMIO_FICTICIO_A", tipo="externo")
+    dos = Contratista(nif=nif_b, nombre="GREMIO_FICTICIO_B", tipo="externo")
+    db.add_all([uno, dos])
+    db.flush()
+    contrato_a = Contrato(
+        proyecto_id=proyecto.id,
+        nave_id=nave.id,
+        contratista_id=uno.id,
+        precio_total=Decimal("60.00"),
+        fichero_origen="contrato-a-ficticio.md",
+        estado_extraccion="pendiente_revision",
+    )
+    contrato_b = Contrato(
+        proyecto_id=proyecto.id,
+        nave_id=nave.id,
+        contratista_id=dos.id,
+        precio_total=Decimal("30.00"),
+        fichero_origen="contrato-b-ficticio.md",
+        estado_extraccion="pendiente_revision",
+    )
+    db.add_all([contrato_a, contrato_b])
+    db.commit()
+
+    try:
+        enlace_a = client.post(
+            f"/proyectos/{proyecto.id}/contratos/{contrato_a.id}/enlazar-apartado",
+            json={"tarea_apartado_ids": [linea_a.id]},
+        )
+        assert enlace_a.status_code == 200, enlace_a.text
+        enlace_b = client.post(
+            f"/proyectos/{proyecto.id}/contratos/{contrato_b.id}/enlazar-apartado",
+            json={"tarea_apartado_ids": [linea_b.id]},
+        )
+        assert enlace_b.status_code == 200, enlace_b.text
+
+        repetida = client.post(
+            f"/proyectos/{proyecto.id}/contratos/{contrato_b.id}/enlazar-apartado",
+            json={"tarea_apartado_ids": [linea_a.id]},
+        )
+        assert repetida.status_code == 422
+        assert "cubre" in repetida.json()["detail"].lower()
+
+        con_padre = client.post(
+            f"/proyectos/{proyecto.id}/contratos/{contrato_a.id}/enlazar-apartado",
+            json={"tarea_apartado_ids": [apartado.id, linea_a.id]},
+        )
+        assert con_padre.status_code == 422
+        assert "cuelga" in con_padre.json()["detail"].lower()
+
+        material_mal = client.post(
+            f"/proyectos/{proyecto.id}/contratos/{contrato_a.id}/enlazar-apartado",
+            json={"tarea_apartado_ids": [material.id]},
+        )
+        assert material_mal.status_code == 422
+        assert "montaje" in material_mal.json()["detail"].lower()
+
+        control = client.get(f"/proyectos/{proyecto.id}/control-economico")
+        assert control.status_code == 200
+        fila = next(
+            item for item in control.json()["por_apartado"] if item["tarea_id"] == apartado.id
+        )
+        assert Decimal(str(fila["contratado"])) == Decimal("90.00")
+        assert Decimal(str(fila["montaje"])) == Decimal("300.00")
+
+        detalle = client.get(f"/proyectos/{proyecto.id}").json()
+        ficha = next(ap for ap in detalle["apartados"] if ap["id"] == apartado.id)
+        assert {c["id"] for c in ficha["contratos"]} == {contrato_a.id, contrato_b.id}
+        assert sum(Decimal(str(c["contratado"])) for c in ficha["contratos"]) == Decimal("90.00")
+    finally:
+        borrar_proyecto(db, proyecto.id, _usuario_limpieza(db))
+
+
 def test_apartado_de_contrato_exige_explicacion_y_no_descuadra_el_excel(
     client: TestClient,
     db: Session,

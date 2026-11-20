@@ -248,24 +248,35 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         for tarea, parte_c, parte_f in zip(ligados, trozos_c, trozos_f):
             if tarea.presupuesto_id is None or tarea.id not in por_tarea:
                 continue
+            destino = tarea.id
+            while padres.get(destino) is not None:
+                destino = padres[destino]
+            if destino not in por_tarea:
+                continue
+            lista = contratos_por_apartado.setdefault(destino, [])
+            previo = next((item for item in lista if item.id == contrato.id), None)
+            contratado = parte_c if previo is None else previo.contratado + parte_c
+            facturado = parte_f if previo is None else previo.facturado + parte_f
             porcentaje = (
-                (parte_f / parte_c * Decimal("100")) if parte_c != 0 else Decimal("0")
+                (facturado / contratado * Decimal("100")) if contratado != 0 else Decimal("0")
             )
-            contratos_por_apartado.setdefault(tarea.id, []).append(
-                ContratoApartadoOut(
-                    id=contrato.id,
-                    contratista_nombre=(
-                        contrato.contratista.nombre if contrato.contratista else "—"
-                    ),
-                    contratista_nif=(
-                        contrato.contratista.nif if contrato.contratista else "—"
-                    ),
-                    contratado=parte_c,
-                    facturado=parte_f,
-                    pendiente=parte_c - parte_f,
-                    porcentaje_facturado=porcentaje.quantize(Decimal("0.01")),
-                )
+            ficha = ContratoApartadoOut(
+                id=contrato.id,
+                contratista_nombre=(
+                    contrato.contratista.nombre if contrato.contratista else "—"
+                ),
+                contratista_nif=(
+                    contrato.contratista.nif if contrato.contratista else "—"
+                ),
+                contratado=contratado,
+                facturado=facturado,
+                pendiente=contratado - facturado,
+                porcentaje_facturado=porcentaje.quantize(Decimal("0.01")),
             )
+            if previo is None:
+                lista.append(ficha)
+            else:
+                lista[lista.index(previo)] = ficha
 
     def resumen_apartado(ap: Tarea, *, con_contratos: bool) -> ApartadoResumenOut:
         nivel = ap.nivel

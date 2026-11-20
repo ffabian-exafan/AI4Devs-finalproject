@@ -54,14 +54,14 @@ Tras importar un contrato (o al abrir el proyecto):
 1. El sistema propone qué **apartado de presupuesto** encaja con ese contrato (texto del objeto/descripciones del contrato vs. código y descripción del apartado; en MVP reglas + similitud de texto; `pg_trgm` / embeddings cuando haga falta).
 2. La propuesta es una **sugerencia**: no se enlaza sola.
 3. La persona confirma uno o varios apartados: un contrato puede cubrir varios.
-4. Al confirmar se guarda el conjunto en `contrato_apartado` (y `CONTRATO.tarea_apartado_id` queda con el primero del Excel, si hay alguno). La cifra con la que se compara el contrato es la suma de las partidas `es_montaje` de esos apartados, no el total de cada apartado (ese total incluye material). [VERIFICAR] el reparto del precio entre apartados: se prorratea por esa base. [VERIFICAR] si un contrato puede cubrir solo una parte de las líneas de un apartado; de momento cada apartado entra entero.
+4. Al confirmar se guarda el conjunto en `contrato_apartado` (y `CONTRATO.tarea_apartado_id` queda con el primero del Excel, si hay alguno). La cifra con la que se compara el contrato es la suma de las partidas `es_montaje` de lo enlazado, no el total del apartado (ese total incluye material). Un apartado del Excel se desglosa en sus líneas de montaje: cada línea puede ir a un contrato distinto. No se enlaza a la vez el apartado y una línea que cuelga de él, ni la misma línea a dos contratos. En solo gestión el apartado sigue entero y pueden colgar varios contratos. [VERIFICAR] el reparto del precio entre las líneas enlazadas: se prorratea por esa base.
 5. Si el PDF del cliente tiene un apartado que no sale en el Excel, el contrato del proveedor se relaciona con esa línea: se anotan a mano un nombre, un importe y una explicación. Ese importe entra en la base del contrato y esa parte del precio no se carga como descuadre del apartado de Excel.
 
 Reglas:
 
 - Un contrato sin confirmar no cuenta como enlace medido en control económico por apartado.
-- Un mismo contrato puede enlazar varios apartados. En el control, su precio se reparte entre ellos según la base de cada uno (montaje, o el importe del PDF si es solo gestión). [VERIFICAR]
-- Varios contratos pueden apuntar a apartados distintos. En un apartado de solo gestión pueden colgar varios a la vez: lo contratado es la suma de sus precios y se compara con el importe de la línea del PDF. En un apartado del Excel la comparación sigue siendo la suma de montaje.
+- Un mismo contrato puede enlazar varios apartados, o solo algunas líneas de montaje de un apartado. En el control, su precio se reparte entre lo enlazado según la base de cada uno (montaje, o el importe del PDF si es solo gestión). [VERIFICAR]
+- Varios contratos pueden apuntar a líneas distintas del mismo apartado. En un apartado de solo gestión pueden colgar varios a la vez sobre el apartado entero: lo contratado es la suma de sus precios y se compara con el importe de la línea del PDF. En un apartado del Excel la comparación sigue siendo la suma de montaje, y una línea de montaje no va en dos contratos.
 - El desglose del contrato (hijas con precio unitario) no se asume igual al del presupuesto: se muestra aparte hasta confirmar el enlace al apartado padre.
 
 ### 6. Facturas y seguimiento
@@ -70,8 +70,11 @@ Reglas:
 2. El sistema lee el texto nativo o aplica OCR y casa el NIF con `CONTRATISTA`.
 3. Si el texto trae un código de contrato, propone el de la misma obra con ese código. Si el contrato se leyó con el NIF de quien encarga la obra, pasa a quedar a nombre de quien factura. Si no lo trae, avisa y pide el código. Si no hay código y el proveedor solo tiene un contrato en la obra, propone ese.
 4. La factura se registra como `pendiente`; una persona revisa importes, tipo,
-   líneas y contrato antes de confirmarla. Al confirmar aparece un campo para
-   la referencia `ALC/…`. Con eso se genera el PDF con el sello azul.
+   líneas y contrato. Otra persona certifica el montaje: el PDF queda con un
+   sello verde (nombre, fecha y PYCON). Quien confirma es una persona distinta
+   e indica la referencia `ALC/…`. Ese paso añade el sello azul. Se puede
+   marcar que el verde no es necesario: entonces el azul va directo y puede
+   ponerlo la misma persona. [VERIFICAR] no hay rol fijado para cada sello.
 5. Solo las facturas con `estado_revision = "confirmada"` cuentan en el control
    económico y en el seguimiento contratado vs. facturado de cada apartado.
 
@@ -115,8 +118,11 @@ Reglas:
 - `POST /proyectos/{id}/contratos/{contrato_id}/enlazar-apartado` → confirma (o corrige) uno o varios apartados; valida en backend con Pydantic. El body lleva `tarea_apartado_ids` (o `tarea_apartado_id` si es uno solo).
 - `POST /facturas` → extrae una factura y la deja pendiente de revisión.
 - `GET /facturas?proyecto_id={id}` y `GET /facturas/{id}` → listado y revisión.
-- `POST /facturas/{id}/confirmar` → valida y confirma los datos, el contrato y la referencia ALC. Genera el PDF con sello.
-- `GET /facturas/{id}/sello` → descarga ese PDF.
+- `POST /facturas/{id}/certificar-montaje` → estampa el sello verde (nombre, fecha y PYCON). No confirma la factura.
+- `POST /facturas/{id}/omitir-certificacion-montaje` → marca que el sello verde no es necesario. No confirma la factura.
+- `GET /facturas/{id}/certificacion` → descarga el PDF con ese sello verde.
+- `POST /facturas/{id}/confirmar` → exige esa certificación de otra persona, valida los datos, el contrato y la referencia ALC, y añade el sello azul.
+- `GET /facturas/{id}/sello` → descarga el PDF con los dos sellos.
 - `GET /proyectos/{id}/presupuestos/{presupuesto_id}/fichero` (y análogos de contrato y factura) → descarga el documento guardado.
 
 ---
