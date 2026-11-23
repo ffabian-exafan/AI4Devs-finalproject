@@ -28,6 +28,8 @@ Detalle de pantallas y API: `docs/flujo_ui_proyecto.md` (acordado 15 sept. 2026)
 6. El sistema casa cada factura con su contratista (por NIF) y, cuando el desglose lo permite, con su contrato o partida.
 7. Se actualiza el control económico: presupuestado (Excel), montaje, contrato cliente, contratado y facturado.
 
+Hay obras sin presupuesto y sin contrato con el cliente (23 nov. 2026). La persona pone el nombre y sube uno o varios pedidos de compra de serie 1, de la plantilla de Exafan: una sola obra, y cada pedido es una nave. Puede añadir otro pedido después. El contrato con el cliente no entra en la aplicación. Entra la línea cuya descripción empieza por MONTAJE, COLOCACIÓN o INSTALACIÓN, por el importe ya descontado. El material, el transporte y una cita a otro presupuesto se ignoran. Si el texto no cuadra con la plantilla, no se inventan líneas. Lo leído queda pendiente hasta que una persona lo confirma. La nave se nombra con el pedido (`1-` y cinco dígitos) y, si viene, el rótulo (Nave 1, Nave 2). Cada línea es un apartado y puede enlazarse a varios contratos de ese pedido; se compara la suma. El código del contrato trae el pedido más un dígito del 0 al 9. Si ese pedido no es una nave de la obra, el contrato no se guarda ahí.
+
 ## 3. Contexto técnico cerrado
 
 - **Formatos de entrada (presupuestos de origen):** Excel `.xlsx` / `.xlsm` de plantilla Expertis. Un fichero por sistema. La lectura es la rejilla `Cant.` / `Cod.` / `Descripción` / `Ref. (1)` / `Ref. (2)` / `Euros` / `Dto. %` / `TOTAL`. Las hojas `DATA` y `Traduce` no se leen. Si el libro trae a la vez las pestañas `Expertis` y `Presupuesto`, se lee `Expertis`. El PDF al cliente queda como contraste de importes, no como origen del desglose.

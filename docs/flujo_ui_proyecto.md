@@ -118,7 +118,7 @@ Reglas:
 - `POST /proyectos/{id}/contratos/{contrato_id}/enlazar-apartado` → confirma (o corrige) uno o varios apartados; valida en backend con Pydantic. El body lleva `tarea_apartado_ids` (o `tarea_apartado_id` si es uno solo).
 - `POST /facturas` → extrae una factura y la deja pendiente de revisión.
 - `GET /facturas?proyecto_id={id}` y `GET /facturas/{id}` → listado y revisión.
-- `POST /facturas/{id}/certificar-montaje` → estampa el sello verde (nombre, fecha y PYCON). No confirma la factura.
+- `POST /facturas/{id}/certificar-montaje` → estampa el sello verde (nombre, fecha y código: PYCON/PYEQU partido, o el código entero en serie 1). No confirma la factura.
 - `POST /facturas/{id}/omitir-certificacion-montaje` → marca que el sello verde no es necesario. No confirma la factura.
 - `GET /facturas/{id}/certificacion` → descarga el PDF con ese sello verde.
 - `POST /facturas/{id}/confirmar` → exige esa certificación de otra persona, valida los datos, el contrato y la referencia ALC, y añade el sello azul.
@@ -126,6 +126,20 @@ Reglas:
 - `GET /proyectos/{id}/presupuestos/{presupuesto_id}/fichero` (y análogos de contrato y factura) → descarga el documento guardado.
 
 ---
+
+## Obra de serie 1, sin presupuesto
+
+Regla cerrada el 23 nov. 2026. El alta ya está en la pantalla.
+
+- `POST /proyectos/importar-pedidos` → crea la obra desde uno o varios pedidos.
+- `POST /proyectos/{id}/pedidos` → añade otro pedido a la misma obra.
+- `POST /proyectos/{id}/pedidos/{pedido_id}/confirmar` → confirma las líneas leídas.
+
+1. La persona pone el nombre de la obra y sube uno o varios pedidos de compra de la plantilla de Exafan (código, descripción, unidades, precio, descuento e importe). Puede añadir otro pedido a la misma obra más tarde. No hay presupuesto Excel ni contrato con el cliente, y ese contrato no se sube.
+2. Cada pedido (`1-` y cinco dígitos) es una nave. El nombre lleva el número y, si el PDF trae rótulo (Nave 1, Nave 2), también el rótulo.
+3. Entra la línea cuya descripción empieza por MONTAJE, COLOCACIÓN o INSTALACIÓN. El importe es la columna Importe, ya con el descuento. El material, el transporte y una cita a otro presupuesto se ignoran. Si el texto no cuadra con la plantilla, no se inventan líneas.
+4. Lo leído queda pendiente hasta que una persona confirma las líneas. Cada línea confirmada es un apartado de esa nave.
+5. El contrato con el proveedor trae el código impreso: el pedido más un dígito del 0 al 9. Puede enlazarse a varias líneas de ese pedido; se compara la suma de contratos con el importe de cada línea. Si el pedido del código no es una nave de la obra, el contrato no se guarda ahí. El sello de la factura muestra el código entero.
 
 ## Qué no hace este flujo
 

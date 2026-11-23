@@ -220,3 +220,9 @@ def test_el_alta_ofrece_el_pedido_de_compra():
     assert "Pedido de compra" in html
     assert "/proyectos/importar-pedidos" in js
     assert "/confirmar" in js
+
+
+def test_el_flujo_ya_no_dice_que_falta_la_pantalla():
+    texto = Path("docs/flujo_ui_proyecto.md").read_text(encoding="utf-8")
+    assert "La pantalla de alta desde el pedido no está construida." not in texto
+    assert "POST /proyectos/importar-pedidos" in texto
