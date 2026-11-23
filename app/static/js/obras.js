@@ -50,6 +50,7 @@ function gestionObras() {
     visorPdf: null,
     sobreDrop: false,
     nombreObra: "",
+    origenAlta: "excel",
     contraste: null,
     contrasteIndice: 0,
     pdfSinBloque: true,
@@ -335,13 +336,60 @@ function gestionObras() {
 
     async elegirExcel(event) {
       const lista = await this._ficherosDeInput(event);
-      if (lista.length) this.leerExcel(lista);
+      if (!lista.length) return;
+      if (this.origenAlta === "pedido") this.leerPedidos(lista);
+      else this.leerExcel(lista);
     },
 
     async soltarExcel(event) {
       this.sobreDrop = false;
       const lista = await this._ficherosSoltados(event);
-      if (lista.length) this.leerExcel(lista);
+      if (!lista.length) return;
+      if (this.origenAlta === "pedido") this.leerPedidos(lista);
+      else this.leerExcel(lista);
+    },
+
+    async leerPedidos(lista) {
+      if (this.up === "reading") return;
+      const nombre = (this.nombreObra || "").trim();
+      if (!this.proyectoId && !nombre) {
+        this.error = "Escribe el nombre de la obra antes de subir los pedidos.";
+        return;
+      }
+      this.screen = "presupuestos";
+      this.up = "reading";
+      this.ficheroNombre = lista.map((fichero) => fichero.name).join(", ");
+      this.error = "";
+      const fd = new FormData();
+      try {
+        let alta;
+        if (this.proyectoId) {
+          fd.append("fichero", lista[0], lista[0].name);
+          alta = await GestorApi.postForm("/proyectos/" + this.proyectoId + "/pedidos", fd);
+        } else {
+          fd.append("nombre", nombre);
+          lista.forEach((fichero) => fd.append("ficheros", fichero, fichero.name));
+          alta = await GestorApi.postForm("/proyectos/importar-pedidos", fd);
+        }
+        this.proyectoId = alta.proyecto_id;
+        await this._cargarVistaProyecto(alta.proyecto_id);
+      } catch (err) {
+        this.error = err.message || "No se ha podido leer el pedido";
+      }
+      this.up = "empty";
+    },
+
+    async confirmarPedido(pedido) {
+      this.error = "";
+      try {
+        await GestorApi.postJson(
+          "/proyectos/" + this.proyectoId + "/pedidos/" + pedido.pedido_id + "/confirmar",
+          {}
+        );
+        await this._cargarVistaProyecto(this.proyectoId);
+      } catch (err) {
+        this.error = err.message || "No se ha podido confirmar el pedido";
+      }
     },
 
     async leerExcel(lista) {
@@ -1536,6 +1584,7 @@ function gestionObras() {
       const naves = (control.por_nave || []).length;
       const contrasteCliente = this._contarContrastados(apartados);
       return {
+        pedidos: proyecto.pedidos || [],
         pasos: [
           {
             id: "presupuestos",

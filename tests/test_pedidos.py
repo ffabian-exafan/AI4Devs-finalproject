@@ -212,3 +212,11 @@ def test_dos_proveedores_comparten_la_linea_confirmada(db: Session):
         == 2
     )
     borrar_proyecto(db, alta.proyecto_id, usuario)
+
+
+def test_el_alta_ofrece_el_pedido_de_compra():
+    html = Path("app/static/index.html").read_text(encoding="utf-8")
+    js = Path("app/static/js/obras.js").read_text(encoding="utf-8")
+    assert "Pedido de compra" in html
+    assert "/proyectos/importar-pedidos" in js
+    assert "/confirmar" in js
