@@ -221,7 +221,7 @@ def enlazar_contrato_apartado(
             )
         )
     de_excel = [ap for ap in apartados if ap.presupuesto_id is not None]
-    contrato.tarea_apartado_id = de_excel[0].id if de_excel else None
+    contrato.tarea_apartado_id = de_excel[0].id if de_excel else apartados[0].id
     db.add(contrato)
     db.commit()
     db.refresh(contrato)
@@ -405,6 +405,19 @@ def _validar_enlace(
         raise ValueError(f"Apartado {tarea_id} no encontrado")
     if apartado.presupuesto_id is not None:
         return _validar_apartado(db, proyecto_id, tarea_id, padres)
+    if apartado.pedido_id is not None:
+        nave = db.get(Nave, apartado.nave_id)
+        if nave is None or nave.proyecto_id != proyecto_id:
+            raise ValueError("El apartado no pertenece a este proyecto")
+        if apartado.nivel != "apartado" or apartado.tarea_padre_id is not None:
+            raise ValueError("Solo se puede enlazar un apartado del pedido")
+        if apartado.estado_revision != "confirmada":
+            raise ValueError("La línea del pedido sigue pendiente de revisión")
+        from app.services.codigo_contrato import pedido_de_codigo
+
+        if pedido_de_codigo(contrato.codigo or "") != nave.codigo:
+            raise ValueError("El contrato no es de esta nave")
+        return apartado
     if (
         apartado.contrato_id != contrato.id
         or apartado.tarea_padre_id is not None

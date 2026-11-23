@@ -8,7 +8,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import Contrato, Contratista, Nave, Pedido, Proyecto, RegistroAccion, Tarea, Usuario
+from app.models import Contrato, ContratoApartado, Contratista, Nave, Pedido, Proyecto, RegistroAccion, Tarea, Usuario
+from app.services.casado import enlazar_contrato_apartado
 from app.models.registro_accion import ACCIONES
 from app.services.pedidos import anadir_pedido, confirmar_pedido, importar_pedidos
 from app.services.proyectos import asignar_codigo_contrato, borrar_proyecto, obtener_proyecto
@@ -185,4 +186,29 @@ def test_rechaza_el_contrato_de_otro_pedido(db: Session):
     db.refresh(contrato)
     assert contrato.codigo == "1-100010"
     assert contrato.nave_id == db.query(Pedido).filter(Pedido.numero == "1-10001").one().nave_id
+    borrar_proyecto(db, alta.proyecto_id, usuario)
+
+
+def test_dos_proveedores_comparten_la_linea_confirmada(db: Session):
+    usuario = _usuario(db)
+    alta = importar_pedidos(
+        db,
+        "Obra de dos proveedores",
+        [("nave.pdf", pdf_pedido(
+            [("SER02010001", "MONTAJE DE EJEMPLO", "1,00", "10,00", "0", "10,00")],
+        ))],
+    )
+    pedido = db.query(Pedido).filter(Pedido.proyecto_id == alta.proyecto_id).one()
+    linea = db.query(Tarea).filter(Tarea.pedido_id == pedido.id).one()
+    uno = _contrato_minimo(db, alta.proyecto_id, codigo="1-100010", nif="B00000000")
+    with pytest.raises(ValueError, match="pendiente"):
+        enlazar_contrato_apartado(db, alta.proyecto_id, uno.id, [linea.id])
+    confirmar_pedido(db, alta.proyecto_id, pedido.id, usuario)
+    dos = _contrato_minimo(db, alta.proyecto_id, codigo="1-100011", nif="B00000001")
+    enlazar_contrato_apartado(db, alta.proyecto_id, uno.id, [linea.id])
+    enlazar_contrato_apartado(db, alta.proyecto_id, dos.id, [linea.id])
+    assert (
+        db.query(ContratoApartado).filter(ContratoApartado.tarea_id == linea.id).count()
+        == 2
+    )
     borrar_proyecto(db, alta.proyecto_id, usuario)
