@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.config import get_settings
 
-_TIPOS = frozenset({"presupuesto", "contrato", "factura", "carta_isp", "parte"})
+_TIPOS = frozenset({"presupuesto", "contrato", "factura", "carta_isp", "parte", "pedido"})
 _RE_NOMBRE = re.compile(r"[^\w.\-]+", re.UNICODE)
 
 

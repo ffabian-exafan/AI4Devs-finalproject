@@ -8,6 +8,7 @@ from app.models.factura import Factura, LineaFactura
 from app.models.linea_mano_obra import LineaManoObra
 from app.models.linea_pdf_cliente import LineaPdfCliente, LineaPdfClienteTarea
 from app.models.parte_trabajo import ParteTrabajo
+from app.models.pedido import Pedido
 from app.models.nave import Nave
 from app.models.presupuesto import Presupuesto
 from app.models.proyecto import Proyecto
@@ -27,6 +28,7 @@ __all__ = [
     "LineaManoObra",
     "LineaPdfCliente",
     "ParteTrabajo",
+    "Pedido",
     "LineaPdfClienteTarea",
     "Nave",
     "Presupuesto",

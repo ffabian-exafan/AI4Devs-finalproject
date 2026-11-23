@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.contratista import Contratista
     from app.models.contrato import Contrato
     from app.models.nave import Nave
+    from app.models.pedido import Pedido
     from app.models.presupuesto import Presupuesto
 
 
@@ -30,6 +31,11 @@ class Tarea(Base):
     # Origen si viene del presupuesto
     presupuesto_id: Mapped[int | None] = mapped_column(
         ForeignKey("presupuesto.id"),
+        nullable=True,
+        index=True,
+    )
+    pedido_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pedido.id"),
         nullable=True,
         index=True,
     )
@@ -102,6 +108,7 @@ class Tarea(Base):
 
     nave: Mapped[Nave] = relationship(back_populates="tareas")
     presupuesto: Mapped[Presupuesto | None] = relationship(back_populates="tareas")
+    pedido: Mapped[Pedido | None] = relationship(back_populates="tareas")
     contrato: Mapped[Contrato | None] = relationship(
         back_populates="tareas",
         foreign_keys=[contrato_id],
