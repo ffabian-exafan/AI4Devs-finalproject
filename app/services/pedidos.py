@@ -10,6 +10,7 @@ from app.models import Contrato, Nave, Pedido, Presupuesto, Proyecto, Tarea, Usu
 from app.schemas.pedido import ImportarPedidosOut, LineaPedidoOut, NavePedidoOut
 from app.services import almacen as almacen_svc
 from app.services.pedido_compra import LecturaPedido, leer_pedido
+from app.services.codigo_contrato import pedido_de_codigo
 from app.services.registro import registrar
 
 _AVISO_SIN_LINEAS = "El pedido no trae líneas de montaje ni de instalación"
@@ -216,3 +217,18 @@ def confirmar_pedido(db: Session, proyecto_id: int, pedido_id: int, usuario: Usu
     db.commit()
     db.refresh(pedido)
     return pedido
+
+
+def exigir_nave_del_codigo(db: Session, proyecto_id: int, codigo: str) -> Nave | None:
+    """Serie 1: el pedido del código tiene que ser ya una nave de la obra."""
+    numero = pedido_de_codigo(codigo)
+    if numero is None:
+        return None
+    nave = (
+        db.query(Nave)
+        .filter(Nave.proyecto_id == proyecto_id, Nave.codigo == numero)
+        .first()
+    )
+    if nave is None:
+        raise ValueError(f"El pedido {numero} no es una nave de esta obra")
+    return nave

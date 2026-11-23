@@ -752,7 +752,12 @@ def asignar_codigo_contrato(
     )
     if otro is not None:
         raise ValueError("Ese código ya está en otro contrato.")
+    from app.services.pedidos import exigir_nave_del_codigo
+
+    nave = exigir_nave_del_codigo(db, proyecto_id, codigo)
     contrato.codigo = codigo
+    if nave is not None:
+        contrato.nave_id = nave.id
     if contrato.aviso in {AVISO_SIN_CODIGO, AVISO_VARIOS, AVISO_REPETIDO}:
         contrato.aviso = None
     pendientes = (

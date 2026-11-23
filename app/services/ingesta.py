@@ -410,6 +410,12 @@ def persistir_contrato(
     )
     _guardar_sugerencia_modelo(contrato, extraido)
     _aplicar_codigo_leido(db, contrato, texto)
+    if contrato.codigo is not None:
+        from app.services.pedidos import exigir_nave_del_codigo
+
+        nave_codigo = exigir_nave_del_codigo(db, proyecto.id, contrato.codigo)
+        if nave_codigo is not None:
+            contrato.nave_id = nave_codigo.id
 
     for nodo in extraido.arbol_tareas:
         _persistir_nodo_tarea(

@@ -8,10 +8,10 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import Pedido, Proyecto, RegistroAccion, Tarea, Usuario
+from app.models import Contrato, Contratista, Nave, Pedido, Proyecto, RegistroAccion, Tarea, Usuario
 from app.models.registro_accion import ACCIONES
 from app.services.pedidos import anadir_pedido, confirmar_pedido, importar_pedidos
-from app.services.proyectos import borrar_proyecto, obtener_proyecto
+from app.services.proyectos import asignar_codigo_contrato, borrar_proyecto, obtener_proyecto
 from app.services.registro import ETIQUETAS
 from tests.pdf_pedido import pdf_pedido
 
@@ -137,4 +137,52 @@ def test_el_detalle_enseña_el_apartado_del_pedido(db: Session):
     assert detalle.pedidos[0].estado_revision == "pendiente"
     assert detalle.naves[0].codigo == "1-10001"
     assert detalle.naves[0].descripcion == "NAVE 1"
+    borrar_proyecto(db, alta.proyecto_id, usuario)
+
+
+def _contrato_minimo(
+    db: Session,
+    proyecto_id: int,
+    codigo: str | None = None,
+    nif: str = "B00000000",
+):
+    contratista = db.query(Contratista).filter(Contratista.nif == nif).first()
+    if contratista is None:
+        contratista = Contratista(nif=nif, nombre="Proveedor Ejemplo", tipo="externo")
+        db.add(contratista)
+        db.flush()
+    nave = db.query(Nave).filter(Nave.proyecto_id == proyecto_id).order_by(Nave.id).first()
+    contrato = Contrato(
+        proyecto_id=proyecto_id,
+        nave_id=nave.id,
+        contratista_id=contratista.id,
+        precio_total=Decimal("10.00"),
+        fichero_origen="contrato-ficticio.pdf",
+        estado_extraccion="pendiente_revision",
+        codigo=codigo,
+    )
+    db.add(contrato)
+    db.commit()
+    db.refresh(contrato)
+    return contrato
+
+
+def test_rechaza_el_contrato_de_otro_pedido(db: Session):
+    usuario = _usuario(db)
+    alta = importar_pedidos(
+        db,
+        "Obra de un pedido",
+        [("nave.pdf", pdf_pedido(
+            [("SER02010001", "MONTAJE DE EJEMPLO", "1,00", "10,00", "0", "10,00")],
+        ))],
+    )
+    contrato = _contrato_minimo(db, alta.proyecto_id)
+    with pytest.raises(ValueError, match="1-10099"):
+        asignar_codigo_contrato(db, alta.proyecto_id, contrato.id, "1-100990")
+    db.refresh(contrato)
+    assert contrato.codigo is None
+    asignar_codigo_contrato(db, alta.proyecto_id, contrato.id, "1-100010")
+    db.refresh(contrato)
+    assert contrato.codigo == "1-100010"
+    assert contrato.nave_id == db.query(Pedido).filter(Pedido.numero == "1-10001").one().nave_id
     borrar_proyecto(db, alta.proyecto_id, usuario)
