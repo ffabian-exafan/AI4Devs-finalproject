@@ -24,7 +24,8 @@ _RELLENO = 3
 _UMBRAL_TINTA = 245
 _CELDA = 4
 _IMAGENES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
-_CODIGO = re.compile(r"^(PYCON|PYEQU|1-)(\d{6})", re.IGNORECASE)
+_CODIGO = re.compile(r"^(PYCON|PYEQU)(\d{6})", re.IGNORECASE)
+_SERIE_1 = re.compile(r"^1-\d{6}(?:ADM)?$", re.IGNORECASE)
 _FUENTES = (
     Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arial.ttf",
     Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
@@ -72,9 +73,13 @@ def linea_codigo(codigo: str | None) -> str:
     """PYCON/123 - TRABAJO/45 a partir de PYCON123456.
 
     Los 3 primeros dígitos son el proyecto y el 4º y el 5º el trabajo.
-    El 6º no se imprime. [VERIFICAR] un pedido de serie 1 usa el prefijo 1-.
+    El 6º no se imprime. En serie 1 el sello lleva el código entero
+    (pedido de cinco dígitos más el dígito de contrato).
     """
-    hallazgo = _CODIGO.match((codigo or "").strip().upper())
+    texto = re.sub(r"\s+", "", codigo or "").upper()
+    if _SERIE_1.fullmatch(texto):
+        return texto
+    hallazgo = _CODIGO.match(texto)
     if hallazgo is None:
         return "PYCON/— - TRABAJO/—"
     prefijo, digitos = hallazgo.group(1), hallazgo.group(2)

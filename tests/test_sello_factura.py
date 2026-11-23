@@ -24,7 +24,8 @@ def _plano(texto: str) -> str:
 def test_el_codigo_se_parte_en_proyecto_y_trabajo():
     assert linea_codigo("PYCON123456") == "PYCON/123 - TRABAJO/45"
     assert linea_codigo("pyequ123456adm") == "PYEQU/123 - TRABAJO/45"
-    assert linea_codigo("1-123456") == "1-/123 - TRABAJO/45"
+    assert linea_codigo("1-100010") == "1-100010"
+    assert linea_codigo("1-100011adm") == "1-100011ADM"
     assert linea_codigo(None) == "PYCON/— - TRABAJO/—"
     assert linea_codigo("no-es-codigo") == "PYCON/— - TRABAJO/—"
 

@@ -41,7 +41,7 @@ class Contrato(Base):
     )
     # Texto libre al nº de presupuesto
     referencia_presupuesto: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # PYCON/PYEQU + 6 dígitos, o 1- + 6 dígitos. ADM si es por administración.
+    # PYCON/PYEQU + 6 dígitos, o serie 1: 1- + 5 del pedido + 1 de contrato. ADM si es por administración.
     codigo: Mapped[str | None] = mapped_column(String(16), nullable=True, unique=True)
     # Apartado de presupuesto enlazado tras sugerencia + confirmación humana
     tarea_apartado_id: Mapped[int | None] = mapped_column(
