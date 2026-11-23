@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from sqlalchemy import bindparam, func, text
+from sqlalchemy import bindparam, func, or_, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
@@ -11,6 +11,7 @@ from app.models import (
     Factura,
     LineaPdfCliente,
     Nave,
+    Pedido,
     Presupuesto,
     Proyecto,
     Tarea,
@@ -22,6 +23,7 @@ from app.services.codigo_contrato import (
     AVISO_VARIOS,
 )
 from app.services.registro import registrar
+from app.schemas.pedido import LineaPedidoOut, NavePedidoOut
 from app.schemas.proyecto import (
     ApartadoContratoOut,
     ApartadoEnlaceOut,
@@ -76,7 +78,7 @@ def _presupuestado_raices(db: Session, proyecto_ids: list[int]) -> dict[int, Dec
         .join(Nave, Tarea.nave_id == Nave.id)
         .filter(
             Nave.proyecto_id.in_(proyecto_ids),
-            Tarea.presupuesto_id.isnot(None),
+            or_(Tarea.presupuesto_id.isnot(None), Tarea.pedido_id.isnot(None)),
         )
         .all()
     )
@@ -92,6 +94,43 @@ def _presupuestado_raices(db: Session, proyecto_ids: list[int]) -> dict[int, Dec
             Decimal("0"),
         )
     return totales
+
+
+def _pedidos_del_detalle(
+    db: Session,
+    proyecto_id: int,
+    tareas: list[Tarea],
+) -> list[NavePedidoOut]:
+    pedidos = (
+        db.query(Pedido)
+        .filter(Pedido.proyecto_id == proyecto_id)
+        .order_by(Pedido.numero)
+        .all()
+    )
+    salida: list[NavePedidoOut] = []
+    for pedido in pedidos:
+        lineas = [tarea for tarea in tareas if tarea.pedido_id == pedido.id]
+        salida.append(
+            NavePedidoOut(
+                pedido_id=pedido.id,
+                nave_id=pedido.nave_id,
+                numero=pedido.numero,
+                rotulo=pedido.rotulo,
+                aviso=pedido.aviso,
+                estado_revision=pedido.estado_revision,
+                lineas=[
+                    LineaPedidoOut(
+                        tarea_id=tarea.id,
+                        codigo=tarea.codigo,
+                        descripcion=tarea.descripcion,
+                        importe=tarea.importe_presupuestado,
+                        estado_revision=tarea.estado_revision,
+                    )
+                    for tarea in lineas
+                ],
+            )
+        )
+    return salida
 
 
 def _facturado_confirmado(db: Session, proyecto_ids: list[int]) -> dict[int, Decimal]:
@@ -143,7 +182,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
             db.query(Tarea)
             .filter(
                 Tarea.nave_id.in_(nave_ids),
-                Tarea.presupuesto_id.isnot(None),
+                or_(Tarea.presupuesto_id.isnot(None), Tarea.pedido_id.isnot(None)),
             )
             .order_by(Tarea.codigo, Tarea.id)
             .all()
@@ -454,6 +493,7 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         tiene_carta_isp=bool(proyecto.ruta_carta_isp),
         fichero_carta_isp=proyecto.fichero_carta_isp,
         mano_obra=mano_obra_svc.bloque(db, proyecto.id),
+        pedidos=_pedidos_del_detalle(db, proyecto_id, tareas_presupuesto),
     )
 
 

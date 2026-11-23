@@ -11,7 +11,7 @@ from app.db import SessionLocal
 from app.models import Pedido, Proyecto, RegistroAccion, Tarea, Usuario
 from app.models.registro_accion import ACCIONES
 from app.services.pedidos import anadir_pedido, confirmar_pedido, importar_pedidos
-from app.services.proyectos import borrar_proyecto
+from app.services.proyectos import borrar_proyecto, obtener_proyecto
 from app.services.registro import ETIQUETAS
 from tests.pdf_pedido import pdf_pedido
 
@@ -117,4 +117,24 @@ def test_confirmar_deja_la_linea_lista_para_el_contrato(db: Session):
         .one()
     )
     assert fila.documento_id == pedido.id
+    borrar_proyecto(db, alta.proyecto_id, usuario)
+
+
+def test_el_detalle_enseña_el_apartado_del_pedido(db: Session):
+    usuario = _usuario(db)
+    alta = importar_pedidos(
+        db,
+        "Obra con detalle",
+        [("nave.pdf", pdf_pedido(
+            [("SER02010001", "MONTAJE DE EJEMPLO", "1,00", "10,00", "0", "40,00")],
+            rotulo="NAVE 1",
+        ))],
+    )
+    detalle = obtener_proyecto(db, alta.proyecto_id)
+    assert detalle.apartados[0].descripcion == "MONTAJE DE EJEMPLO"
+    assert detalle.apartados[0].importe_presupuestado == Decimal("40.00")
+    assert detalle.pedidos[0].numero == "1-10001"
+    assert detalle.pedidos[0].estado_revision == "pendiente"
+    assert detalle.naves[0].codigo == "1-10001"
+    assert detalle.naves[0].descripcion == "NAVE 1"
     borrar_proyecto(db, alta.proyecto_id, usuario)

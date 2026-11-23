@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.casado import SugerenciaApartadoOut
 from app.schemas.mano_obra import ManoObraOut
+from app.schemas.pedido import NavePedidoOut
 from app.schemas.presupuesto import ContrastarClienteOut
 from app.schemas.tipos import Money
 
@@ -150,3 +151,4 @@ class ProyectoDetalleOut(ProyectoRead):
     tiene_carta_isp: bool = False
     fichero_carta_isp: str | None = None
     mano_obra: ManoObraOut = Field(default_factory=ManoObraOut)
+    pedidos: list[NavePedidoOut] = Field(default_factory=list)
