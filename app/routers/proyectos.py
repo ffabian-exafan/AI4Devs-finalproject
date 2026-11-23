@@ -299,6 +299,26 @@ def descargar_pedido(
     return _responder_fichero(doc.ruta_almacen, doc.fichero_origen, ver=ver)
 
 
+@router.post("/proyectos/{proyecto_id}/pedidos/{pedido_id}/confirmar")
+def confirmar_pedido(
+    proyecto_id: int,
+    pedido_id: int,
+    db: Session = Depends(get_db),
+    actual: Usuario = Depends(usuario_actual),
+):
+    try:
+        pedido = pedidos_svc.confirmar_pedido(db, proyecto_id, pedido_id, actual)
+    except ValueError as exc:
+        detail = str(exc)
+        codigo = (
+            status.HTTP_404_NOT_FOUND
+            if "no encontrado" in detail.lower()
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=codigo, detail=detail) from exc
+    return {"pedido_id": pedido.id, "estado_revision": pedido.estado_revision}
+
+
 @router.post(
     "/proyectos/{proyecto_id}/contrastar-presupuesto-cliente",
     response_model=ContrastarClienteOut,

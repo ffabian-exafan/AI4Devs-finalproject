@@ -30,6 +30,7 @@ ETIQUETAS = {
     "borrar_linea_mano_obra": "Borró la línea de mano de obra",
     "confirmar_parte": "Confirmó el parte",
     "borrar_parte": "Borró el parte",
+    "confirmar_pedido": "Confirmó el pedido",
 }
 
 if set(ETIQUETAS) != set(ACCIONES):

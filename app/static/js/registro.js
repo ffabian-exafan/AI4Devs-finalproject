@@ -19,6 +19,7 @@ function consultaRegistro() {
     ["borrar_linea_mano_obra", "Borró la línea de mano de obra"],
     ["confirmar_parte", "Confirmó el parte"],
     ["borrar_parte", "Borró el parte"],
+    ["confirmar_pedido", "Confirmó el pedido"],
   ];
   const tipos = [
     ["presupuesto", "Presupuesto"],
@@ -26,6 +27,7 @@ function consultaRegistro() {
     ["factura", "Factura"],
     ["proyecto", "Proyecto"],
     ["tarea", "Tarea"],
+    ["pedido", "Pedido"],
   ];
 
   return {

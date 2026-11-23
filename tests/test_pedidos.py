@@ -8,9 +8,11 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import Pedido, Proyecto, Tarea, Usuario
-from app.services.pedidos import anadir_pedido, importar_pedidos
+from app.models import Pedido, Proyecto, RegistroAccion, Tarea, Usuario
+from app.models.registro_accion import ACCIONES
+from app.services.pedidos import anadir_pedido, confirmar_pedido, importar_pedidos
 from app.services.proyectos import borrar_proyecto
+from app.services.registro import ETIQUETAS
 from tests.pdf_pedido import pdf_pedido
 
 
@@ -86,3 +88,33 @@ def test_la_plantilla_rota_no_crea_la_obra(db: Session):
             ))],
         )
     assert db.query(Proyecto).filter(Proyecto.nombre == "Obra que no debe quedar").count() == 0
+
+
+def test_confirmar_deja_la_linea_lista_para_el_contrato(db: Session):
+    usuario = _usuario(db)
+    alta = importar_pedidos(
+        db,
+        "Obra a confirmar",
+        [("nave.pdf", pdf_pedido(
+            [("SER02010001", "MONTAJE DE EJEMPLO", "1,00", "10,00", "0", "10,00")],
+        ))],
+    )
+    pedido = db.query(Pedido).filter(Pedido.proyecto_id == alta.proyecto_id).one()
+    confirmar_pedido(db, alta.proyecto_id, pedido.id, usuario)
+    db.refresh(pedido)
+    assert pedido.estado_revision == "confirmada"
+    assert db.get(Proyecto, alta.proyecto_id).estado == "en_curso"
+    linea = db.query(Tarea).filter(Tarea.pedido_id == pedido.id).one()
+    assert linea.estado_revision == "confirmada"
+    assert "confirmar_pedido" in ACCIONES
+    assert ETIQUETAS["confirmar_pedido"] == "Confirmó el pedido"
+    fila = (
+        db.query(RegistroAccion)
+        .filter(
+            RegistroAccion.accion == "confirmar_pedido",
+            RegistroAccion.documento_id == pedido.id,
+        )
+        .one()
+    )
+    assert fila.documento_id == pedido.id
+    borrar_proyecto(db, alta.proyecto_id, usuario)

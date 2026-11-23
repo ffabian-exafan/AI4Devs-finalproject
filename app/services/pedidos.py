@@ -6,10 +6,11 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Nave, Pedido, Presupuesto, Proyecto, Tarea
+from app.models import Contrato, Nave, Pedido, Presupuesto, Proyecto, Tarea, Usuario
 from app.schemas.pedido import ImportarPedidosOut, LineaPedidoOut, NavePedidoOut
 from app.services import almacen as almacen_svc
 from app.services.pedido_compra import LecturaPedido, leer_pedido
+from app.services.registro import registrar
 
 _AVISO_SIN_LINEAS = "El pedido no trae líneas de montaje ni de instalación"
 
@@ -171,3 +172,47 @@ def _guardar(
         estado_revision=pedido.estado_revision,
         lineas=lineas,
     )
+
+
+def confirmar_pedido(db: Session, proyecto_id: int, pedido_id: int, usuario: Usuario) -> Pedido:
+    """Pasa el pedido y sus líneas a confirmada. La obra sigue si queda algo pendiente."""
+    pedido = db.get(Pedido, pedido_id)
+    if pedido is None or pedido.proyecto_id != proyecto_id:
+        raise ValueError(f"Pedido {pedido_id} no encontrado")
+    pedido.estado_revision = "confirmada"
+    for tarea in db.query(Tarea).filter(Tarea.pedido_id == pedido.id).all():
+        tarea.estado_revision = "confirmada"
+    db.flush()
+    pendientes = (
+        db.query(Pedido)
+        .filter(Pedido.proyecto_id == proyecto_id, Pedido.estado_revision == "pendiente")
+        .count()
+    )
+    otros_presupuestos = (
+        db.query(Presupuesto)
+        .filter(
+            Presupuesto.proyecto_id == proyecto_id,
+            Presupuesto.estado_extraccion == "pendiente_revision",
+        )
+        .count()
+    )
+    otros_contratos = (
+        db.query(Contrato)
+        .filter(
+            Contrato.proyecto_id == proyecto_id,
+            Contrato.estado_extraccion == "pendiente_revision",
+        )
+        .count()
+    )
+    proyecto = db.get(Proyecto, proyecto_id)
+    if (
+        proyecto is not None
+        and pendientes == 0
+        and otros_presupuestos == 0
+        and otros_contratos == 0
+    ):
+        proyecto.estado = "en_curso"
+    registrar(db, usuario, "confirmar_pedido", "pedido", pedido.id, pedido.numero)
+    db.commit()
+    db.refresh(pedido)
+    return pedido

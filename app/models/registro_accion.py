@@ -26,6 +26,7 @@ ACCIONES = (
     "borrar_linea_mano_obra",
     "confirmar_parte",
     "borrar_parte",
+    "confirmar_pedido",
 )
 
 
