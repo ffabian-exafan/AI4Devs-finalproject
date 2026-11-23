@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import usuario_actual
-from app.models import Contrato, Factura, Presupuesto, Usuario
+from app.models import Contrato, Factura, Pedido, Presupuesto, Usuario
 from app.schemas.casado import (
     ApartadoEnlazadoOut,
     DesenlazarApartadoOut,
@@ -17,6 +17,7 @@ from app.schemas.casado import (
 )
 from app.schemas.contrato import CodigoContratoIn, CodigoContratoOut, ImportarContratoOut
 from app.schemas.control_economico import ControlEconomicoOut
+from app.schemas.pedido import ImportarPedidosOut
 from app.schemas.presupuesto import (
     ContrastarClienteOut,
     ImporteClienteIn,
@@ -36,6 +37,7 @@ from app.services import economico as economico_svc
 from app.services import ingesta as ingesta_svc
 from app.services import linea_pdf_manual as linea_pdf_manual_svc
 from app.services import lineas as lineas_svc
+from app.services import pedidos as pedidos_svc
 from app.services import presupuesto_excel as presupuesto_excel_svc
 from app.services import proyectos as proyectos_svc
 from app.services import solo_gestion as solo_gestion_svc
@@ -235,6 +237,66 @@ async def anadir_presupuesto_excel(
             else status.HTTP_422_UNPROCESSABLE_ENTITY
         )
         raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+@router.post(
+    "/proyectos/importar-pedidos",
+    response_model=ImportarPedidosOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def importar_pedidos(
+    nombre: str = Form(...),
+    ficheros: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+) -> ImportarPedidosOut:
+    pares = await _leer_excels(ficheros)
+    try:
+        return pedidos_svc.importar_pedidos(db, nombre, pares)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/pedidos",
+    response_model=ImportarPedidosOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def anadir_pedido(
+    proyecto_id: int,
+    fichero: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> ImportarPedidosOut:
+    pares = await _leer_excels([fichero])
+    try:
+        nombre_f, contenido = pares[0]
+        return pedidos_svc.anadir_pedido(db, proyecto_id, nombre_f, contenido)
+    except ValueError as exc:
+        detail = str(exc)
+        codigo = (
+            status.HTTP_404_NOT_FOUND
+            if "no encontrado" in detail.lower()
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=codigo, detail=detail) from exc
+
+
+@router.get("/proyectos/{proyecto_id}/pedidos/{pedido_id}/fichero")
+def descargar_pedido(
+    proyecto_id: int,
+    pedido_id: int,
+    ver: bool = False,
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    doc = db.get(Pedido, pedido_id)
+    if doc is None or doc.proyecto_id != proyecto_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pedido no encontrado",
+        )
+    return _responder_fichero(doc.ruta_almacen, doc.fichero_origen, ver=ver)
 
 
 @router.post(

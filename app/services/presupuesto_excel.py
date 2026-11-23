@@ -11,7 +11,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import LineaPdfCliente, LineaPdfClienteTarea, Nave, Presupuesto, Proyecto, Tarea, Usuario
+from app.models import LineaPdfCliente, LineaPdfClienteTarea, Nave, Pedido, Presupuesto, Proyecto, Tarea, Usuario
 from app.schemas.presupuesto import (
     ApartadoExcelOut,
     AvisoCuadreOut,
@@ -130,6 +130,8 @@ def anadir_presupuesto_excel(
     proyecto = db.get(Proyecto, proyecto_id)
     if proyecto is None:
         raise ValueError(f"Proyecto {proyecto_id} no encontrado")
+    if db.query(Pedido).filter(Pedido.proyecto_id == proyecto.id).first() is not None:
+        raise ValueError("Esta obra nace de pedidos de compra")
     _exigir_fichero_nuevo(db, proyecto_id, "excel_expertis", nombre_fichero, contenido)
 
     nombre_f, leido = _preparar(nombre_fichero, contenido)

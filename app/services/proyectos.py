@@ -685,6 +685,7 @@ def borrar_proyecto(db: Session, proyecto_id: int, usuario: Usuario) -> None:
         ),
         params,
     )
+    db.execute(text("DELETE FROM pedido WHERE proyecto_id = :id"), params)
     db.execute(text("DELETE FROM contrato WHERE proyecto_id = :id"), params)
     db.execute(text("DELETE FROM presupuesto WHERE proyecto_id = :id"), params)
     db.execute(text("DELETE FROM nave WHERE proyecto_id = :id"), params)
