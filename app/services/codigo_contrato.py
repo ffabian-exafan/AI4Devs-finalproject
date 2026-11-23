@@ -1,7 +1,7 @@
 """Código impreso en el contrato y en la factura para relacionarlos.
 
 Obra: PYCON o PYEQU, 3 dígitos de proyecto, 2 de trabajo y 1 de contrato.
-Pedido de serie 1: 1- y 6 dígitos. Por administración, el mismo código termina en ADM.
+Serie 1, sin PY: el pedido es 1- y cinco dígitos; el contrato impreso añade un dígito del 0 al 9. Por administración, el mismo código termina en ADM.
 El tramo del trabajo no se enlaza con ningún apartado de este sistema.
 """
 
@@ -10,15 +10,25 @@ from __future__ import annotations
 import re
 
 _FORMATO = re.compile(r"^(?:PYCON\d{6}|PYEQU\d{6}|1-\d{6})(?:ADM)?$")
+_PEDIDO_DE_CODIGO = re.compile(r"^1-(\d{5})\d(?:ADM)?$")
 _EN_TEXTO = re.compile(
     r"(?<![A-Z0-9])((?:PYCON|PYEQU)\d{6}|1-\d{6})(ADM)?(?![A-Z0-9])",
     re.IGNORECASE,
 )
 
+
+def pedido_de_codigo(valor: str) -> str | None:
+    """1-256580 y 1-256580ADM son el pedido 1-25658. Un PYCON no lo es."""
+    hallazgo = _PEDIDO_DE_CODIGO.fullmatch(re.sub(r"\s+", "", valor or "").upper())
+    if hallazgo is None:
+        return None
+    return f"1-{hallazgo.group(1)}"
+
 MENSAJE_FORMATO = (
     "El código no cumple el formato. "
     "Obra: PYCON o PYEQU, 3 dígitos de proyecto, 2 de trabajo y 1 de contrato. "
-    "Pedido de serie 1: 1- y 6 dígitos. Por administración, termina en ADM."
+    "Serie 1, sin PY: 1-, cinco dígitos del pedido y un dígito de contrato (0-9). "
+    "Por administración, termina en ADM."
 )
 AVISO_SIN_CODIGO = "El PDF no trae código de contrato. Indícalo."
 AVISO_VARIOS = "El PDF trae varios códigos de contrato. Indica cuál corresponde."

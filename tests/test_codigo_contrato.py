@@ -51,3 +51,13 @@ def test_no_recorta_un_codigo_mas_largo():
 def test_si_hay_varios_distintos_los_devuelve_sin_repetir():
     texto = "PYCON244070\nPYCON244070\nPYCON244071"
     assert codigos_en_texto(texto) == ["PYCON244070", "PYCON244071"]
+
+
+def test_el_pedido_son_los_cinco_primeros_digitos():
+    from app.services.codigo_contrato import pedido_de_codigo
+
+    assert pedido_de_codigo("1-256580") == "1-25658"
+    assert pedido_de_codigo("1-256581") == "1-25658"
+    assert pedido_de_codigo("1-256580ADM") == "1-25658"
+    assert pedido_de_codigo("pycon244070") is None
+    assert pedido_de_codigo("1-25658") is None
