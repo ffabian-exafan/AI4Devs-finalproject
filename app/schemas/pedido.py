@@ -11,6 +11,13 @@ class LineaPedidoOut(BaseModel):
     descripcion: str
     importe: Decimal
     estado_revision: str
+    sugerida: bool
+
+
+class ConfirmarPedidoIn(BaseModel):
+    """Líneas que la persona deja en el pedido. Vacío si no marca ninguna."""
+
+    tarea_ids: list[int] | None = None
 
 
 class NavePedidoOut(BaseModel):

@@ -226,3 +226,101 @@ def test_el_flujo_ya_no_dice_que_falta_la_pantalla():
     texto = Path("docs/flujo_ui_proyecto.md").read_text(encoding="utf-8")
     assert "La pantalla de alta desde el pedido no está construida." not in texto
     assert "POST /proyectos/importar-pedidos" in texto
+
+
+def test_se_puede_dejar_una_linea_que_no_es_montaje(db: Session):
+    usuario = _usuario(db)
+    alta = importar_pedidos(
+        db,
+        "Obra con transporte",
+        [("nave.pdf", pdf_pedido([
+            ("SER02010001", "MONTAJE DE EJEMPLO", "1,00", "10,00", "0", "10,00"),
+            ("SER01010001", "TRANSPORTE DE EJEMPLO", "1,00", "4,00", "0", "4,00"),
+            ("MAT01010001", "MATERIAL DE EJEMPLO", "1,00", "6,00", "0", "6,00"),
+        ]))],
+    )
+    pedido = db.query(Pedido).filter(Pedido.proyecto_id == alta.proyecto_id).one()
+    lineas = db.query(Tarea).filter(Tarea.pedido_id == pedido.id).order_by(Tarea.id).all()
+    montaje, transporte, material = lineas
+    assert montaje.es_montaje is True
+    assert transporte.es_montaje is False
+    confirmar_pedido(
+        db,
+        alta.proyecto_id,
+        pedido.id,
+        usuario,
+        [montaje.id, transporte.id],
+    )
+    db.expire_all()
+    quedan = db.query(Tarea).filter(Tarea.pedido_id == pedido.id).order_by(Tarea.id).all()
+    assert [linea.descripcion for linea in quedan] == [
+        "MONTAJE DE EJEMPLO",
+        "TRANSPORTE DE EJEMPLO",
+    ]
+    assert all(linea.estado_revision == "confirmada" and linea.es_montaje for linea in quedan)
+    assert db.get(Tarea, material.id) is None
+    borrar_proyecto(db, alta.proyecto_id, usuario)
+
+
+def test_un_contrato_de_pedido_admite_dos_codigos(db: Session):
+    from app.services.facturas import _enlace_por_codigo
+
+    usuario = _usuario(db)
+    alta = importar_pedidos(
+        db,
+        "Obra de dos códigos",
+        [("nave.pdf", pdf_pedido(
+            [("SER02010001", "MONTAJE DE EJEMPLO", "1,00", "10,00", "0", "10,00")],
+        ))],
+    )
+    anadir_pedido(
+        db,
+        alta.proyecto_id,
+        "nave-2.pdf",
+        pdf_pedido(
+            [("SER02010002", "INSTALACION DE EJEMPLO", "1,00", "8,00", "0", "8,00")],
+            numero="1-10002",
+            rotulo="NAVE 2",
+        ),
+    )
+    contrato = _contrato_minimo(db, alta.proyecto_id)
+    asignar_codigo_contrato(db, alta.proyecto_id, contrato.id, "1-100010", "1-100020")
+    db.refresh(contrato)
+    assert contrato.codigo == "1-100010"
+    assert contrato.codigo_2 == "1-100020"
+    otro = _contrato_minimo(db, alta.proyecto_id, nif="B00000001")
+    with pytest.raises(ValueError, match="serie 1"):
+        asignar_codigo_contrato(db, alta.proyecto_id, otro.id, "1-100010", "PYCON123456")
+    with pytest.raises(ValueError, match="otro contrato"):
+        asignar_codigo_contrato(db, alta.proyecto_id, otro.id, "1-100020")
+    hallado, aviso = _enlace_por_codigo(
+        db, alta.proyecto_id, contrato.contratista_id, "1-100020"
+    )
+    assert aviso is None
+    assert hallado.id == contrato.id
+    borrar_proyecto(db, alta.proyecto_id, usuario)
+
+
+def test_el_contrato_de_pedido_se_compara_sin_iva(db: Session):
+    usuario = _usuario(db)
+    alta = importar_pedidos(
+        db,
+        "Obra de contrato con IVA",
+        [("nave.pdf", pdf_pedido(
+            [("SER02010001", "MONTAJE DE EJEMPLO", "1,00", "10,00", "0", "10,00")],
+            numero="1-10006",
+        ))],
+    )
+    contrato = _contrato_minimo(db, alta.proyecto_id)
+    contrato.precio_total = Decimal("12.10")
+    db.commit()
+    detalle = obtener_proyecto(db, alta.proyecto_id)
+    assert detalle.contratos[0].precio_total == Decimal("12.10")
+    assert detalle.contratos[0].precio_sin_iva == Decimal("10.00")
+    proyecto = db.get(Proyecto, alta.proyecto_id)
+    proyecto.inversion_sujeto_pasivo = True
+    db.commit()
+    sin_recalculo = obtener_proyecto(db, alta.proyecto_id)
+    assert sin_recalculo.contratos[0].precio_sin_iva is None
+    db.expire_all()
+    borrar_proyecto(db, alta.proyecto_id, usuario)

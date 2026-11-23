@@ -137,9 +137,9 @@ Regla cerrada el 23 nov. 2026. El alta ya está en la pantalla.
 
 1. La persona pone el nombre de la obra y sube uno o varios pedidos de compra de la plantilla de Exafan (código, descripción, unidades, precio, descuento e importe). Puede añadir otro pedido a la misma obra más tarde. No hay presupuesto Excel ni contrato con el cliente, y ese contrato no se sube.
 2. Cada pedido (`1-` y cinco dígitos) es una nave. El nombre lleva el número y, si el PDF trae rótulo (Nave 1, Nave 2), también el rótulo.
-3. Entra la línea cuya descripción empieza por MONTAJE, COLOCACIÓN o INSTALACIÓN. El importe es la columna Importe, ya con el descuento. El material, el transporte y una cita a otro presupuesto se ignoran. Si el texto no cuadra con la plantilla, no se inventan líneas.
+3. Montaje, colocación e instalación vienen marcadas. El importe es la columna Importe, ya con el descuento. La persona puede marcar también otras líneas del pedido, porque a veces repercuten en las facturas. Lo que no marque no entra. Si el texto no cuadra con la plantilla, no se inventan líneas.
 4. Lo leído queda pendiente hasta que una persona confirma las líneas. Cada línea confirmada es un apartado de esa nave.
-5. El contrato con el proveedor trae el código impreso: el pedido más un dígito del 0 al 9. Puede enlazarse a varias líneas de ese pedido; se compara la suma de contratos con el importe de cada línea. Si el pedido del código no es una nave de la obra, el contrato no se guarda ahí. El sello de la factura muestra el código entero.
+5. El contrato con el proveedor trae el código impreso: el pedido más un dígito del 0 al 9. En una obra de pedidos puede llevar un segundo código de serie 1, de otra nave o del mismo pedido. Puede enlazarse a varias líneas de esos pedidos. El precio del contrato incluye el 21 % de IVA y las líneas del pedido no: se comparan por la base, sin ese IVA. Si la obra es inversión del sujeto pasivo, el precio ya es la base. Si el pedido de un código no es una nave de la obra, el contrato no se guarda ahí. El sello de la factura muestra el código entero.
 
 ## Qué no hace este flujo
 

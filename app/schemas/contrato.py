@@ -56,13 +56,17 @@ class ImportarContratoOut(BaseModel):
 
 class CodigoContratoIn(BaseModel):
     codigo: str = Field(min_length=1, max_length=16)
+    codigo_2: str | None = Field(default=None, max_length=16)
 
-    @field_validator("codigo")
+    @field_validator("codigo", "codigo_2")
     @classmethod
-    def formato(cls, value: str) -> str:
+    def formato(cls, value: str | None) -> str | None:
+        if value is None or not str(value).strip():
+            return None
         return validar_codigo(value)
 
 
 class CodigoContratoOut(BaseModel):
     contrato_id: int
     codigo: str
+    codigo_2: str | None = None

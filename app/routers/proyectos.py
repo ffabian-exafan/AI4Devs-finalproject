@@ -17,7 +17,7 @@ from app.schemas.casado import (
 )
 from app.schemas.contrato import CodigoContratoIn, CodigoContratoOut, ImportarContratoOut
 from app.schemas.control_economico import ControlEconomicoOut
-from app.schemas.pedido import ImportarPedidosOut
+from app.schemas.pedido import ConfirmarPedidoIn, ImportarPedidosOut
 from app.schemas.presupuesto import (
     ContrastarClienteOut,
     ImporteClienteIn,
@@ -303,11 +303,18 @@ def descargar_pedido(
 def confirmar_pedido(
     proyecto_id: int,
     pedido_id: int,
+    datos: ConfirmarPedidoIn | None = None,
     db: Session = Depends(get_db),
     actual: Usuario = Depends(usuario_actual),
 ):
     try:
-        pedido = pedidos_svc.confirmar_pedido(db, proyecto_id, pedido_id, actual)
+        pedido = pedidos_svc.confirmar_pedido(
+            db,
+            proyecto_id,
+            pedido_id,
+            actual,
+            None if datos is None else datos.tarea_ids,
+        )
     except ValueError as exc:
         detail = str(exc)
         codigo = (
@@ -664,11 +671,15 @@ def guardar_codigo_contrato(
 ) -> CodigoContratoOut:
     try:
         contrato = proyectos_svc.asignar_codigo_contrato(
-            db, proyecto_id, contrato_id, body.codigo
+            db, proyecto_id, contrato_id, body.codigo, body.codigo_2
         )
     except ValueError as exc:
         raise _error_valor(exc) from exc
-    return CodigoContratoOut(contrato_id=contrato.id, codigo=contrato.codigo or body.codigo)
+    return CodigoContratoOut(
+        contrato_id=contrato.id,
+        codigo=contrato.codigo or body.codigo,
+        codigo_2=contrato.codigo_2,
+    )
 
 
 @router.post(

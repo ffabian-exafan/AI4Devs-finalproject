@@ -13,7 +13,7 @@
   <script src="/js/api.js?v=20261116g"></script>
   <script src="/js/sesion.js?v=20261116i"></script>
   <script src="/js/visor-pdf.js?v=20261119c"></script>
-  <script src="/js/obras.js?v=20261123a"></script>
+  <script src="/js/obras.js?v=20261123d"></script>
 </head>
 
 <body>
@@ -221,12 +221,20 @@
                     <strong x-text="pedido.numero"></strong>
                     <span x-show="pedido.rotulo" x-text="' · ' + pedido.rotulo"></span>
                     <p class="meta" x-show="pedido.aviso" x-text="pedido.aviso"></p>
+                    <p class="meta" x-show="pedido.estado_revision === 'pendiente'">
+                      Vienen marcadas montaje, colocación e instalación. Marca también lo que deba repercutir en las facturas.
+                    </p>
                     <ul>
                       <template x-for="linea in pedido.lineas" :key="linea.tarea_id">
                         <li>
-                          <span x-text="linea.codigo + ' · ' + linea.descripcion"></span>
-                          <span class="num" x-text="euro(linea.importe)"></span>
-                          <span class="meta" x-text="linea.estado_revision"></span>
+                          <input type="checkbox" :id="'lin-' + linea.tarea_id" x-model="linea.marcada"
+                            x-show="pedido.estado_revision === 'pendiente'">
+                          <label :for="'lin-' + linea.tarea_id">
+                            <span x-text="linea.codigo + ' · ' + linea.descripcion"></span>
+                            <span class="num" x-text="euro(linea.importe)"></span>
+                          </label>
+                          <span class="meta" x-show="pedido.estado_revision !== 'pendiente'"
+                            x-text="linea.estado_revision"></span>
                         </li>
                       </template>
                     </ul>
@@ -272,7 +280,7 @@
               Queda pendiente de revisión.
             </span>
             <span class="sub" style="max-width: 460px; line-height: 1.5" x-show="origenAlta === 'pedido'">
-              Sube los pedidos de compra. Cada PDF es una nave. Entran montaje, colocación e instalación, y quedan pendientes de confirmar.
+              Sube los pedidos de compra. Cada PDF es una nave. Montaje, colocación e instalación vienen marcados; puedes marcar otras líneas antes de confirmar.
             </span>
             <span style="color: var(--p800); font-weight: 600">Arrastra los ficheros o haz clic para elegirlos</span>
           </div>
@@ -978,18 +986,25 @@
               <div>
                 <strong x-text="c.gremio"></strong><br />
                 <span class="meta" x-text="c.archivo"></span>
-                <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong> <span class="badge badge-warning" x-show="proyecto && proyecto.inversion_sujeto_pasivo">Sin IVA</span></div>
+                <div class="num" style="margin-top: 4px">Contratado <strong x-text="c.importe"></strong> <span class="badge badge-warning" x-show="proyecto && proyecto.inversion_sujeto_pasivo">Sin IVA</span><span class="meta" x-show="c.importe_sin_iva" x-text="' · ' + c.importe_sin_iva + ' sin IVA'"></span></div>
                 <span class="acciones-fichero" x-show="c.tiene_fichero">
                   <button type="button" class="btn-texto" x-show="esPdf(c.archivo)"
                     @click="abrirVisorPdf(c.url_fichero, c.archivo)">Ver</button>
                   <a class="btn-texto" :href="c.url_fichero">Descargar</a>
                 </span>
-                <span class="meta" x-show="c.codigo" x-text="'Código ' + c.codigo"></span>
-                <form class="stack" style="gap: 6px" x-show="!c.codigo" @submit.prevent="guardarCodigoContrato(c)">
+                <span class="meta" x-show="c.codigo"
+                  x-text="'Código ' + c.codigo + (c.codigo_2 ? ' · ' + c.codigo_2 : '')"></span>
+                <form class="stack" style="gap: 6px"
+                  x-show="!c.codigo || ((vista.pedidos || []).length && !c.codigo_2)"
+                  @submit.prevent="guardarCodigoContrato(c)">
                   <p class="ambar" x-show="c.aviso" x-text="c.aviso"></p>
-                  <label class="meta">Código de contrato
-                    <input class="campo" type="text" required maxlength="16" autocomplete="off" spellcheck="false"
-                      placeholder="PYCON244070" x-model="c.codigo_escrito">
+                  <label class="meta" x-show="!c.codigo">Código de contrato
+                    <input class="campo" type="text" maxlength="16" autocomplete="off" spellcheck="false"
+                      placeholder="PYCON244070" x-model="c.codigo_escrito" :required="!c.codigo">
+                  </label>
+                  <label class="meta" x-show="(vista.pedidos || []).length">Segundo código
+                    <input class="campo" type="text" maxlength="16" autocomplete="off" spellcheck="false"
+                      placeholder="1-100011" x-model="c.codigo_2_escrito">
                   </label>
                   <button type="submit" class="btn btn-secondary btn-sm">Guardar código</button>
                 </form>
@@ -1390,7 +1405,7 @@
                 <div class="fila-ctrl estatica">
                   <div>
                     <strong x-text="fila.nombre"></strong>
-                    <div class="meta">Contrato <span class="num" x-text="fila.contratado"></span></div>
+                    <div class="meta">Contrato <span class="num" x-text="fila.contratado"></span><span x-show="fila.sin_iva"> sin IVA</span></div>
                   </div>
                   <div class="track-bloque">
                     <div class="track">

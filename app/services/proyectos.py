@@ -21,6 +21,8 @@ from app.services.codigo_contrato import (
     AVISO_REPETIDO,
     AVISO_SIN_CODIGO,
     AVISO_VARIOS,
+    contrato_con_codigo,
+    pedido_de_codigo,
 )
 from app.services.registro import registrar
 from app.schemas.pedido import LineaPedidoOut, NavePedidoOut
@@ -36,6 +38,7 @@ from app.schemas.proyecto import (
     ProyectoRead,
 )
 from app.services import almacen as almacen_svc
+from app.services.iva import sin_iva
 from app.services import casado as casado_svc
 from app.services import mano_obra as mano_obra_svc
 from app.services.jerarquia import asegurar_apartados_padre, mapa_padres
@@ -90,7 +93,11 @@ def _presupuestado_raices(db: Session, proyecto_ids: list[int]) -> dict[int, Dec
     for proyecto_id, grupo in por_proyecto.items():
         padres = mapa_padres(grupo)
         totales[proyecto_id] = sum(
-            (t.importe_presupuestado for t in grupo if padres.get(t.id) is None),
+            (
+                t.importe_presupuestado
+                for t in grupo
+                if padres.get(t.id) is None and not (t.pedido_id is not None and not t.es_montaje)
+            ),
             Decimal("0"),
         )
     return totales
@@ -125,6 +132,7 @@ def _pedidos_del_detalle(
                         descripcion=tarea.descripcion,
                         importe=tarea.importe_presupuestado,
                         estado_revision=tarea.estado_revision,
+                        sugerida=bool(tarea.es_montaje),
                     )
                     for tarea in lineas
                 ],
@@ -240,6 +248,8 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
     for tarea in tareas_presupuesto:
         padre_id = padres.get(tarea.id)
         if padre_id is None:
+            if tarea.pedido_id is not None and not tarea.es_montaje:
+                continue
             raices.append(tarea)
         else:
             hijos_por_id.setdefault(padre_id, []).append(tarea)
@@ -398,6 +408,9 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
         and not (ap.solo_gestion and ap.estado_revision != "confirmada")
     ]
 
+    quitar_iva = not proyecto.inversion_sujeto_pasivo and (
+        db.query(Pedido.id).filter(Pedido.proyecto_id == proyecto_id).first() is not None
+    )
     contratos_out: list[ContratoResumenOut] = []
     for c in contratos_db:
         enlaces = [enlace for enlace in (c.enlaces_apartado or []) if enlace.tarea is not None]
@@ -434,7 +447,9 @@ def obtener_proyecto(db: Session, proyecto_id: int) -> ProyectoDetalleOut:
                 contratista_nombre=c.contratista.nombre if c.contratista else "—",
                 contratista_nif=c.contratista.nif if c.contratista else "—",
                 precio_total=c.precio_total,
+                precio_sin_iva=sin_iva(c.precio_total) if quitar_iva else None,
                 codigo=c.codigo,
+                codigo_2=c.codigo_2,
                 aviso=c.aviso,
                 estado_extraccion=c.estado_extraccion,
                 nave_id=c.nave_id,
@@ -740,39 +755,68 @@ def asignar_codigo_contrato(
     proyecto_id: int,
     contrato_id: int,
     codigo: str,
+    codigo_2: str | None = None,
 ) -> Contrato:
-    """Guarda el código que la persona indica cuando el PDF no lo traía."""
+    """Guarda el código, y en una obra de pedidos un segundo si lo hay."""
     contrato = db.get(Contrato, contrato_id)
     if contrato is None or contrato.proyecto_id != proyecto_id:
         raise ValueError(f"Contrato {contrato_id} no encontrado")
-    otro = (
-        db.query(Contrato)
-        .filter(Contrato.codigo == codigo, Contrato.id != contrato.id)
-        .first()
-    )
-    if otro is not None:
-        raise ValueError("Ese código ya está en otro contrato.")
-    from app.services.pedidos import exigir_nave_del_codigo
-
-    nave = exigir_nave_del_codigo(db, proyecto_id, codigo)
-    contrato.codigo = codigo
-    if nave is not None:
-        contrato.nave_id = nave.id
-    if contrato.aviso in {AVISO_SIN_CODIGO, AVISO_VARIOS, AVISO_REPETIDO}:
-        contrato.aviso = None
-    pendientes = (
-        db.query(Factura)
-        .filter(
-            Factura.proyecto_id == proyecto_id,
-            Factura.contratista_id == contrato.contratista_id,
-            Factura.codigo_contrato == codigo,
-            Factura.contrato_id.is_(None),
-        )
-        .all()
-    )
-    for factura in pendientes:
-        factura.contrato_id = contrato.id
-        factura.aviso_codigo = None
+    _poner_codigos(db, proyecto_id, contrato, codigo, codigo_2)
     db.commit()
     db.refresh(contrato)
     return contrato
+
+
+def _poner_codigos(
+    db: Session,
+    proyecto_id: int,
+    contrato: Contrato,
+    codigo: str,
+    codigo_2: str | None,
+) -> None:
+    if codigo_2 == codigo:
+        raise ValueError("Los dos códigos tienen que ser distintos.")
+    es_pedido = (
+        db.query(Pedido.id).filter(Pedido.proyecto_id == proyecto_id).first() is not None
+    )
+    if codigo_2 is not None and not es_pedido:
+        raise ValueError("El segundo código solo se usa en una obra de pedidos de compra.")
+    if codigo_2 is not None and (
+        pedido_de_codigo(codigo) is None or pedido_de_codigo(codigo_2) is None
+    ):
+        raise ValueError("En una obra de pedidos los dos códigos son de serie 1.")
+    for valor in (codigo, codigo_2):
+        if valor is None:
+            continue
+        if contrato_con_codigo(db, valor, excepto_id=contrato.id) is not None:
+            raise ValueError("Ese código ya está en otro contrato.")
+    from app.services.pedidos import exigir_nave_del_codigo
+
+    nave = exigir_nave_del_codigo(db, proyecto_id, codigo)
+    nave_2 = None
+    if codigo_2 is not None:
+        nave_2 = exigir_nave_del_codigo(db, proyecto_id, codigo_2)
+    contrato.codigo = codigo
+    contrato.codigo_2 = codigo_2
+    if nave is not None:
+        contrato.nave_id = nave.id
+    elif nave_2 is not None:
+        contrato.nave_id = nave_2.id
+    if contrato.aviso in {AVISO_SIN_CODIGO, AVISO_VARIOS, AVISO_REPETIDO}:
+        contrato.aviso = None
+    for valor in (codigo, codigo_2):
+        if valor is None:
+            continue
+        pendientes = (
+            db.query(Factura)
+            .filter(
+                Factura.proyecto_id == proyecto_id,
+                Factura.contratista_id == contrato.contratista_id,
+                Factura.codigo_contrato == valor,
+                Factura.contrato_id.is_(None),
+            )
+            .all()
+        )
+        for factura in pendientes:
+            factura.contrato_id = contrato.id
+            factura.aviso_codigo = None

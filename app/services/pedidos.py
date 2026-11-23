@@ -14,6 +14,9 @@ from app.services.codigo_contrato import pedido_de_codigo
 from app.services.registro import registrar
 
 _AVISO_SIN_LINEAS = "El pedido no trae líneas de montaje ni de instalación"
+_AVISO_ELEGIR = (
+    "No hay líneas de montaje ni de instalación. Marca las que deban entrar."
+)
 
 
 def importar_pedidos(
@@ -110,7 +113,10 @@ def _guardar(
         proyecto_id=proyecto.id,
         codigo=lectura.numero or "",
         descripcion=(lectura.rotulo or lectura.numero or "")[:255],
-        importe_presupuestado=sum((linea.importe for linea in lectura.lineas), Decimal("0")),
+        importe_presupuestado=sum(
+            (linea.importe for linea in lectura.lineas if linea.sugerida),
+            Decimal("0"),
+        ),
     )
     db.add(nave)
     db.flush()
@@ -121,7 +127,7 @@ def _guardar(
         rotulo=lectura.rotulo,
         fichero_origen=nombre_fichero[:512],
         estado_revision="pendiente",
-        aviso=None if lectura.lineas else _AVISO_SIN_LINEAS,
+        aviso=_aviso_de_lectura(lectura),
     )
     db.add(pedido)
     db.flush()
@@ -146,7 +152,7 @@ def _guardar(
             precio_unitario=linea.precio_unitario,
             descuento_pct=linea.descuento_pct,
             importe_presupuestado=linea.importe,
-            es_montaje=True,
+            es_montaje=linea.sugerida,
             solo_gestion=False,
             tiene_anotacion_manual=False,
             estado_revision="pendiente",
@@ -162,6 +168,7 @@ def _guardar(
                 descripcion=tarea.descripcion,
                 importe=tarea.importe_presupuestado,
                 estado_revision=tarea.estado_revision,
+                sugerida=linea.sugerida,
             )
         )
     return NavePedidoOut(
@@ -175,14 +182,41 @@ def _guardar(
     )
 
 
-def confirmar_pedido(db: Session, proyecto_id: int, pedido_id: int, usuario: Usuario) -> Pedido:
-    """Pasa el pedido y sus líneas a confirmada. La obra sigue si queda algo pendiente."""
+def confirmar_pedido(
+    db: Session,
+    proyecto_id: int,
+    pedido_id: int,
+    usuario: Usuario,
+    tarea_ids: list[int] | None = None,
+) -> Pedido:
+    """Confirma las líneas marcadas. Sin lista, deja las sugeridas y quita el resto."""
     pedido = db.get(Pedido, pedido_id)
     if pedido is None or pedido.proyecto_id != proyecto_id:
         raise ValueError(f"Pedido {pedido_id} no encontrado")
+    if pedido.estado_revision == "confirmada":
+        raise ValueError("El pedido ya está confirmado")
+    tareas = db.query(Tarea).filter(Tarea.pedido_id == pedido.id).all()
+    conocidas = {tarea.id for tarea in tareas}
+    if tarea_ids is None:
+        elegidas = {tarea.id for tarea in tareas if tarea.es_montaje}
+    else:
+        ajenas = [tarea_id for tarea_id in tarea_ids if tarea_id not in conocidas]
+        if ajenas:
+            raise ValueError("Hay una línea que no es de este pedido")
+        elegidas = set(tarea_ids)
     pedido.estado_revision = "confirmada"
-    for tarea in db.query(Tarea).filter(Tarea.pedido_id == pedido.id).all():
-        tarea.estado_revision = "confirmada"
+    for tarea in tareas:
+        if tarea.id in elegidas:
+            tarea.es_montaje = True
+            tarea.estado_revision = "confirmada"
+        else:
+            db.delete(tarea)
+    nave = db.get(Nave, pedido.nave_id)
+    if nave is not None:
+        nave.importe_presupuestado = sum(
+            (tarea.importe_presupuestado for tarea in tareas if tarea.id in elegidas),
+            Decimal("0"),
+        )
     db.flush()
     pendientes = (
         db.query(Pedido)
@@ -217,6 +251,14 @@ def confirmar_pedido(db: Session, proyecto_id: int, pedido_id: int, usuario: Usu
     db.commit()
     db.refresh(pedido)
     return pedido
+
+
+def _aviso_de_lectura(lectura: LecturaPedido) -> str | None:
+    if not lectura.lineas:
+        return _AVISO_SIN_LINEAS
+    if not any(linea.sugerida for linea in lectura.lineas):
+        return _AVISO_ELEGIR
+    return None
 
 
 def exigir_nave_del_codigo(db: Session, proyecto_id: int, codigo: str) -> Nave | None:

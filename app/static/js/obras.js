@@ -384,7 +384,11 @@ function gestionObras() {
       try {
         await GestorApi.postJson(
           "/proyectos/" + this.proyectoId + "/pedidos/" + pedido.pedido_id + "/confirmar",
-          {}
+          {
+            tarea_ids: (pedido.lineas || [])
+              .filter((linea) => linea.marcada)
+              .map((linea) => linea.tarea_id),
+          }
         );
         await this._cargarVistaProyecto(this.proyectoId);
       } catch (err) {
@@ -1386,8 +1390,12 @@ function gestionObras() {
             : null,
           importe: euro(contrato.precio_total),
           precio_total: Number(contrato.precio_total) || 0,
+          precio_sin_iva: contrato.precio_sin_iva == null ? null : Number(contrato.precio_sin_iva),
+          importe_sin_iva: contrato.precio_sin_iva == null ? null : euro(contrato.precio_sin_iva),
           codigo: contrato.codigo || null,
+          codigo_2: contrato.codigo_2 || null,
           codigo_escrito: "",
+          codigo_2_escrito: "",
           apartado_ids: apartadoIds,
           confianza: asociado
             ? 100
@@ -1517,24 +1525,41 @@ function gestionObras() {
         (suma, ap) => suma + (Number(ap.importe_presupuestado) || 0),
         0
       );
+      const obraPedido = (proyecto.pedidos || []).length > 0 && !proyecto.inversion_sujeto_pasivo;
       const factTotal = (facturas || [])
         .filter((factura) => factura.estado_revision === "confirmada")
-        .reduce((suma, factura) => suma + (Number(factura.total) || 0), 0);
+        .reduce(
+          (suma, factura) =>
+            suma + (obraPedido ? Number(factura.base_imponible) || 0 : Number(factura.total) || 0),
+          0
+        );
       const contrTotal = (proyecto.contratos || []).reduce(
-        (suma, contrato) => suma + (Number(contrato.precio_total) || 0),
+        (suma, contrato) =>
+          suma +
+          (contrato.precio_sin_iva == null
+            ? Number(contrato.precio_total) || 0
+            : Number(contrato.precio_sin_iva) || 0),
         0
       );
       let desvioTotal = 0;
       const filasControl = filas.map((fila) => {
         const presupuestado = Number(fila.base) || 0;
+        const contratado =
+          fila.precio_sin_iva == null ? Number(fila.precio_total) || 0 : fila.precio_sin_iva;
         const facturado = (facturas || [])
           .filter(
             (factura) =>
               factura.estado_revision === "confirmada" &&
               String(factura.contrato_id) === String(fila.id)
           )
-          .reduce((suma, factura) => suma + (Number(factura.total) || 0), 0);
-        const contratado = Number(fila.precio_total) || 0;
+          .reduce(
+            (suma, factura) =>
+              suma +
+              (fila.precio_sin_iva == null
+                ? Number(factura.total) || 0
+                : Number(factura.base_imponible) || 0),
+            0
+          );
         const escala = contratado > 0 ? contratado : Math.max(presupuestado, facturado, 1);
         const pct = (valor) =>
           Math.min(100, Math.max(0, Math.round((valor / escala) * 100))) + "%";
@@ -1545,6 +1570,7 @@ function gestionObras() {
           nombre: fila.gremio,
           base: presupuestado,
           contratado: euro(contratado),
+          sin_iva: fila.precio_sin_iva != null,
           presupuestado: euro(presupuestado),
           facturado: euro(facturado),
           ancho_presupuesto: pct(presupuestado),
@@ -1584,7 +1610,13 @@ function gestionObras() {
       const naves = (control.por_nave || []).length;
       const contrasteCliente = this._contarContrastados(apartados);
       return {
-        pedidos: proyecto.pedidos || [],
+        pedidos: (proyecto.pedidos || []).map((pedido) => ({
+          ...pedido,
+          lineas: (pedido.lineas || []).map((linea) => ({
+            ...linea,
+            marcada: linea.sugerida !== false,
+          })),
+        })),
         pasos: [
           {
             id: "presupuestos",
@@ -1702,13 +1734,13 @@ function gestionObras() {
             {
               etiqueta: "Contratado",
               valor: euro(contrTotal),
-              detalle: (proyecto.contratos || []).length + " contratos",
+              detalle: (obraPedido ? "Sin IVA · " : "") + (proyecto.contratos || []).length + " contratos",
               color: "#2a2724",
             },
             {
               etiqueta: "Facturado",
               valor: euro(factTotal),
-              detalle: "Solo facturas confirmadas",
+              detalle: obraPedido ? "Sin IVA · solo facturas confirmadas" : "Solo facturas confirmadas",
               color: "#2a2724",
             },
             {
@@ -2001,7 +2033,9 @@ function gestionObras() {
         elegidos.reduce((suma, ap) => suma + this._baseContrato(ap), 0) +
         delPdf.reduce((suma, item) => suma + (Number(item.importe) || 0), 0);
       // Base menos contrato. El rojo se queda si el contrato supera la base.
-      const diff = base - (Number(fila.precio_total) || 0);
+      const contratado =
+        fila.precio_sin_iva == null ? Number(fila.precio_total) || 0 : fila.precio_sin_iva;
+      const diff = base - contratado;
       fila.base = base;
       fila.etiqueta_base = this._textoBaseMixta(elegidos, delPdf.length);
       fila.presupuestado = GestorApi.euro(base);
@@ -2797,7 +2831,9 @@ function gestionObras() {
             candidatos: (detalle.contratos_candidatos || []).map((contrato) => ({
               id: contrato.id,
               etiqueta:
-                (contrato.codigo ? contrato.codigo + " · " : "") +
+                (contrato.codigo
+                  ? contrato.codigo + (contrato.codigo_2 ? " · " + contrato.codigo_2 : "") + " · "
+                  : "") +
                 contrato.contratista_nombre +
                 " · " +
                 GestorApi.euro(contrato.precio_total),
@@ -2835,13 +2871,16 @@ function gestionObras() {
     },
 
     async guardarCodigoContrato(fila) {
-      const codigo = (fila.codigo_escrito || "").trim();
+      const codigo = (fila.codigo || fila.codigo_escrito || "").trim();
+      const codigo2 = (fila.codigo_2_escrito || "").trim();
       if (!codigo || !this.proyectoId) return;
       this.error = "";
+      const body = { codigo };
+      if (codigo2) body.codigo_2 = codigo2;
       try {
         await GestorApi.postJson(
           "/proyectos/" + this.proyectoId + "/contratos/" + fila.id + "/codigo",
-          { codigo }
+          body
         );
         await this._cargarVistaProyecto(this.proyectoId);
         this.screen = "contratos";

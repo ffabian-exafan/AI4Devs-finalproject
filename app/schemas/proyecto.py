@@ -113,7 +113,10 @@ class ContratoResumenOut(BaseModel):
     contratista_nombre: str
     contratista_nif: str
     precio_total: Money
+    # Base del contrato, sin el 21 %. Solo en obras de pedidos que no son ISP.
+    precio_sin_iva: Money | None = None
     codigo: str | None = None
+    codigo_2: str | None = None
     aviso: str | None = None
     estado_extraccion: str
     nave_id: int | None = None

@@ -415,7 +415,9 @@ def _validar_enlace(
             raise ValueError("La línea del pedido sigue pendiente de revisión")
         from app.services.codigo_contrato import pedido_de_codigo
 
-        if pedido_de_codigo(contrato.codigo or "") != nave.codigo:
+        if pedido_de_codigo(contrato.codigo or "") != nave.codigo and (
+            pedido_de_codigo(contrato.codigo_2 or "") != nave.codigo
+        ):
             raise ValueError("El contrato no es de esta nave")
         return apartado
     if (

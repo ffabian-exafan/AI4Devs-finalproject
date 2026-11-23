@@ -83,6 +83,7 @@ class ContratoCandidatoFacturaOut(BaseModel):
     contratista_nombre: str
     precio_total: Money
     codigo: str | None = None
+    codigo_2: str | None = None
 
 
 class EnlazarContratoFacturaIn(BaseModel):
@@ -117,6 +118,7 @@ class FacturaResumenOut(BaseModel):
     aviso_codigo: str | None = None
     contrato_etiqueta: str | None = None
     total: Money
+    base_imponible: Money
     tipo: str
     es_escaneada: bool
     estado_revision: str

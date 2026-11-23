@@ -24,6 +24,7 @@ class LineaPedido:
     precio_unitario: Decimal
     descuento_pct: Decimal
     importe: Decimal
+    sugerida: bool
 
 
 @dataclass(frozen=True)
@@ -152,7 +153,7 @@ def _lineas(
             clave = min(columnas, key=lambda nombre: abs(columnas[nombre] - x))
             celdas[clave].append(texto)
         descripcion = re.sub(r"\s+", " ", " ".join(celdas.get("descripcion", []))).strip()
-        if not descripcion.upper().startswith(_ENTRA):
+        if not descripcion:
             continue
         importe = _decimal(" ".join(celdas.get("importe", [])))
         if importe is None:
@@ -168,6 +169,7 @@ def _lineas(
                 precio_unitario=_decimal(" ".join(celdas.get("precio", []))) or Decimal("0.00"),
                 descuento_pct=_decimal(" ".join(celdas.get("descuento", []))) or Decimal("0.00"),
                 importe=importe,
+                sugerida=descripcion.upper().startswith(_ENTRA),
             )
         )
     return lineas

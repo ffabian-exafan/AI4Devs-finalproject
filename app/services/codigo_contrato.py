@@ -69,3 +69,17 @@ def aviso_sin_contrato(codigo: str) -> str:
 def aviso_otra_obra(codigo: str) -> str:
     return f"El código {codigo} pertenece a otra obra."
 
+
+def contrato_con_codigo(db, codigo: str, excepto_id: int | None = None):
+    """Contrato que ya usa ese código, en el primero o en el segundo."""
+    from sqlalchemy import or_
+
+    from app.models import Contrato
+
+    consulta = db.query(Contrato).filter(
+        or_(Contrato.codigo == codigo, Contrato.codigo_2 == codigo)
+    )
+    if excepto_id is not None:
+        consulta = consulta.filter(Contrato.id != excepto_id)
+    return consulta.first()
+

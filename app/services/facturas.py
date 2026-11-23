@@ -26,6 +26,7 @@ from app.services.codigo_contrato import (
     aviso_otra_obra,
     aviso_sin_contrato,
     codigos_en_texto,
+    contrato_con_codigo,
 )
 from app.services.registro import ZONA, registrar
 from app.services.sello_factura import (
@@ -187,7 +188,6 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
     resumen = _a_resumen(factura)
     return FacturaRevisionOut(
         **resumen.model_dump(),
-        base_imponible=factura.base_imponible,
         iva=factura.iva,
         irpf=factura.irpf,
         retencion_garantia=factura.retencion_garantia,
@@ -203,6 +203,7 @@ def obtener_factura(db: Session, factura_id: int) -> FacturaRevisionOut:
                 ),
                 precio_total=contrato.precio_total,
                 codigo=contrato.codigo,
+                codigo_2=contrato.codigo_2,
             )
             for contrato in candidatos
         ],
@@ -228,7 +229,9 @@ def certificar_montaje(
         raise ValueError("La certificación de montaje ya está puesta")
 
     contrato = db.get(Contrato, factura.contrato_id) if factura.contrato_id else None
-    codigo = factura.codigo_contrato or (contrato.codigo if contrato is not None else None)
+    codigo = factura.codigo_contrato or (
+        (contrato.codigo or contrato.codigo_2) if contrato is not None else None
+    )
     if not codigo:
         raise ValueError(AVISO_SIN_CODIGO_FACTURA)
 
@@ -428,7 +431,9 @@ def _datos_sello(
     presupuestado = (
         Decimal(contrato.precio_total) if contrato is not None else Decimal("0")
     )
-    codigo = factura.codigo_contrato or (contrato.codigo if contrato is not None else None)
+    codigo = factura.codigo_contrato or (
+        (contrato.codigo or contrato.codigo_2) if contrato is not None else None
+    )
     hermanas = _facturas_del_mismo_contrato(db, factura)
     ordinal = 1
     acumulado = Decimal("0")
@@ -590,7 +595,7 @@ def _enlace_por_codigo(
     contratista_id: int,
     codigo: str,
 ) -> tuple[Contrato | None, str | None]:
-    contrato = db.query(Contrato).filter(Contrato.codigo == codigo).one_or_none()
+    contrato = contrato_con_codigo(db, codigo)
     if contrato is None:
         return None, aviso_sin_contrato(codigo)
     if contrato.proyecto_id != proyecto_id:
@@ -708,6 +713,7 @@ def _a_resumen(factura: Factura) -> FacturaResumenOut:
         aviso_codigo=factura.aviso_codigo,
         contrato_etiqueta=_etiqueta_contrato(factura),
         total=factura.total,
+        base_imponible=factura.base_imponible,
         tipo=factura.tipo,
         es_escaneada=factura.es_escaneada,
         estado_revision=factura.estado_revision,

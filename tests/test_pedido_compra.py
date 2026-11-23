@@ -21,10 +21,12 @@ def test_entra_montaje_e_instalacion_con_el_importe_neto():
     assert lectura.numero == "1-10001"
     assert lectura.rotulo == "NAVE 1"
     assert lectura.aviso is None
-    assert [(linea.descripcion, linea.importe) for linea in lectura.lineas] == [
-        ("MONTAJE DE EJEMPLO", Decimal("100.00")),
-        ("INSTALACION SEGUN PRESUPUESTO ZZ000000", Decimal("80.00")),
-        ("COLOCACIÓN DE EJEMPLO", Decimal("20.00")),
+    assert [(linea.descripcion, linea.importe, linea.sugerida) for linea in lectura.lineas] == [
+        ("MONTAJE DE EJEMPLO", Decimal("100.00"), True),
+        ("INSTALACION SEGUN PRESUPUESTO ZZ000000", Decimal("80.00"), True),
+        ("TRANSPORTE DE EJEMPLO", Decimal("20.00"), False),
+        ("MATERIAL DE EJEMPLO", Decimal("35.00"), False),
+        ("COLOCACIÓN DE EJEMPLO", Decimal("20.00"), True),
     ]
     assert lectura.lineas[0].cantidad == Decimal("1.00")
     assert lectura.lineas[0].precio_unitario == Decimal("150.00")

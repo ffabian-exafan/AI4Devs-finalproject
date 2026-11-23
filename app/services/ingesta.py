@@ -21,6 +21,8 @@ from app.services.codigo_contrato import (
     AVISO_SIN_CODIGO,
     AVISO_VARIOS,
     codigos_en_texto,
+    contrato_con_codigo,
+    pedido_de_codigo,
 )
 from app.services import almacen as almacen_svc
 from app.services import casado as casado_svc
@@ -447,6 +449,16 @@ def persistir_contrato(
 
 def _aplicar_codigo_leido(db: Session, contrato: Contrato, texto: str) -> None:
     encontrados = codigos_en_texto(texto)
+    if len(encontrados) == 2 and _son_dos_de_serie_1(db, contrato.proyecto_id, encontrados):
+        from app.services.proyectos import _poner_codigos
+
+        try:
+            _poner_codigos(db, contrato.proyecto_id, contrato, encontrados[0], encontrados[1])
+        except ValueError:
+            contrato.codigo = None
+            contrato.codigo_2 = None
+            contrato.aviso = AVISO_VARIOS
+        return
     if len(encontrados) > 1:
         contrato.aviso = AVISO_VARIOS
         return
@@ -454,11 +466,18 @@ def _aplicar_codigo_leido(db: Session, contrato: Contrato, texto: str) -> None:
         contrato.aviso = AVISO_SIN_CODIGO
         return
     codigo = encontrados[0]
-    otro = db.query(Contrato).filter(Contrato.codigo == codigo).first()
-    if otro is not None:
+    if contrato_con_codigo(db, codigo) is not None:
         contrato.aviso = AVISO_REPETIDO
         return
     contrato.codigo = codigo
+
+
+def _son_dos_de_serie_1(db: Session, proyecto_id: int, codigos: list[str]) -> bool:
+    from app.models import Pedido
+
+    if any(pedido_de_codigo(codigo) is None for codigo in codigos):
+        return False
+    return db.query(Pedido.id).filter(Pedido.proyecto_id == proyecto_id).first() is not None
 
 
 def _guardar_sugerencia_modelo(contrato: Contrato, extraido: ContratoExtraido) -> None:
